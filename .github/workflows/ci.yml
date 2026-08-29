@@ -21,7 +21,7 @@ jobs:
         run: uv run pytest -q
       - name: Parse do DDL do Registro (dialeto postgres)
         run: >
-          uv run --with sqlglot python -c
+          uv run --with 'sqlglot==30.17.0' python -c
           "import sqlglot;
           n = len(sqlglot.parse(open('src/dados/registro/001_registro.sql').read(), read='postgres'));
           print(f'DDL OK: {n} statements')"
