@@ -20,10 +20,12 @@ CREATE TABLE registro.rodada (
     etapas              jsonb NOT NULL DEFAULT '{}'::jsonb,  -- situação de pronto por etapa
     motivo_degradacao   text,                                -- qual etapa falhou e por quê
     tentativas_por_etapa jsonb NOT NULL DEFAULT '{}'::jsonb,
-    -- D-001: aprovação tácita como carimbo; não há verificação de conteúdo.
+    -- D-001: aprovação tácita por prazo, como carimbo, sem verificação de
+    -- conteúdo. O prazo é o parâmetro pendente nº 10 (nulo): não aparece em
+    -- DEFAULT nem CHECK. Só a rodada de decisão recebe aprovação — a de
+    -- segunda produz relatório, que não passa por aprovação (Spec §1).
     aprovada_em         timestamptz,
-    modo_aprovacao      text CHECK (modo_aprovacao IN ('tacita', 'manual')),
-    CONSTRAINT aprovacao_consistente CHECK ((aprovada_em IS NULL) = (modo_aprovacao IS NULL))
+    CONSTRAINT aprovacao_so_em_decisao CHECK (aprovada_em IS NULL OR tipo = 'decisao')
 );
 
 -- Cópia integral dos parâmetros vigentes na execução (Spec §2.1):
@@ -37,7 +39,11 @@ CREATE TABLE registro.parametros_da_rodada (
 CREATE TABLE registro.perfil_da_rodada (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     rodada_id           bigint NOT NULL REFERENCES registro.rodada (id),
-    dimensoes           jsonb NOT NULL,  -- uma ou duas por resultado (Spec §6.2: nunca as cinco)
+    dimensoes           jsonb NOT NULL,  -- array com uma ou duas (Spec §6.2: nunca as cinco)
+    CONSTRAINT uma_ou_duas_dimensoes CHECK (
+        CASE WHEN jsonb_typeof(dimensoes) = 'array'
+             THEN jsonb_array_length(dimensoes) BETWEEN 1 AND 2
+             ELSE false END),
     valores             jsonb NOT NULL,  -- faixa, região, quantidade — os valores de cada dimensão
     vendas_sustentam    integer NOT NULL CHECK (vendas_sustentam >= 0),
     classificacao       text NOT NULL CHECK (classificacao IN ('robusto', 'fragil'))
@@ -62,6 +68,13 @@ CREATE TABLE registro.decisao_imovel (
     regra_relaxada      text CHECK (regra_relaxada IN
                             ('fotos', 'cadastro_completo', 'atualizacao_90d',
                              'gestor_produtivo', 'capacidade_distrito')),  -- NULL = entrou sem relaxamento
+    -- Invariante 7: as posições de super destaque nunca relaxam.
+    CONSTRAINT super_destaque_nunca_relaxa CHECK (regra_relaxada IS NULL OR nivel = 'destaque'),
+    -- Invariante 6: cotas contratuais como teto. Com o UNIQUE (rodada, nivel,
+    -- posicao_ranking), limita matematicamente a contagem por rodada e nível.
+    CONSTRAINT posicao_dentro_da_cota CHECK (
+        (nivel = 'super_destaque' AND posicao_ranking BETWEEN 1 AND 475) OR
+        (nivel = 'destaque'       AND posicao_ranking BETWEEN 1 AND 6495)),
     PRIMARY KEY (rodada_id, imovel_id)
 );
 CREATE UNIQUE INDEX ON registro.decisao_imovel (rodada_id, nivel, posicao_ranking);
@@ -92,6 +105,10 @@ CREATE TABLE registro.janela_destaque (
 CREATE INDEX ON registro.janela_destaque (imovel_id, inicio DESC);
 
 -- O que a rodada de segunda apurou (Spec §2.1 "resultado_carga").
+-- Expectativa de tipo: rodada_acompanhamento_id → rodada de acompanhamento;
+-- rodada_decisao_id → rodada de decisão (a carga de referência). Imposição na
+-- camada de aplicação — CHECK não alcança outra tabela e trigger não compensa
+-- o custo nesta fase (avaliado pelos portões de revisão do PR #2).
 CREATE TABLE registro.resultado_carga (
     rodada_acompanhamento_id bigint NOT NULL REFERENCES registro.rodada (id),
     rodada_decisao_id        bigint NOT NULL REFERENCES registro.rodada (id),  -- carga de referência
