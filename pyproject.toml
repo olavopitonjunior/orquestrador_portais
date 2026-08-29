@@ -1,0 +1,25 @@
+[project]
+name = "orquestrador-portais"
+version = "0.0.0"
+description = "Curadoria automatizada da vitrine de destaques de imóveis da Newcore"
+requires-python = ">=3.12"
+# Sem dependências de runtime ainda: src/dominio é stdlib puro por desenho
+# (invariante 4 — cálculo determinístico, sem I/O e sem modelo).
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

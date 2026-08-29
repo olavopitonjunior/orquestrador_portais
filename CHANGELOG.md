@@ -12,6 +12,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- Scaffolding Python: `mise.toml` (Python 3.12), `pyproject.toml` (uv; pytest e ruff como dev; sem dependência de runtime — o domínio é stdlib puro por desenho) e `uv.lock`.
+
 - `src/dados/registro/001_registro.sql`: modelo de dados do Registro — as 8 entidades da Spec §2.1 em esquema `registro` (rodada, parametros_da_rodada, perfil_da_rodada, decisao_imovel, relaxamento, janela_destaque, resultado_carga, alteracao_parametro). D-001 aplicada (aprovação tácita como carimbo de estado na rodada; nada modela leitura de volta da planilha). Parâmetros pendentes preservados nulos: sem TTL/expurgo (retenção, nº 9) e sem prazo em DEFAULT/CHECK (aprovação tácita, nº 10). Imóveis excluídos não são guardados, conforme decisão explícita da Spec. O esquema impõe os invariantes 6 e 7: CHECK de faixa por nível (1–475 super destaque, 1–6.495 destaque) que, com o UNIQUE (rodada, nível, posição), limita a contagem à cota contratada sem trigger — se o contrato OLX mudar, as cotas exigem ALTER TABLE; e CHECK que impede `regra_relaxada` em super destaque. Sem `modo_aprovacao`: nenhum documento define aprovação explícita (D-001, Ferramentas §4), restando `aprovada_em` só na rodada de decisão.
 
 - `docs/decisoes.md`: registro das resoluções do dono da decisão (D-001 a D-006) para as contradições encontradas na fundação — fonte de leitura da segunda-feira é o Registro e não a planilha (o gestor não edita, só aplica); piso de R$ 700.000 como condição de nível; status impeditivo como regra de saída; lista consolidada de onze parâmetros pendentes; ganhos de relaxamento como ordem de grandeza; modelo do Redator restrito a agregados.
