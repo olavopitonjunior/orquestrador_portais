@@ -12,6 +12,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- `src/dados/registro/001_registro.sql`: modelo de dados do Registro — as 8 entidades da Spec §2.1 em esquema `registro` (rodada, parametros_da_rodada, perfil_da_rodada, decisao_imovel, relaxamento, janela_destaque, resultado_carga, alteracao_parametro). D-001 aplicada (aprovação tácita como carimbo de estado na rodada; nada modela leitura de volta da planilha). Parâmetros pendentes preservados nulos: sem TTL/expurgo (retenção, nº 9) e sem prazo em DEFAULT/CHECK (aprovação tácita, nº 10). Imóveis excluídos não são guardados, conforme decisão explícita da Spec.
+
 - `docs/decisoes.md`: registro das resoluções do dono da decisão (D-001 a D-006) para as contradições encontradas na fundação — fonte de leitura da segunda-feira é o Registro e não a planilha (o gestor não edita, só aplica); piso de R$ 700.000 como condição de nível; status impeditivo como regra de saída; lista consolidada de onze parâmetros pendentes; ganhos de relaxamento como ordem de grandeza; modelo do Redator restrito a agregados.
 
 - Fundação do repositório: estrutura de pastas (`src/grafo`, `src/dominio`, `src/dados`, `src/entrega`, `src/config`, `tests`), sem código de produto.
