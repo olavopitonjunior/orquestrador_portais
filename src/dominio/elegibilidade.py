@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from types import MappingProxyType
 
 # Parâmetros COM valor definido (PRD, tabela de parâmetros; Spec §6.1).
 CATEGORIAS_ACEITAS = frozenset(
@@ -64,7 +65,11 @@ class ImovelCandidato:
     imovel_id: int
     publicacao_ativa: bool
     categoria: str
-    preco: int  # centavos não são relevantes para os pisos; inteiro em reais
+    # Em REAIS — os pisos da Spec §6.1 são em reais, e a unidade foi confirmada
+    # contra a base em 29/08/2026 (35.592 ativos ≥ 300.000 vs. funil medido de
+    # 35.560; apenas 232 ≥ 30.000.000). Se a fonte um dia entregar centavos,
+    # a conversão é responsabilidade do Coletor Interno, antes deste módulo.
+    preco: int
     qtd_fotos: int
     atualizado_em: date
     # Notas por categoria da nota interna (realty_score_category_score).
@@ -74,6 +79,17 @@ class ImovelCandidato:
     notas_por_categoria: Mapping[str, int] | None
     gestor_captou_ou_vendeu_30d: bool
     corretores_ativos_no_distrito: int
+
+    # Instâncias não são hasháveis (o mapping impede hash estável); deduplique
+    # por imovel_id. O __post_init__ copia o mapping para um proxy imutável,
+    # de modo que mutações no dict original não vazem para dentro da instância.
+    __hash__ = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.notas_por_categoria is not None:
+            object.__setattr__(
+                self, "notas_por_categoria", MappingProxyType(dict(self.notas_por_categoria))
+            )
 
 
 def regras_reprovadas(imovel: ImovelCandidato, data_referencia: date) -> frozenset[Regra]:
@@ -93,6 +109,9 @@ def regras_reprovadas(imovel: ImovelCandidato, data_referencia: date) -> frozens
         reprovadas.add(Regra.PRECO_GERAL)
     if imovel.qtd_fotos < MINIMO_FOTOS:
         reprovadas.add(Regra.FOTOS)
+    # Data de atualização no futuro passa (diferença negativa): anomalia de
+    # dado é responsabilidade da coleta interna, que aborta a rodada com dado
+    # inválido (Spec §7.3) — este módulo não julga qualidade de fonte.
     if (data_referencia - imovel.atualizado_em).days > JANELA_ATUALIZACAO_DIAS:
         reprovadas.add(Regra.ATUALIZACAO_90D)
     # Cadastro completo: "nenhuma das sete categorias da nota interna com
@@ -137,5 +156,6 @@ def elegivel_com_relaxamento(
     constar de `regras_cedidas`.
     """
     if not regras_cedidas <= frozenset(ORDEM_RELAXAMENTO):
-        raise ValueError(f"regras não relaxáveis: {regras_cedidas - frozenset(ORDEM_RELAXAMENTO)}")
+        indevidas = sorted(r.value for r in regras_cedidas - frozenset(ORDEM_RELAXAMENTO))
+        raise ValueError(f"regras não relaxáveis: {indevidas}")
     return regras_reprovadas(imovel, data_referencia) <= regras_cedidas

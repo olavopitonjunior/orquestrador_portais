@@ -109,8 +109,16 @@ def test_relaxamento_recupera_apenas_regras_cedidas():
 
 
 def test_relaxamento_rejeita_regra_nao_relaxavel():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"regras não relaxáveis: \['preco_geral'\]"):
         elegivel_com_relaxamento(APROVADO, REF, frozenset({Regra.PRECO_GERAL}))
+
+
+def test_mensagem_de_erro_do_relaxamento_e_deterministica():
+    """Lista ordenada na mensagem: mesma entrada, mesmo texto, sempre."""
+    with pytest.raises(ValueError, match=r"\['categoria', 'preco_geral', 'status_ativo'\]"):
+        elegivel_com_relaxamento(
+            APROVADO, REF, frozenset({Regra.STATUS_ATIVO, Regra.PRECO_GERAL, Regra.CATEGORIA})
+        )
 
 
 def test_ordem_de_relaxamento_conforme_spec():
@@ -121,6 +129,41 @@ def test_ordem_de_relaxamento_conforme_spec():
         Regra.GESTOR_PRODUTIVO,
         Regra.CAPACIDADE_DISTRITO,
     )
+
+
+def test_categoria_e_sensivel_a_caixa_e_acento():
+    """Contrato explícito: a comparação é literal (Spec §6.1); normalizar
+    grafia é responsabilidade da coleta interna."""
+    assert not elegivel(replace(APROVADO, categoria="apartamento"), REF)
+    assert not elegivel(replace(APROVADO, categoria="Casa de Condominio"), REF)
+
+
+def test_data_de_atualizacao_futura_passa():
+    """Anomalia de dado não reprova aqui: coleta interna aborta rodada com
+    dado inválido (Spec §7.3). Comportamento documentado, não desejado."""
+    assert elegivel(replace(APROVADO, atualizado_em=date(2026, 9, 15)), REF)
+
+
+def test_relaxamento_vazio_equivale_a_elegivel():
+    imovel = replace(APROVADO, qtd_fotos=5)
+    assert elegivel_com_relaxamento(APROVADO, REF, frozenset()) is elegivel(APROVADO, REF)
+    assert elegivel_com_relaxamento(imovel, REF, frozenset()) is elegivel(imovel, REF)
+
+
+def test_multiplas_regras_reprovadas_de_uma_vez():
+    imovel = replace(
+        APROVADO, publicacao_ativa=False, preco=100_000, corretores_ativos_no_distrito=0
+    )
+    assert regras_reprovadas(imovel, REF) == frozenset(
+        {Regra.STATUS_ATIVO, Regra.PRECO_GERAL, Regra.CAPACIDADE_DISTRITO}
+    )
+
+
+def test_mapping_externo_nao_vaza_mutacao():
+    notas = {"descricao": 2}
+    imovel = replace(APROVADO, notas_por_categoria=notas)
+    notas["descricao"] = 0  # mutação após a construção
+    assert elegivel(imovel, REF)  # a instância guardou cópia imutável
 
 
 def test_determinismo_mesma_entrada_mesma_saida():
