@@ -72,3 +72,13 @@ A Spec define a regra como "nenhuma das sete categorias da nota interna com valo
 Fundamento empírico (medição de 29/08/2026, recorte elegível-aproximado de 35.592 ativos): 15.586 parciais sem zero, 12.025 sem avaliação alguma, 7.981 com algum zero e **zero imóveis com as 7 categorias avaliadas sem zero**. Sob a leitura estrita ("as 7 presentes e não zeradas"), nenhum imóvel avaliado passaria e o funil medido do próprio PRD (10.290 elegíveis) seria matematicamente impossível — a leitura A é a única consistente com a medição que o documento publica.
 
 Assimetria registrada, sem decisão associada: o imóvel parcialmente avaliado sem zeros não é excluído **nem** penalizado, porque a penalidade da Spec §6.4 exige ausência total de avaliação. Se isso merecer correção, é calibração futura de penalidade (parâmetro pendente nº 3), não mudança desta leitura.
+
+## D-008 — A nota final ponderada por nível é a chave de ordenação da alocação
+
+**Data**: 2026-08-29 · **Resolve**: ambiguidade entre Spec §6.3 e §6.5 (e PRD, Estágios 3–4)
+
+A Spec §6.3 define a nota final como soma ponderada das notas dos três fatores, com um conjunto de pesos por nível, descontadas as penalidades. A §6.5 manda ordenar o super destaque por "valor esperado" e o destaque por "probabilidade de lead". Nenhum documento afirma que as duas grandezas são a mesma.
+
+**Decisão do dono: leitura A — a nota ponderada de cada nível É a operacionalização do objetivo daquele nível; a alocação ordena pela nota final.**
+
+A tabela "Objetivo por nível" da §6.3 descreve o que cada conjunto de pesos persegue, não uma segunda grandeza a calcular; a leitura é coerente com o PRD ("esses valores são iniciais e serão revistos depois da primeira lista produzida"). A alternativa — "valor esperado" e "probabilidade de lead" como cálculos próprios — exigiria dois modelos que nenhum documento especifica, criando parâmetros pendentes que a D-004 não lista.
