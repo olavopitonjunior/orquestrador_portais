@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Dependências de desenvolvimento
+        run: uv sync --group dev
+      - name: Lint
+        run: uv run ruff check src tests
+      - name: Formatação
+        run: uv run ruff format --check src tests
+      - name: Testes
+        run: uv run pytest -q
+      - name: Parse do DDL do Registro (dialeto postgres)
+        run: >
+          uv run --with sqlglot python -c
+          "import sqlglot;
+          n = len(sqlglot.parse(open('src/dados/registro/001_registro.sql').read(), read='postgres'));
+          print(f'DDL OK: {n} statements')"
