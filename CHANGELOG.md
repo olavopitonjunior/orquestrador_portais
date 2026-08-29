@@ -14,11 +14,6 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 - `docs/decisoes.md`: registro das resoluções do dono da decisão (D-001 a D-006) para as contradições encontradas na fundação — fonte de leitura da segunda-feira é o Registro e não a planilha (o gestor não edita, só aplica); piso de R$ 700.000 como condição de nível; status impeditivo como regra de saída; lista consolidada de onze parâmetros pendentes; ganhos de relaxamento como ordem de grandeza; modelo do Redator restrito a agregados.
 
-### Changed
-
-- **Regra de decisão (interpretação)**: elegibilidade passa a ser lida como oito regras gerais + piso de nível do super destaque + gatilho de saída imediata (D-002/D-003). Nenhum limiar mudou de valor; mudou a estrutura de aplicação. Refletido em `CLAUDE.md` e no subagente `revisor-de-regra`.
-- `CLAUDE.md`: lista de parâmetros pendentes consolidada de nove para onze (D-004); hierarquia de documentos passa a incluir `docs/decisoes.md`.
-
 - Fundação do repositório: estrutura de pastas (`src/grafo`, `src/dominio`, `src/dados`, `src/entrega`, `src/config`, `tests`), sem código de produto.
 - `CLAUDE.md` com projeto, cadência, stack, os sete invariantes, hierarquia dos documentos, glossário e os nove parâmetros pendentes (todos nulos).
 - `docs/` com os três documentos-fonte (PRD 5.0, Spec 1.0, Ferramentas 1.0) movidos da raiz, e `docs/mapa-de-dados.md` derivado da base factual do PRD.
@@ -26,3 +21,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 - Subagentes de desenvolvimento em `.claude/agents/`: `revisor-de-regra`, `investigador-de-dados`, `revisor-de-codigo`, `auditor-de-invariantes`, `conferente-de-numeros`.
 - Skills de desenvolvimento em `.claude/skills/`: `consultar-newcore`, `verificar-contra-spec`, `registrar-bug`.
 - `.gitignore` e `.env.tmpl` (segredos via 1Password, `op://Personal/orquestrador_portais/<VAR>`).
+
+### Changed
+
+- **Regra de decisão (interpretação)**: elegibilidade passa a ser lida como oito regras gerais + piso de nível do super destaque + gatilho de saída imediata (D-002/D-003). Nenhum limiar mudou de valor; mudou a estrutura de aplicação. Refletido em `CLAUDE.md` e no subagente `revisor-de-regra`.
+- `CLAUDE.md`: lista de parâmetros pendentes consolidada de nove para onze (D-004); hierarquia de documentos passa a incluir `docs/decisoes.md`.

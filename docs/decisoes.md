@@ -1,6 +1,6 @@
 # Registro de Decisões
 
-Resoluções do dono da decisão (Olavo) para divergências e lacunas encontradas nos documentos-fonte. Cada decisão vale a partir da data registrada e prevalece sobre o trecho divergente dos documentos até que uma revisão deles a incorpore. Contexto completo das contradições: relatório de fundação de 2026-08-29.
+Resoluções do dono da decisão (Olavo) para divergências e lacunas encontradas nos documentos-fonte. Cada decisão vale a partir da data registrada e prevalece sobre o trecho divergente dos documentos até que uma revisão deles a incorpore. As contradições foram identificadas na análise da sessão de fundação (2026-08-29), não persistida como artefato; o essencial de cada uma está resumido na própria decisão.
 
 ---
 
