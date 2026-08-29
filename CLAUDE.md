@@ -66,11 +66,13 @@ Divergência entre código e documento é **bug do código** até prova em contr
 
 `docs/mapa-de-dados.md` é referência derivada do PRD: consulte-o antes de depender de qualquer campo do banco.
 
+`docs/decisoes.md` registra as resoluções do dono da decisão para divergências entre os documentos. Uma decisão registrada lá prevalece sobre o trecho divergente até que uma revisão dos documentos a incorpore.
+
 ## Glossário mínimo
 
 - **Agente do produto**: um dos sete — Orquestrador, Coletor Interno, Coletor Externo, Analista de Perfil de Conversão, Decisor, Redator da Entrega, Monitor Operacional. São nós do grafo LangGraph, escritos em Python, executados em produção às sextas e segundas. **Nunca viram arquivos em `.claude/agents/`.**
 - **Subagente de desenvolvimento**: vive em `.claude/agents/`, existe apenas para ajudar a construir este projeto e **nunca roda em produção**. Nenhum subagente pode ter o nome de um agente do produto. O mesmo vale para skills: `.claude/skills/` é ferramenta de desenvolvimento; as competências dos agentes do produto viram código Python.
-- **Elegibilidade**: conjunto de nove regras eliminatórias, binárias e sem compensação, aplicadas antes do ranking. Reprovar em uma basta para excluir.
+- **Elegibilidade**: conjunto de **oito** regras eliminatórias gerais, binárias e sem compensação, aplicadas antes do ranking; reprovar em uma basta para excluir. O piso de R$ 700.000 é condição de nível do super destaque aplicada na alocação, e o status impeditivo é regra de saída imediata — não regras de elegibilidade (decisões D-002 e D-003; onde os documentos dizem "nove regras", leia-se assim).
 - **Perfil de conversão**: combinação de características de imóvel que demonstradamente gera venda no período analisado (vendas assinadas em 180 dias), sempre acompanhada do número de casos que a sustenta. Analisa uma ou duas dimensões por vez, nunca as cinco simultaneamente.
 - **Janela de destaque**: intervalo em que um imóvel ocupou posição paga. Histórico que alimenta a penalidade por janela anterior sem resultado.
 - **Relaxamento**: cedência controlada de regras de elegibilidade, apenas nas posições de destaque, com relatório obrigatório. Ordem de cedência: fotos, cadastro completo, atualização em 90 dias, gestor produtivo, capacidade do distrito.
@@ -79,7 +81,7 @@ Divergência entre código e documento é **bug do código** até prova em contr
 
 ## Parâmetros ainda sem valor
 
-Nove parâmetros pendentes (Spec §8; Ferramentas §6). **Nenhum pode ser preenchido com valor inventado** — permanecem explicitamente nulos até serem definidos pelo dono da decisão.
+Onze parâmetros pendentes — lista consolidada pela decisão D-004 a partir de Spec §8, Ferramentas §6 e da tabela de parâmetros do PRD, que divergiam entre si. **Nenhum pode ser preenchido com valor inventado** — permanecem explicitamente nulos até serem definidos pelo dono da decisão.
 
 | # | Parâmetro | Valor |
 |---|---|---|
@@ -92,8 +94,8 @@ Nove parâmetros pendentes (Spec §8; Ferramentas §6). **Nenhum pode ser preenc
 | 7 | Limiar mínimo de taxa de amarração | nulo |
 | 8 | Horários exatos de execução na sexta e na segunda | nulo |
 | 9 | Política de retenção do Registro | nulo |
-
-Nota: dois parâmetros pendentes adicionais aparecem em apenas um documento cada e não entram na contagem de nove — o **prazo da aprovação tácita** (só em Ferramentas §6, embutido no item 8) e o **prazo de atendimento de lead e limite de inatividade** (só na tabela de parâmetros do PRD). Também estão sem valor e também não podem ser inventados.
+| 10 | Prazo da aprovação tácita | nulo |
+| 11 | Prazo de atendimento de lead e limite de inatividade | nulo |
 
 ## Antes de commitar
 
