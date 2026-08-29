@@ -60,3 +60,15 @@ Os valores +133 / +569 / +1.680 / +1.747 / +5.686 foram medidos com mínimo de *
 **Data**: 2026-08-29 · **Resolve**: tensão entre o invariante 3 e o relatório de segunda
 
 O relatório de segunda carrega dado pessoal (identificador de lead, corretor gestor, gestor de distrito) e o Redator é um dos três agentes com modelo. Fronteira dura de implementação: a chamada de modelo do Redator recebe **exclusivamente os números agregados do resumo da rodada** (contagens, percentuais, estado). Todas as abas com linhas nominais são geradas por template, sem passar por modelo. O subagente `auditor-de-invariantes` verifica essa fronteira.
+
+## D-007 — Cadastro completo: apenas zero explícito reprova
+
+**Data**: 2026-08-29 · **Resolve**: leitura da regra "cadastro completo" (Spec §6.1) para avaliação parcial por categoria
+
+A Spec define a regra como "nenhuma das sete categorias da nota interna com valor zero" e decide dois casos: zero explícito reprova; ausência total de avaliação passa e recebe penalidade. Silencia sobre avaliação **parcial** (1 a 6 das 7) — que é a norma: média medida de 4,7 categorias por imóvel, com o pipeline de avaliação morto desde 16/10/2025 (mapa de dados, defeito 4).
+
+**Decisão do dono: leitura A — apenas zero explícito reprova; categoria ausente não é zero.**
+
+Fundamento empírico (medição de 29/08/2026, recorte elegível-aproximado de 35.592 ativos): 15.586 parciais sem zero, 12.025 sem avaliação alguma, 7.981 com algum zero e **zero imóveis com as 7 categorias avaliadas sem zero**. Sob a leitura estrita ("as 7 presentes e não zeradas"), nenhum imóvel avaliado passaria e o funil medido do próprio PRD (10.290 elegíveis) seria matematicamente impossível — a leitura A é a única consistente com a medição que o documento publica.
+
+Assimetria registrada, sem decisão associada: o imóvel parcialmente avaliado sem zeros não é excluído **nem** penalizado, porque a penalidade da Spec §6.4 exige ausência total de avaliação. Se isso merecer correção, é calibração futura de penalidade (parâmetro pendente nº 3), não mudança desta leitura.
