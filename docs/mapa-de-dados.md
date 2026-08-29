@@ -2,7 +2,7 @@
 
 Derivado da seção "Base factual" do PRD versão 5.0 (levantamento direto nas fontes em 28/08/2026) e **atualizado em 29/08/2026** com medições diretas no banco (investigador-de-dados). Existe para que ninguém precise redescobrir o banco. Nenhum número aqui foi estimado: tudo vem dos documentos ou de medição datada. Onde falta número, a lacuna está apontada.
 
-O PRD prevalece sobre este mapa. Se algo aqui divergir do PRD, é bug deste arquivo.
+O PRD prevalece sobre este mapa, com uma exceção definida: **medição datada posterior ao PRD 5.0 que resolva uma investigação ou pendência listada por ele prevalece sobre a lista de pendências** (caso do defeito 5, vagas). Nesses casos a correção fica registrada aqui com data e tachado, até que uma revisão do PRD a incorpore. Em qualquer outra divergência, é bug deste arquivo.
 
 ---
 
@@ -46,7 +46,7 @@ Vagas: **não está nesta tabela**, mas existe em `newcore.realties.QtyVacancies
 | `newcore_bi.productivityrating` | 2.094 corretores | Produtivo (193), Não Produtivo (1.146), Ocioso Passível de Bloqueio (746); captações/semana, vendas, data da última venda, conversão, visitas/semana |
 | `newcore.realty_score` | 376.856 imóveis | Nota interna de 0 a 100, média 68. Pesos: descrição (2), fotos (2), atualização (2), ano de construção (1), atributos (1), IPTU (1), condomínio (1) |
 | `adsrealtyextra_historic` | 59.653 janelas | Histórico das janelas de destaque: `HighlightedAt`, `RemovedAt`, `QtyFacsGenerated`. 88% das janelas com zero lead; média 0,21 lead/janela; duração média 33 dias |
-| `newcore.webscraping_processing_grupo_zap` | 105 exec. em 28/08; **viva**: execuções diárias, última em 27/08/2026 (Id 351), 22.597 anúncios | Agregados por execução da raspagem; os ~62% com erro referem-se ao histórico até 28/08 |
+| `newcore.webscraping_processing_grupo_zap` | 105 exec. em 28/08; **viva**: execuções diárias, última em 27/08/2026 (Id da execução: 351 — identificador, não contagem), 22.597 anúncios | Agregados por execução da raspagem; os ~62% com erro referem-se ao histórico até 28/08 |
 | `newcore.webscraping_report_grupo_zap` | 43 registros | **Abandonada**: 100% com erro (erros de publicação devolvidos pelo Grupo ZAP: CEP inválido, campo fora de faixa, anúncio bloqueado), criados entre 01 e 17/12/2025, `ProcessedAt` nulo em todos, nenhuma FK ou view aponta para ela. Era a "tabela de relatórios da raspagem" das investigações abertas — resolvida em 29/08/2026 |
 | `newcore.realty_score_category_score` | 1.654.058 linhas, 352.944 imóveis (média 4,7 das 7 categorias) | Avaliação por categoria da nota interna; chave `realtyId`+`categoryId`; categorias em `realty_score_category`. **Tabela zumbi: sem escrita desde 16/10/2025** (ver defeito 4) |
 | `adsportalconfigs` | — | Registra 350 destaques e 1 super destaque; **inativa e desatualizada em quase vinte vezes. Não é fonte de cota** |

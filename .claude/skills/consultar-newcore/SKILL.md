@@ -39,7 +39,7 @@ Os quatro que mais enganam:
 1. **`realties.MarketingType_Id`** (tipo de comercialização): nulo em 96% dos ativos. Não filtre por ele.
 2. **`realtyaddresses.ValueZone_Id`** (zona de valor): nulo em 98% dos ativos relevantes. Distrito vem de `FT_RealtyRelation`.
 3. **`FT_LeadsOffers.DaysConversion`**: contém valores negativos. Trate antes de agregar.
-4. **Vagas**: ausente da tabela central `FT_RealtyRelation`, mas existe em `newcore.realties.QtyVacancies` (96% preenchida no recorte elegível; resolvido em 29/08/2026) — exige JOIN. Cuidado: o nome está em inglês, como parte do schema.
+4. **Vagas**: ausente da tabela central `FT_RealtyRelation`, mas existe em `newcore.realties.QtyVacancies` (no recorte elegível: 96,1% com vaga >0, 3,4% zero — valor legítimo —, 0,4% nulo; resolvido em 29/08/2026) — exige JOIN. Cuidado: o nome está em inglês, como parte do schema.
 
 Os demais: campos de placa e impulsionamento integralmente vazios; `adswhitelist` abandonada desde 2022; `adsblacklist` viva (12.155 imóveis) mas decidida como ignorada; ~44% do estoque elegível sem avaliação em `realty_score_category_score` — **pipeline morto desde 16/10/2025**: todo imóvel ativado depois disso nasce sem avaliação (imóvel sem avaliação passa e recebe penalidade, não é excluído). Armadilhas de nome: `integrations`/`integrationshistory` vazias, `webscrapper_reports` (0 linhas) ≠ `webscraping_report_grupo_zap` (43, abandonada).
 
