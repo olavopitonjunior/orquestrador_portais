@@ -1,0 +1,18 @@
+# Segredos — .env é GERADO (op inject -i .env.tmpl -o .env), nunca commitado
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# macOS
+.DS_Store
+
+# Artefatos locais de planilha e saída de rodada
+*.xlsx
+*.csv
+saida/
