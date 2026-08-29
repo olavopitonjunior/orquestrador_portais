@@ -116,10 +116,10 @@ def regras_reprovadas(imovel: ImovelCandidato, data_referencia: date) -> frozens
         reprovadas.add(Regra.ATUALIZACAO_90D)
     # Cadastro completo: "nenhuma das sete categorias da nota interna com
     # pontuação zero". Sem avaliação alguma (None), o imóvel passa — a Spec é
-    # explícita. Leitura adotada para avaliação PARCIAL (média medida: 4,7 das
-    # 7 categorias): apenas zeros explícitos reprovam; categoria ausente não é
-    # zero. Interpretação registrada no PR — se a Spec quiser as 7 presentes e
-    # não zeradas, trocar por: len(notas) == 7 and all(n > 0).
+    # explícita. Para avaliação PARCIAL vale a decisão D-007 (docs/decisoes.md,
+    # ratificada pelo dono em 29/08/2026): apenas zero explícito reprova;
+    # categoria ausente não é zero — a única leitura consistente com o funil
+    # medido do PRD.
     if imovel.notas_por_categoria is not None and any(
         nota == 0 for nota in imovel.notas_por_categoria.values()
     ):

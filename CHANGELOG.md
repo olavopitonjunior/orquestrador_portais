@@ -12,6 +12,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- `docs/decisoes.md` D-007 (regra de decisão): na regra de cadastro completo, apenas zero explícito reprova; categoria ausente não é zero. Ratificada pelo dono com fundamento empírico — sob a leitura estrita, zero imóveis avaliados passariam e o funil medido do PRD seria impossível. Assimetria do parcial sem penalidade registrada como calibração futura (parâmetro nº 3).
+
 - `src/dominio/elegibilidade.py`: as oito regras eliminatórias gerais como funções puras e determinísticas (D-002/D-003 — o piso de R$ 700.000 é função separada de candidatura ao super destaque, consumida na alocação; status impeditivo fica na rotação), a ordem de cedência do relaxamento (Spec §6.6) e `elegivel_com_relaxamento` que rejeita cedência de regra não relaxável. Limiares conforme parâmetros definidos: R$ 300.000, 10 fotos, 90 dias, 30 dias, 2 corretores. Leitura registrada para avaliação parcial por categoria: apenas zero explícito reprova cadastro completo; categoria ausente não é zero (imóvel sem avaliação alguma passa e recebe penalidade, Spec §6.1). 27 testes com valores-limite, contratos explícitos (caixa/acento de categoria, data futura documentada, mensagem de erro determinística) e verificação de determinismo. Contrato de `ImovelCandidato`: instâncias não são hasháveis (deduplicar por `imovel_id`) e o mapping de notas é copiado na construção — mutação externa não vaza.
 - Scaffolding Python: `mise.toml` (Python 3.12), `pyproject.toml` (uv; pytest e ruff como dev; sem dependência de runtime — o domínio é stdlib puro por desenho) e `uv.lock`.
 
