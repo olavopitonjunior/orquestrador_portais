@@ -1,6 +1,6 @@
 # Mapa de Dados de Referência
 
-Derivado da seção "Base factual" do PRD versão 5.0 (levantamento direto nas fontes em 28/08/2026). Existe para que ninguém precise redescobrir o banco. Nenhum número aqui foi estimado: tudo vem dos documentos. Onde falta número, a lacuna está apontada.
+Derivado da seção "Base factual" do PRD versão 5.0 (levantamento direto nas fontes em 28/08/2026) e **atualizado em 29/08/2026** com medições diretas no banco (investigador-de-dados). Existe para que ninguém precise redescobrir o banco. Nenhum número aqui foi estimado: tudo vem dos documentos ou de medição datada. Onde falta número, a lacuna está apontada.
 
 O PRD prevalece sobre este mapa. Se algo aqui divergir do PRD, é bug deste arquivo.
 
@@ -29,7 +29,7 @@ Campos que o produto usa:
 - Status, tipo, preço, faixa de preço, faixa de área, dormitórios
 - `Leads30D` e `Leads180D` por imóvel
 
-Lacuna conhecida: **quantidade de vagas não está nesta tabela nem em `realties`**. A localização do campo é investigação aberta.
+Vagas: **não está nesta tabela**, mas existe em `newcore.realties.QtyVacancies` (medido 29/08/2026) — a coleta interna precisa do JOIN `realties.Id = FT_RealtyRelation.Realty_Id`, testado e barato.
 
 ---
 
@@ -46,7 +46,9 @@ Lacuna conhecida: **quantidade de vagas não está nesta tabela nem em `realties
 | `newcore_bi.productivityrating` | 2.094 corretores | Produtivo (193), Não Produtivo (1.146), Ocioso Passível de Bloqueio (746); captações/semana, vendas, data da última venda, conversão, visitas/semana |
 | `newcore.realty_score` | 376.856 imóveis | Nota interna de 0 a 100, média 68. Pesos: descrição (2), fotos (2), atualização (2), ano de construção (1), atributos (1), IPTU (1), condomínio (1) |
 | `adsrealtyextra_historic` | 59.653 janelas | Histórico das janelas de destaque: `HighlightedAt`, `RemovedAt`, `QtyFacsGenerated`. 88% das janelas com zero lead; média 0,21 lead/janela; duração média 33 dias |
-| `webscraping_processing_grupo_zap` | 105 execuções | Histórico da raspagem; volume máximo de 36.420 anúncios; ~62% das execuções com erro ou sem processar |
+| `newcore.webscraping_processing_grupo_zap` | 105 exec. em 28/08; **viva**: execuções diárias, última em 27/08/2026 (Id 351), 22.597 anúncios | Agregados por execução da raspagem; os ~62% com erro referem-se ao histórico até 28/08 |
+| `newcore.webscraping_report_grupo_zap` | 43 registros | **Abandonada**: 100% com erro (erros de publicação devolvidos pelo Grupo ZAP: CEP inválido, campo fora de faixa, anúncio bloqueado), criados entre 01 e 17/12/2025, `ProcessedAt` nulo em todos, nenhuma FK ou view aponta para ela. Era a "tabela de relatórios da raspagem" das investigações abertas — resolvida em 29/08/2026 |
+| `newcore.realty_score_category_score` | 1.654.058 linhas, 352.944 imóveis (média 4,7 das 7 categorias) | Avaliação por categoria da nota interna; chave `realtyId`+`categoryId`; categorias em `realty_score_category`. **Tabela zumbi: sem escrita desde 16/10/2025** (ver defeito 4) |
 | `adsportalconfigs` | — | Registra 350 destaques e 1 super destaque; **inativa e desatualizada em quase vinte vezes. Não é fonte de cota** |
 
 Maiores tabelas relevantes por volume (cuidado com custo de consulta): `realtyattributes` (4,2 milhões), `brokerneighborhoods` (6,1 milhões), `userbrokerrelationshipshistoric` (7,5 milhões).
@@ -62,8 +64,8 @@ Armadilhas conhecidas. Campos aparentemente úteis que não podem ser usados sem
 1. `realties.MarketingType_Id` (tipo de comercialização) é **nulo em 96%** dos ativos.
 2. `realtyaddresses.ValueZone_Id` (zona de valor) é **nulo em 98%** dos imóveis ativos relevantes. A ligação com distrito vem de `FT_RealtyRelation`.
 3. `FT_LeadsOffers.DaysConversion` (ciclo de conversão) apresenta **valores negativos** e exige tratamento.
-4. Cerca de **44% do estoque elegível não possui avaliação por categoria** em `realty_score_category_score`. O motivo é investigação aberta. Imóvel sem avaliação não é excluído: passa e recebe penalidade.
-5. `realties` **não expõe quantidade de vagas** diretamente. Localização do campo é investigação aberta.
+4. Cerca de **44% do estoque elegível não possui avaliação por categoria** em `realty_score_category_score`. **Causa identificada em 29/08/2026: o pipeline que popula a tabela parou em 16/10/2025** (último `createdAt` 2025-10-16 22:05), enquanto o da nota geral `realty_score` segue vivo (atualizado no mesmo dia da medição). Dos imóveis do recorte elegível-aproximado ativados após o corte, 99,76% não têm avaliação; dos ativados antes, apenas 4 imóveis. Consequências: o percentual sem avaliação **cresce continuamente** com o estoque novo (33,8% no recorte amplo de 35.592; ~44% nos 10.290 elegíveis plenos, cujas regras enviesam para imóveis recentes), e a penalidade "sem avaliação por categoria" atingirá **sistematicamente o estoque novo** — atenção do dono da decisão ao calibrar sua intensidade. Imóvel sem avaliação não é excluído: passa e recebe penalidade.
+5. ~~`realties` não expõe quantidade de vagas~~ **CORRIGIDO em 29/08/2026: o campo existe — `newcore.realties.QtyVacancies`** (escapou às buscas por estar em inglês). No recorte elegível-aproximado: nulo em 0,4%, zero em 3,4% (valor legítimo: imóvel sem vaga), maior que zero em 96,1%. Utilizável como a coluna "vagas" da planilha de decisão (Spec §3.2), via JOIN com `FT_RealtyRelation`.
 6. Campos de **placa e de impulsionamento estão integralmente vazios**.
 7. `adswhitelist` está **abandonada desde 2022**. `adsblacklist` está viva com 12.155 imóveis, mas **foi decidido ignorá-la**.
 
@@ -91,6 +93,14 @@ Funil de elegibilidade medido:
 
 Concorrência por nível: 10,2 candidatos por vaga no super destaque; 1,5 no destaque (folga total de 48%).
 
+Deriva medida em 29/08/2026 (um dia depois da referência):
+
+| Contagem | 28/08 | 29/08 | Deriva |
+|---|---|---|---|
+| `FT_RealtyRelation` total | 404.680 | 404.756 | +76 |
+| Ativos | 48.964 | 48.989 | +25 |
+| `realty_score` | 376.856 | 376.914 | +58 |
+
 ### Aviso sobre os ganhos de relaxamento
 
 Os ganhos por regra relaxada — fotos +133, cadastro completo +569, atualização em 90 dias +1.680, gestor produtivo +1.747, capacidade do distrito +5.686 — foram medidos com **mínimo de TRÊS corretores por distrito**, enquanto o parâmetro adotado é **DOIS**. O próprio PRD os mantém como "referência de ordem de grandeza; os valores absolutos mudam com o mínimo de dois". **Não usar como conferência exata.** A Spec §6.6 reproduz esses números sem a ressalva — o PRD prevalece.
@@ -100,6 +110,16 @@ Os ganhos por regra relaxada — fotos +133, cadastro completo +569, atualizaç�
 ## Lacunas apontadas (não estimar)
 
 - Contagem de registros de `adsportalconfigs`: o PRD não a informa, apenas o conteúdo (350 + 1) e o estado (inativa).
-- Contagem de registros de `realty_score_category_score`: não informada; apenas o percentual de estoque elegível sem avaliação (~44%).
-- Localização do campo de vagas: investigação aberta.
-- A tabela de relatórios da raspagem citada nas pendências (43 registros, todos com erro, todos de dezembro de 2025): nome exato da tabela não consta dos documentos; investigação aberta sobre se ainda é usada.
+- ~~Contagem de `realty_score_category_score`~~ medida em 29/08/2026: 1.654.058 linhas (ver tabela acima).
+- ~~Localização do campo de vagas~~ resolvida em 29/08/2026: `realties.QtyVacancies` (defeito 5).
+- ~~Tabela de relatórios da raspagem~~ resolvida em 29/08/2026: `webscraping_report_grupo_zap`, abandonada (ver tabela acima).
+- **Segue aberta (pergunta de processo, não de banco)**: se quem aplica a carga localiza o imóvel apenas pelo identificador interno ou depende de outra referência — responder com o gestor da vitrine. No banco está refutado: não existe id nem URL de anúncio do portal em nenhuma tabela (29/08/2026).
+
+## Armadilhas adicionais (medição de 29/08/2026)
+
+- **`realty_score_category_score` é tabela zumbi**: 1,65 mi de linhas aparentando riqueza, mas sem escrita desde 16/10/2025. Cobertura zero para estoque novo.
+- **`integrations` e `integrationshistory` são cascas vazias** (0 linhas) apesar de terem as colunas certas (`External_Id`, `IntegrationPortal_Id`); `integrationsportals` tem um único portal ("FFID", 2019). Nada de OLX/Zap.
+- **`webscrapper_reports` (0 linhas) coexiste com `webscraping_report_grupo_zap` (43)** — nomes quase idênticos, fácil confundir. Há ainda `webscrapper_cron` (278 linhas).
+- **O schema mistura português e inglês** nos nomes de coluna (`QtyVacancies`, `QtyVagas` em `adsrealtyscores`): buscas por regex precisam dos dois idiomas.
+- **`information_schema.TABLE_ROWS` superestima** (~3% em `realty_score_category_score`): usar para triagem, nunca para número final — número final é COUNT(*).
+- `realties.FriendlyUrl` (91,8% dos ativos) é caminho do site da Newcore; `realties.ExploraURL` tem 0 preenchimentos no banco inteiro.

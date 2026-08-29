@@ -14,7 +14,7 @@ Consulte via cliente `mysql` no Bash (credenciais do `.env`, geradas por `op inj
 
 ## Antes de qualquer consulta
 
-Leia `docs/mapa-de-dados.md`. Ele cataloga os defeitos confirmados — campos nulos em 96–98%, ciclo de conversão negativo, vagas ausente da tabela principal — e as tabelas de referência com contagens. Não redescubra o que já está mapeado; confirme ou refute o que está lá.
+Leia `docs/mapa-de-dados.md`. Ele cataloga os defeitos confirmados — campos nulos em 96–98%, ciclo de conversão negativo, pipeline de avaliação por categoria morto desde 16/10/2025 — e as tabelas de referência com contagens datadas. Não redescubra o que já está mapeado; confirme ou refute o que está lá. Atenção: o schema mistura português e inglês nos nomes (ex.: `QtyVacancies`) — busque nos dois idiomas.
 
 ## Como trabalhar
 
