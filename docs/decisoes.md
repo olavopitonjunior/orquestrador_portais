@@ -82,3 +82,20 @@ A Spec §6.3 define a nota final como soma ponderada das notas dos três fatores
 **Decisão do dono: leitura A — a nota ponderada de cada nível É a operacionalização do objetivo daquele nível; a alocação ordena pela nota final.**
 
 A tabela "Objetivo por nível" da §6.3 descreve o que cada conjunto de pesos persegue, não uma segunda grandeza a calcular; a leitura é coerente com o PRD ("esses valores são iniciais e serão revistos depois da primeira lista produzida"). A alternativa — "valor esperado" e "probabilidade de lead" como cálculos próprios — exigiria dois modelos que nenhum documento especifica, criando parâmetros pendentes que a D-004 não lista.
+
+## D-009 — Desempate do ranking: preferência por cadastros mais novos
+
+**Data**: 2026-08-29 · **Resolve**: critério de desempate da alocação, não definido em nenhum documento (leitura estrutural do PR #6, levada ao dono como pergunta)
+
+O PR #6 adotou desempate por `imovel_id` crescente — determinístico, mas com viés declarado a favor de cadastros mais antigos. A pergunta foi levada ao dono, que decidiu.
+
+**Decisão do dono (instrução literal): "O desempate é preferencia por cadastros mais novos."**
+
+Duas camadas, que não podem se confundir:
+
+- **O critério decidido é semântico**: em empate de nota, ganha o imóvel de cadastro mais recente.
+- **A implementação é um proxy**: `imovel_id` DECRESCENTE (chave `(-nota, -imovel_id)` nas duas fases de `src/dominio/alocacao.py`). **Pressupõe que `imovel_id` cresce com a data de cadastro no Newcore; não verificado contra a base.** Se o pressuposto for falso, o código faz o oposto da decisão sem que nenhum teste acuse — os testes fixam a ordenação, não a semântica. Verificação pendente: uma consulta do `investigador-de-dados` (correlação entre `realties.Id` e a data de criação/ativação) resolve; precisa de acesso à base e de autorização do dono.
+
+**Alternativa fiel, se o proxy cair**: a data de ativação/cadastro existe no Newcore (o mapa de dados a usa para separar imóveis "ativados após o corte" de 16/10/2025). Substituir o proxy exige apenas um campo novo em `CandidatoAlocacao` (ex.: `cadastrado_em: date`), alimentado pelo Coletor Interno — a decisão não muda.
+
+**Atalho proibido**: `atualizado_em` (já disponível em `elegibilidade.ImovelCandidato`) NÃO é data de cadastro — é data de atualização; um imóvel antigo reeditado ontem contaria como "novo". Usá-lo no desempate seria inventar regra.
