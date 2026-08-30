@@ -172,16 +172,27 @@ def test_posicao_carrega_a_nota_do_nivel_alocado():
 # --- desempate e determinismo (invariante 5) -------------------------------------
 
 
-def test_desempate_por_imovel_id_crescente():
-    # Leitura estrutural declarada: em empate de nota, ganha o imovel_id
-    # menor — viés a favor de cadastros mais antigos, apontado ao dono.
+def test_desempate_prefere_cadastro_mais_novo_no_super_destaque():
+    # D-009 (decisão do dono): em empate de nota, ganha o cadastro mais
+    # novo — proxy imovel_id decrescente (pressuposto declarado na decisão).
     lote = [
         candidato(9, nota_super=50.0),
         candidato(3, nota_super=50.0),
         candidato(7, nota_super=50.0),
     ]
     resultado = alocar(lote)
-    assert [p.imovel_id for p in resultado.super_destaque] == [3, 7, 9]
+    assert [p.imovel_id for p in resultado.super_destaque] == [9, 7, 3]
+
+
+def test_desempate_prefere_cadastro_mais_novo_no_destaque():
+    # A mesma chave vale na fase 2 — cobre inversão acidental de uma fase só.
+    lote = [
+        candidato(9, preco=400_000, nota_destaque=50.0),
+        candidato(3, preco=400_000, nota_destaque=50.0),
+        candidato(7, preco=400_000, nota_destaque=50.0),
+    ]
+    resultado = alocar(lote)
+    assert [p.imovel_id for p in resultado.destaque] == [9, 7, 3]
 
 
 def test_permutacoes_da_entrada_produzem_saida_identica():

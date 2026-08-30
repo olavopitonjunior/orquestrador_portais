@@ -18,10 +18,12 @@ Déficit é resultado legítimo: com menos candidatos que a cota, a lista sai
 curta — é o sinal que o relaxamento (Spec §6.6, módulo futuro, apenas nível
 destaque) existe para atacar. Nada aqui preenche artificialmente.
 
-Leitura estrutural declarada: nenhum documento define desempate. O critério
-adotado é nota decrescente com desempate por imovel_id crescente — total e
-determinístico (invariante 5), mas NÃO neutro: em todo empate favorece
-sistematicamente o cadastro mais antigo. Ponto de calibração para o dono.
+Desempate por decisão do dono (D-009): em empate de nota, ganha o cadastro
+MAIS NOVO. Implementado pelo proxy imovel_id decrescente — total e
+determinístico (invariante 5) —, sob o pressuposto, declarado e ainda não
+verificado contra a base, de que imovel_id cresce com a data de cadastro no
+Newcore. A alternativa fiel (campo de data de cadastro na entrada) e o
+atalho proibido (atualizado_em) estão registrados na D-009.
 
 Invariantes 4 e 5: cálculo puro — sem I/O, sem relógio, sem aleatoriedade,
 sem chamada a modelo. As cotas também vivem em CHECK no DDL do Registro
@@ -96,13 +98,13 @@ def alocar(candidatos: Sequence[CandidatoAlocacao]) -> Alocacao:
 
     # Fase 1 — super destaque: piso de nível, nota do nível, cota 475.
     aptos_super = [c for c in candidatos if c.preco >= PRECO_MINIMO_SUPER_DESTAQUE]
-    ordem_super = sorted(aptos_super, key=lambda c: (-c.nota_super_destaque, c.imovel_id))
+    ordem_super = sorted(aptos_super, key=lambda c: (-c.nota_super_destaque, -c.imovel_id))
     escolhidos_super = ordem_super[:COTA_SUPER_DESTAQUE]
     super_ids = {c.imovel_id for c in escolhidos_super}
 
     # Fase 2 — destaque: TODOS os restantes, nota do nível, cota 6.495.
     restantes = [c for c in candidatos if c.imovel_id not in super_ids]
-    ordem_destaque = sorted(restantes, key=lambda c: (-c.nota_destaque, c.imovel_id))
+    ordem_destaque = sorted(restantes, key=lambda c: (-c.nota_destaque, -c.imovel_id))
     escolhidos_destaque = ordem_destaque[:COTA_DESTAQUE]
 
     return Alocacao(
