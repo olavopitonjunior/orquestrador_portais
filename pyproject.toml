@@ -3,9 +3,15 @@ name = "orquestrador-portais"
 version = "0.0.0"
 description = "Curadoria automatizada da vitrine de destaques de imóveis da Newcore"
 requires-python = ">=3.12"
-# Sem dependências de runtime ainda: src/dominio é stdlib puro por desenho
-# (invariante 4 — cálculo determinístico, sem I/O e sem modelo).
-dependencies = []
+# src/dominio segue stdlib puro por desenho (invariante 4 — cálculo
+# determinístico, sem I/O e sem modelo); o auditor verifica que ele não importa
+# nada daqui. As dependências abaixo são da camada de I/O (src/dados): o Coletor
+# Interno lê o MySQL do Newcore via pymysql. cryptography cobre o caminho
+# não-SSL do caching_sha2_password (ver docs/mapa-de-dados.md).
+dependencies = [
+    "pymysql>=1.1",
+    "cryptography>=42",
+]
 
 [dependency-groups]
 dev = [
