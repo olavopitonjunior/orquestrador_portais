@@ -76,6 +76,10 @@ def test_super_destaque_serializa_a_nota_e_a_justificativa():
     assert ln["semelhanca_perfil"] == r.detalhes[10].fatores.semelhanca_perfil
     assert ln["perfil_que_puxou"] == "regiao=Centro"
     assert ln["perfil_num_vendas"] == 10
+    # paridade de colunas com destaque (Spec §3.2): super tem origem/degrau vazios
+    assert ln["origem"] == "ranking"
+    assert ln["degrau_cedido"] == ""
+    assert set(ln.keys()) == set(linhas_destaque(r)[0].keys())
 
 
 def test_destaque_inclui_recuperado_com_degrau():
@@ -112,7 +116,7 @@ def test_parametros_e_limitacoes_rotula_provisorios_e_limitacoes():
     r = _resultado()
     linhas = linhas_parametros_e_limitacoes(r, PARAMS)
     tipos = {ln["tipo"] for ln in linhas}
-    assert tipos == {"PROVISÓRIO", "LIMITAÇÃO"}
+    assert tipos == {"PROVISÓRIO", "LIMITAÇÃO", "NOTA"}
     provisorios = [ln for ln in linhas if ln["tipo"] == "PROVISÓRIO"]
     # o desconto de frágil injetado aparece com seu valor
     assert any(ln["valor"] == 0.5 for ln in provisorios)

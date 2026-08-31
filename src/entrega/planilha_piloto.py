@@ -68,13 +68,19 @@ def _colunas_justificativa(det: DetalheImovel) -> dict[str, object]:
 
 
 def linhas_super_destaque(resultado: ResultadoDecisao) -> list[dict[str, object]]:
-    """Uma linha por posição de super destaque, com a justificativa."""
+    """Uma linha por posição de super destaque, com a justificativa.
+
+    Carrega `origem`/`degrau_cedido` iguais à aba de destaque (Spec §3.2:
+    "colunas iguais nos dois níveis") — no super são sempre "ranking"/vazio,
+    porque o super destaque nunca relaxa (invariante 7).
+    """
     linhas = []
     for pos in resultado.alocacao.super_destaque:
         det = resultado.detalhes[pos.imovel_id]
         linhas.append(
             {"posicao": pos.posicao, "imovel_id": pos.imovel_id, "nota": pos.nota}
             | _colunas_justificativa(det)
+            | {"origem": "ranking", "degrau_cedido": ""}
         )
     return linhas
 
@@ -152,6 +158,17 @@ def linhas_parametros_e_limitacoes(
     ]
     for limitacao in resultado.degradacoes:
         linhas.append({"tipo": "LIMITAÇÃO", "item": limitacao, "valor": ""})
+    linhas.append(
+        {
+            "tipo": "NOTA",
+            "item": (
+                "a piloto traz só as colunas de composição/justificativa da decisão; "
+                "as descritivas e de portal (título, link, endereço, nota do portal, "
+                "visualizações) vêm dos coletores/Redator no entregável final"
+            ),
+            "valor": "",
+        }
+    )
     return linhas
 
 
