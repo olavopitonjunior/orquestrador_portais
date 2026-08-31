@@ -12,14 +12,23 @@ que têm cobertura melhor que `FT_RealtyRelation` (achado do investigador,
 (categoria) NÃO é dimensão de perfil (Spec §6.2) e não é lido aqui. `SignedAt`
 é data, não pessoa. NENHUM nome/contato de comprador ou corretor.
 
-A bucketização das dimensões contínuas mora AQUI (na coleta), não no domínio:
-`perfil.py` recebe as dimensões já em faixas e é agnóstico a como foram feitas.
+A bucketização das dimensões contínuas mora em `dados.bucketizacao` (FONTE
+ÚNICA, compartilhada com a leitura de candidatos da piloto): `perfil.py` recebe
+as dimensões já em faixas e é agnóstico a como foram feitas.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from dados.bucketizacao import (
+    TETO_DORMITORIOS,
+    TETO_VAGAS,
+    bucketiza_contagem,
+    faixa_de_preco,
+    para_int_reais,
+    texto_ou_none,
+)
 from dados.newcore import consultar
 from dominio.perfil import ImovelVendido
 
@@ -42,57 +51,6 @@ WHERE o.SignedAt IS NOT NULL
 ORDER BY o.Realty_Id, o.SignedAt
 """
 
-# Faixas de preço ancoradas nos pisos da Spec §6.1 (R$ 300.000 geral, R$ 700.000
-# super destaque). É escolha de bucketização da piloto, declarada e calibrável —
-# não é um dos onze parâmetros pendentes. Limites em REAIS, faixa [inferior, sup).
-_FAIXAS_PRECO: tuple[tuple[int, str], ...] = (
-    (300_000, "< 300k"),
-    (500_000, "300k–500k"),
-    (700_000, "500k–700k"),
-    (1_000_000, "700k–1M"),
-    (1_500_000, "1M–1,5M"),
-    (3_000_000, "1,5M–3M"),
-)
-_FAIXA_PRECO_ACIMA = "≥ 3M"
-
-# Acima destes valores, dormitórios e vagas colapsam em "N ou mais" (o int vira
-# o teto, marcando o bucket). Espelha a bucketização da medição de 31/08.
-_TETO_DORMITORIOS = 5
-_TETO_VAGAS = 3
-
-
-def _para_int_reais(preco: Any) -> int | None:
-    # int(Decimal) e int(float) já truncam os centavos; None = preço ausente
-    # (preço vem por LEFT JOIN em realties e pode faltar).
-    return None if preco is None else int(preco)
-
-
-def _faixa_de_preco(preco: int | None) -> str | None:
-    if preco is None:
-        return None
-    for limite, rotulo in _FAIXAS_PRECO:
-        if preco < limite:
-            return rotulo
-    return _FAIXA_PRECO_ACIMA
-
-
-def _bucketiza_contagem(valor: Any, teto: int) -> int | None:
-    """Inteiro não-negativo, colapsando valores ≥ teto no próprio teto ("N+")."""
-    if valor is None:
-        return None
-    n = int(valor)
-    if n < 0:
-        return None
-    return min(n, teto)
-
-
-def _texto_ou_none(v: Any) -> str | None:
-    """Texto sem espaços nas bordas; vazio ou só-espaço vira None (ausência)."""
-    if v is None:
-        return None
-    limpo = str(v).strip()
-    return limpo or None
-
 
 def linha_para_vendido(row: dict[str, Any]) -> ImovelVendido:
     """Converte uma linha de _SQL_VENDAS em ImovelVendido (dimensões bucketizadas).
@@ -104,11 +62,11 @@ def linha_para_vendido(row: dict[str, Any]) -> ImovelVendido:
     """
     return ImovelVendido(
         imovel_id=int(row["imovel_id"]),
-        regiao=_texto_ou_none(row["regiao"]),
-        faixa_preco=_faixa_de_preco(_para_int_reais(row["preco"])),
-        faixa_metragem=_texto_ou_none(row["faixa_metragem"]),
-        dormitorios=_bucketiza_contagem(row["dormitorios"], _TETO_DORMITORIOS),
-        vagas=_bucketiza_contagem(row["vagas"], _TETO_VAGAS),
+        regiao=texto_ou_none(row["regiao"]),
+        faixa_preco=faixa_de_preco(para_int_reais(row["preco"])),
+        faixa_metragem=texto_ou_none(row["faixa_metragem"]),
+        dormitorios=bucketiza_contagem(row["dormitorios"], TETO_DORMITORIOS),
+        vagas=bucketiza_contagem(row["vagas"], TETO_VAGAS),
     )
 
 

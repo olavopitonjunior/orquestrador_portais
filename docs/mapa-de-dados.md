@@ -156,3 +156,17 @@ O perfil de conversão (Spec §6.2, `src/dados/vendas.py` → `src/dominio/perfi
 - **Cobertura das dimensões nas 177** (colunas da própria oferta, salvo vagas): `District` (região) 177/177 · `PrivateArea_Range` (faixa de metragem, já nativa) 177/177 · `RealtyType` 175 · `QtyBedrooms` (dormitórios) 157 (20 nulos = os mesmos 11,3%) · vagas por JOIN `realties.QtyVacancies` (por `Realty_Id`) 158. Preço para a faixa também vem de `realties.Price` por `Realty_Id`.
 - **Bucketização (na coleta, não no domínio)**: `faixa_metragem` = `PrivateArea_Range` nativo; `faixa_preco` derivada do preço em faixas ancoradas nos pisos da Spec §6.1 (300k / 700k); `dormitorios`/`vagas` colapsam o topo (≥5 e ≥3, "N ou mais"), espelhando a medição de 31/08. `RealtyType` (categoria) **não** é dimensão de perfil — a Spec §6.2 lista cinco (região, faixa de preço, faixa de metragem, dormitórios, vagas) e categoria não é uma delas.
 - **Invariante 3**: o SELECT projeta só características de imóvel (região, faixas, dormitórios, vagas, preço). Nenhum nome/contato de comprador ou corretor; `SignedAt` é data.
+
+## Fonte das dimensões de perfil do CANDIDATO (match do perfil, B3b — 31/08/2026)
+
+Para casar o imóvel candidato com os perfis de conversão, as cinco dimensões da Spec §6.2 saem das MESMAS colunas nativas que o lado da venda, casando string-a-string (verificado no banco, 31/08). Recorte `FT_RealtyRelation.RealtyStatus='Ativo'` (48.985 imóveis):
+
+- **Região** = `FT_RealtyRelation.District` (não `FT_Districts` nem endereço): os 66 distritos das vendas 180d estão TODOS nos ativos (66/66), formato idêntico, zero vazios. Cobertura 100%.
+- **Faixa de metragem** = `FT_RealtyRelation.PrivateArea_Range` — faixa-texto NATIVA, mesmos 8 rótulos exatos dos dois lados (`até 30m2`, `30 - 60m2`, `60 - 80m2`, `80 - 100m2`, `100 - 120m2`, `120 - 150m2`, `150 - 200m2`, `acima de 200m2`). **Não bucketizar** — comparar direto. Cobertura 100%.
+- **Dormitórios** = `FT_RealtyRelation.QtyBedrooms` (= `realties.QtyBedrooms`, 0 divergências): 98,30% preenchido (831 nulos), 3.630 estúdios (0, legítimo).
+- **Vagas** = `realties.QtyVacancies` por JOIN `realties.Id = FT_RealtyRelation.Realty_Id`: 97,76% (1.097 nulos).
+- **Preço** = `realties.Price` por JOIN → `faixa_de_preco()`: ~100% (2 ausentes).
+
+**Armadilha (crítica): NÃO usar `FT_RealtyRelation.Price_Range` como faixa de preço.** Ele tem vocabulário PRÓPRIO e incompatível com `faixa_de_preco()` das vendas (rótulos `300 - 400mil`, `1 - 1.5M`, `acima 3.5M`); casar por ele com a venda daria zero. A faixa de preço vem SEMPRE de `realties.Price` + `faixa_de_preco()`, nos dois lados. A assimetria entre as duas colunas "_Range" é a pegadinha: `PrivateArea_Range` é compatível e nativo, `Price_Range` não.
+
+`FT_RealtyRelation` também carrega `Price`, `PrivateArea`, `Bairro`, `ValueZone` (redundância com `realties`); a referência de preço/vagas continua sendo `realties` por JOIN, como no lado venda. O `coletor_interno.py` (elegibilidade/penalidade) NÃO lê essas 3 colunas de perfil — a leitura do candidato para o match vive em `dados/candidatos_perfil.py`.
