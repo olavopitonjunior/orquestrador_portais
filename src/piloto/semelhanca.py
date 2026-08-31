@@ -69,21 +69,75 @@ def casa(dims_candidato: DimensoesImovel, perfil: PerfilConversao) -> bool:
     )
 
 
+def _contribuicoes(
+    dims_candidato: DimensoesImovel,
+    perfis: tuple[PerfilConversao, ...],
+    params: ParametrosSemelhanca,
+) -> list[tuple[PerfilConversao, float]]:
+    """Os perfis que o candidato casa, cada um com sua contribuição.
+
+    FONTE ÚNICA do sinal (max desta lista) e do perfil que puxou (argmax): os
+    dois derivam daqui, então o número e o perfil exibido como justificativa
+    nunca divergem. Robusto contribui com num_vendas; frágil com
+    num_vendas × desconto_fragil (Spec §6.2, "não recebe peso pleno").
+    """
+    return [
+        (p, p.num_vendas * (params.desconto_fragil if p.fragil else 1.0))
+        for p in perfis
+        if casa(dims_candidato, p)
+    ]
+
+
 def sinal_bruto(
     dims_candidato: DimensoesImovel,
     perfis: tuple[PerfilConversao, ...],
     params: ParametrosSemelhanca,
 ) -> float:
-    """Maior contribuição de perfil que o candidato casa (0 se não casa nenhum).
+    """Maior contribuição de perfil que o candidato casa (0 se não casa nenhum)."""
+    return max(
+        (c for _, c in _contribuicoes(dims_candidato, perfis, params)),
+        default=0.0,
+    )
 
-    Robusto contribui com num_vendas; frágil com num_vendas × desconto_fragil.
+
+def _ordem_desempate(
+    perfil: PerfilConversao,
+) -> tuple[tuple[str, ...], tuple[tuple[str, ValorDimensao], ...]]:
+    """Chave determinística e total para o desempate de exibição (por dimensões,
+    depois valores). Só decide QUAL perfil é mostrado num empate de contribuição
+    — não muda o número nem o ranking. Os valores entram como (tipo, valor),
+    igual à ordem canônica de dominio.perfil, para não colapsar 2 e "2"."""
+    return (
+        tuple(d.value for d in perfil.dimensoes),
+        tuple((type(v).__name__, v) for v in perfil.valores),
+    )
+
+
+def perfil_que_puxou(
+    dims_candidato: DimensoesImovel,
+    perfis: tuple[PerfilConversao, ...],
+    params: ParametrosSemelhanca,
+) -> PerfilConversao | None:
+    """O perfil de MAIOR contribuição — o que define `sinal_bruto`. None se o
+    candidato não casa nenhum perfil.
+
+    É o "perfil que puxou" da justificativa (Spec §2.1: identificador e
+    evidência do perfil casado). Empate de contribuição: ganha o MAIS ESPECÍFICO
+    (mais dimensões), depois a ordem canônica — o mais específico explica melhor.
+    O empate é raro por construção: um perfil de uma dimensão agrega as vendas
+    dos de duas que o contêm, então sua contribuição ≥ a deles (salvo o desconto
+    de frágil mexer nas contribuições). Isto é rótulo explicativo, não decisão
+    distributiva: não muda o número, o ranking, nem quem é alocado.
     """
-    contribuicoes = [
-        p.num_vendas * (params.desconto_fragil if p.fragil else 1.0)
-        for p in perfis
-        if casa(dims_candidato, p)
-    ]
-    return max(contribuicoes, default=0.0)
+    contrib = _contribuicoes(dims_candidato, perfis, params)
+    if not contrib:
+        return None
+    # min com chave (-contribuição, -nº dimensões, chave canônica): maior
+    # contribuição, depois mais específico, depois o primeiro na ordem canônica.
+    return min(
+        contrib,
+        key=lambda pc: (-pc[1], -len(pc[0].dimensoes), _ordem_desempate(pc[0])),
+    )[0]
 
 
 def _normalizar_minmax(sinais: dict[int, float]) -> dict[int, float]:

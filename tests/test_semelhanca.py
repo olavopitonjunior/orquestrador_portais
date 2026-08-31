@@ -11,6 +11,7 @@ from dominio.perfil import Dimensao, PerfilConversao
 from piloto.semelhanca import (
     ParametrosSemelhanca,
     casa,
+    perfil_que_puxou,
     semelhanca_por_imovel,
     sinal_bruto,
 )
@@ -111,3 +112,45 @@ def test_parametros_rejeita_desconto_fora_da_faixa():
         ParametrosSemelhanca(desconto_fragil=1.5)
     with pytest.raises(ValueError, match="desconto_fragil"):
         ParametrosSemelhanca(desconto_fragil=-0.1)
+
+
+# --- perfil que puxou (argmax) e a concordância com o sinal (fonte única) -----
+
+
+def test_perfil_que_puxou_none_sem_match():
+    dims = {Dimensao.REGIAO: "Norte"}
+    assert perfil_que_puxou(dims, (REGIAO_CENTRO, CENTRO_2D), PARAMS) is None
+
+
+def test_perfil_que_puxou_e_o_de_maior_contribuicao():
+    dims = {Dimensao.REGIAO: "Centro", Dimensao.DORMITORIOS: 2}
+    assert perfil_que_puxou(dims, (REGIAO_CENTRO, CENTRO_2D), PARAMS) is REGIAO_CENTRO
+
+
+def test_empate_de_contribuicao_o_mais_especifico_ganha():
+    # Dois perfis com a MESMA contribuição (N=5): o de 2 dimensões (mais
+    # específico) é o exibido.
+    p1d = _perfil((Dimensao.REGIAO,), ("X",), 5)
+    p2d = _perfil((Dimensao.REGIAO, Dimensao.DORMITORIOS), ("X", 2), 5)
+    dims = {Dimensao.REGIAO: "X", Dimensao.DORMITORIOS: 2}
+    assert perfil_que_puxou(dims, (p1d, p2d), PARAMS) is p2d
+
+
+def test_concordancia_perfil_que_puxou_bate_com_sinal_bruto():
+    # A CONDIÇÃO da fonte única: a contribuição do perfil que puxou == o sinal
+    # bruto, para a mesma entrada. O rótulo nunca diverge do número.
+    dims = {Dimensao.REGIAO: "Centro", Dimensao.DORMITORIOS: 2}
+    perfis = (REGIAO_CENTRO, CENTRO_2D, FRAGIL)
+    sinal = sinal_bruto(dims, perfis, PARAMS)
+    pqp = perfil_que_puxou(dims, perfis, PARAMS)
+    contrib_do_pqp = pqp.num_vendas * (PARAMS.desconto_fragil if pqp.fragil else 1.0)
+    assert contrib_do_pqp == sinal
+
+
+def test_concordancia_com_fragil_descontado():
+    dims = {Dimensao.REGIAO: "Sul"}
+    perfis = (REGIAO_CENTRO, FRAGIL)  # só FRAGIL (Sul) casa
+    sinal = sinal_bruto(dims, perfis, PARAMS)
+    pqp = perfil_que_puxou(dims, perfis, PARAMS)
+    assert pqp is FRAGIL
+    assert pqp.num_vendas * PARAMS.desconto_fragil == sinal
