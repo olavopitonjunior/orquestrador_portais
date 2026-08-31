@@ -20,9 +20,10 @@ destaque) existe para atacar. Nada aqui preenche artificialmente.
 
 Desempate por decisão do dono (D-009): em empate de nota, ganha o cadastro
 MAIS NOVO. Implementado pelo proxy imovel_id decrescente — total e
-determinístico (invariante 5) —, sob o pressuposto, declarado e ainda não
-verificado contra a base, de que imovel_id cresce com a data de cadastro no
-Newcore. A alternativa fiel (campo de data de cadastro na entrada) e o
+determinístico (invariante 5) —, sob o pressuposto de que imovel_id cresce
+com a data de cadastro no Newcore, VERIFICADO E CONFIRMADO contra a base em
+31/08/2026 (zero inversões no estoque recente; detalhes e exceção legada de
+2017 na D-009). A alternativa fiel (realties.CreatedAt na entrada) e o
 atalho proibido (atualizado_em) estão registrados na D-009.
 
 Invariantes 4 e 5: cálculo puro — sem I/O, sem relógio, sem aleatoriedade,
