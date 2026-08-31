@@ -101,3 +101,45 @@ Duas camadas, que não podem se confundir:
 **Atalho proibido**: `atualizado_em` (já disponível em `elegibilidade.ImovelCandidato`) NÃO é data de cadastro — é data de atualização; um imóvel antigo reeditado ontem contaria como "novo". Usá-lo no desempate seria inventar regra.
 
 **Verificação de 31/08/2026 — pressuposto CONFIRMADO.** `realties.Id` é `auto_increment` e o campo semântico da data de cadastro é `realties.CreatedAt` (datetime, 0 nulos em 483.004 linhas). No estoque recente (Id ≥ 469.353, jul/2025 em diante, 41.969 pares adjacentes): **zero inversões**. Na tabela inteira: 444 inversões (0,092%), sendo apenas 3 com ≥ 24h — todas no resíduo legado de 2017 (Ids ≤ 556); as demais são jitter de segundos a ~3h. Consequência declarada da exceção: nesses casos raros e antigos o desempate pode inverter em relação à intenção — aceitável por ser desempate, não critério primário, e por o estoque que disputa vitrine ser recente por construção das regras. A ressalva original acima permanece como registro histórico do estado em que a decisão foi tomada. Achado colateral: `FT_RealtyRelation.FirstActivationDate` (ativação) NÃO é monotônica com o Id (38,5% de pares invertidos, 11,3% nula) — se o dono um dia reinterpretar o critério como "ativação mais nova", o proxy deixa de servir e a alternativa fiel exigirá esse campo com tratamento de nulos. O atalho `atualizado_em` segue proibido.
+
+## D-010 — Coletor Externo: transporte CDP em Chrome real
+
+**Data**: 2026-08-31 · **Resolve**: como o Coletor Externo raspa o Canal Pro (Ferramentas §2 dizia "automação de navegador com dois caminhos", sem fixar o mecanismo de transporte)
+
+Instrução do dono (literal, nesta sessão): *"vamos reconstruir do zero para já modelar o agente de acordo com ela"* — referindo-se ao raspador `imovelweb-ativos`, validado por ele contra o painel ImovelWeb (canário progressivo 1→10→100→1000 sem bloqueio).
+
+**Decisão: o Coletor Externo adota o transporte CDP em Chrome real** — anexa (via `--remote-debugging-port`) a um Chrome já aberto e autenticado pelo operador, e faz as chamadas à API interna do painel de dentro da própria página, herdando a sessão. Login humano único por aquecimento (a Ferramentas §5 já registrava a preocupação com "login automatizado repetido" como padrão que proteções anti-bot procuram — o login manual a resolve). Componentes arquiteturais: captura de sessão, canário progressivo como portão do full, sharding, checkpoints por lote e detecção de bloqueio com re-aquecimento manual sinalizado.
+
+A técnica pode ser descrita no nível que for útil para manutenção — o código vai a repositório público por decisão do dono (D-012), então manter o documento vago não protege nada e piora a manutenção. **Fica fora de qualquer registro, sempre**: credenciais, senha/e-mail de conta do portal e dados da própria conta — isso nunca foi sobre técnica (ver limites na D-012).
+
+**Caminho de erro e invariante 3.** A Ferramentas §2 previa um caminho de erro em que o modelo interpreta a página quando o determinístico falha. Neste desenho, a detecção de bloqueio é resolvida por **re-aquecimento manual** (o operador loga de novo), não por modelo — a intenção é que o Coletor Externo v0 **não tenha caminho com modelo**, reduzindo a três para dois os pontos do sistema que chamam modelo. Se um caminho com modelo vier a ser reintroduzido, o painel do Canal Pro é autenticado e suas respostas podem conter identidade do operador, dados de corretor ou contadores/contatos de lead: **nenhum payload do painel vai a modelo sem remoção de identidades antes do envio** (invariante 3). Fica registrado como obrigação do PR de implementação do coletor.
+
+**Substitui Selenium por propriedade da técnica, não por causa de incidente.** Selenium/chromedriver é detectado por proteções que injetam desafio interativo e não completa a coleta; o Chrome real dirigido por CDP opera como o navegador do usuário. Esta é justificativa de desenho do coletor NOVO. **Não re-atribui o incidente do `task-titan`** (registrado no mapa de dados como "raspagem do Grupo Zap parada", jobs do `webscrapper_cron`): aquele segue em `docs/mapa-de-dados.md` (31/08) como incidente de infraestrutura (`chrome not reachable`), causa medida no log — decisão do dono nesta sessão de manter essa causa; a hipótese anti-bot não a substitui.
+
+## D-011 — Console do Operador como componente do produto
+
+**Data**: 2026-08-31 · **Resolve**: superfície de operação e observabilidade do sistema (o PRD e a Spec descrevem sete agentes, planilha e relatório, e dizem que o relatório de segunda "para no gestor da vitrine", sem interface)
+
+Instrução do dono (literal): pede uma interface para *"verificar e analisar todos esses agentes, verificar o fluxo de trabalho deles, logs, pendências, ações que eu preciso tomar (como o próprio login no portal), o resultado da raspagem numa planilha do Google dentro dessa interface, custos da operação, monitoramento e observabilidade, edição dos prompts, ver o agente trabalhando"*, mais o painel de decisão com a motivação da lista, o botão de aprovação e o acervo de planilhas semanais.
+
+**Decisão: o produto ganha um Console do Operador** (front-end, camada de OPERAÇÃO). Ele lê o Registro e o checkpointer do grafo e os artefatos do coletor, e escreve apenas no PostgreSQL próprio — **invariante 2 preservado**. Não participa do caminho da decisão nem chama modelo nesse caminho — **invariante 4 preservado**. A planilha do Google continua o entregável contratual; o console a exibe e arquiva, não a substitui.
+
+**Divergência com a hierarquia, declarada e não resolvida aqui** (CLAUDE.md: documento inferior não resolve divergência em silêncio): o console é superfície nova que o PRD > Spec não preveem. Esta decisão registra a escolha do dono; **PRD e Spec precisam ser atualizados** para incorporá-la — enquanto não forem, esta decisão prevalece sobre o trecho divergente (regra do topo de `decisoes.md`).
+
+**Entidade nova do Registro**: custo por execução de agente (rodada, agente, provedor, tokens, custo, duração) é a **nona** entidade, onde a Spec §2.1 define oito. O DDL da migração vem em PR próprio, **fora deste**; registrada aqui para que documento não afirme o que o esquema ainda não tem. Prompts dos três agentes com modelo passam a ser versionados por rodada (cada rodada grava a versão usada; mudança registrada como `alteracao_parametro`).
+
+## D-012 — Publicação aberta do coletor: risco assumido pelo dono
+
+**Data**: 2026-08-31 · **Resolve**: onde mora o código do Coletor Externo, dado que `orquestrador_portais` é um repositório público
+
+O código do coletor (portado do `imovelweb-ativos`) é a receita executável que opera dentro da sessão autenticada do portal. O `orchestrator` sinalizou que publicá-lo no repositório público tem três consequências irreversíveis: expõe a técnica a quem lê o GitHub (Cloudflare, Grupo OLX), atribui nominalmente o contorno de proteção anti-bot ao dono, e não há desfazer (forks, caches e histórico sobrevivem a remoção). As alternativas apresentadas: repositório privado separado, tornar o produto privado, ou publicar aberto.
+
+**Decisão do dono (instrução literal): "Publicar aberto mesmo assim."** Risco assumido de forma explícita e informada — análogo à D-001 (risco de aplicação parcial da carga, aceito por decisão explícita).
+
+**O que foi apresentado ao dono antes da escolha** (o consentimento só é auditável se o registro mostrar a informação): que o repositório `orquestrador_portais` é **público**; e as três consequências, todas irreversíveis: (a) **queima da técnica** — Cloudflare e Grupo OLX leem GitHub, e a vantagem validada por canário vale enquanto não estiver publicada; (b) **atribuição nominal** — o repositório leva o nome do dono, então publicar o contorno de proteção anti-bot é assinar; (c) **irreversibilidade**. As alternativas oferecidas foram repositório privado separado, tornar o produto privado, ou publicar aberto. Ele escolheu publicar aberto.
+
+**Irreversibilidade, sem ambiguidade**: revogar esta decisão depois **não despublica nada**. Forks, caches de terceiros e o histórico do git sobrevivem a `git rm` e a tornar o repositório privado. Não é um interruptor que se desliga; é uma porta que só abre.
+
+**Limites desta decisão** (ela autoriza o núcleo do coletor, e só ele): **NÃO** autoriza publicar credenciais, senha ou e-mail de conta do portal, o perfil do Chrome (`profileDir`), cookies, `cf_clearance` capturado, nem nomes de cluster/serviço AWS ou o runbook do ECS. Isso nunca foi sobre técnica e permanece fora de qualquer repositório público. A varredura de segredos do coletor (além do gitleaks) verifica essa fronteira; a proveniência da cópia é declarada no README do diretório.
+
+Esta é decisão de **processo**, não regra de decisão: registrada no CHANGELOG pela convenção do repositório, sem afetar nenhum invariante.
