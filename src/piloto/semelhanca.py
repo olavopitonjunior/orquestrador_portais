@@ -100,13 +100,16 @@ def sinal_bruto(
     )
 
 
-def _ordem_desempate(perfil: PerfilConversao) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _ordem_desempate(
+    perfil: PerfilConversao,
+) -> tuple[tuple[str, ...], tuple[tuple[str, ValorDimensao], ...]]:
     """Chave determinística e total para o desempate de exibição (por dimensões,
-    depois valores como texto). Só decide QUAL perfil é mostrado num empate de
-    contribuição — não muda o número nem o ranking."""
+    depois valores). Só decide QUAL perfil é mostrado num empate de contribuição
+    — não muda o número nem o ranking. Os valores entram como (tipo, valor),
+    igual à ordem canônica de dominio.perfil, para não colapsar 2 e "2"."""
     return (
         tuple(d.value for d in perfil.dimensoes),
-        tuple(str(v) for v in perfil.valores),
+        tuple((type(v).__name__, v) for v in perfil.valores),
     )
 
 
