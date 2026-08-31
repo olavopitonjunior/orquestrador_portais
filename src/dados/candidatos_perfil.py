@@ -77,5 +77,11 @@ def coletar_dimensoes_candidatos() -> dict[int, dict[Dimensao, ValorDimensao]]:
 
     I/O: não roda no CI (precisa do banco). O formato é o que
     piloto.semelhanca.semelhanca_por_imovel consome diretamente.
+
+    A colapsagem por dict (uma entrada por imovel_id) é intencional: FT_RealtyRelation
+    é 1:1 por Realty_Id no recorte ativo (48.985=48.985, mapa 31/08) e o JOIN é por
+    PK, então não há duplicata hoje. Se um dia a fonte deixar de ser 1:1, o dict fica
+    com a ÚLTIMA linha vista — critério diferente do coletor_interno (_dedup_por_imovel,
+    primeira vista); a divergência é inócua enquanto a cardinalidade 1:1 se mantiver.
     """
     return {int(row["imovel_id"]): linha_para_dimensoes(row) for row in consultar(_SQL_DIMENSOES)}
