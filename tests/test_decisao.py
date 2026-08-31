@@ -115,3 +115,36 @@ def test_sem_candidatos_nao_quebra():
     assert r.n_elegiveis == 0
     assert r.alocacao.super_destaque == ()
     assert r.relaxamento.recuperados == ()
+
+
+# --- detalhamento por imóvel (justificativa carregada, não recomputada) ------
+
+
+def test_detalhe_do_elegivel_carrega_fatores_e_notas():
+    cands = [_candidato(1)]
+    r = _rodar(cands, {1: _dims()})
+    det = r.detalhes[1]
+    assert det.fatores.imovel_id == 1
+    assert det.nota_super_destaque is not None  # elegível disputa super
+    assert det.nota_destaque is not None
+    # o total é a soma do breakdown por penalidade (sem divergência)
+    assert det.desconto_total == sum(det.descontos_por_penalidade.values())
+
+
+def test_detalhe_do_reprovado_recuperado_tem_nota_super_none():
+    cands = [_candidato(1, preco=400_000), _candidato(2, preco=400_000, elegivel=False)]
+    r = _rodar(cands, {1: _dims(), 2: _dims()})
+    assert r.detalhes[2].nota_super_destaque is None  # reprovado só disputa destaque
+    assert r.detalhes[2].nota_destaque is not None
+
+
+def test_detalhe_reflete_penalidade_aplicada():
+    # Imóvel elegível mas sem lead em 180d recebe a penalidade SEM_LEAD_180D,
+    # visível no breakdown.
+    from dominio.penalidades import Penalidade
+
+    cands = [_candidato(1)]
+    penalizaveis = {1: _penalizavel(1, leads=0)}
+    r = decidir(cands, penalizaveis, {1: _dims()}, PERFIS, PARAMS, HOJE)
+    assert Penalidade.SEM_LEAD_180D in r.detalhes[1].descontos_por_penalidade
+    assert r.detalhes[1].descontos_por_penalidade[Penalidade.SEM_LEAD_180D] == 0.10

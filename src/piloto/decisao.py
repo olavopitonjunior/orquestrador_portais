@@ -34,7 +34,12 @@ from datetime import date
 
 from dominio.alocacao import COTA_DESTAQUE, Alocacao, CandidatoAlocacao, alocar
 from dominio.elegibilidade import ImovelCandidato, Regra, regras_reprovadas
-from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, desconto_total
+from dominio.penalidades import (
+    ImovelPenalizavel,
+    IntensidadesPenalidade,
+    Penalidade,
+    descontos_por_penalidade,
+)
 from dominio.perfil import PerfilConversao
 from dominio.ranking import (
     PESOS_DESTAQUE,
@@ -56,11 +61,33 @@ class ParametrosDecisao:
 
 
 @dataclass(frozen=True)
+class DetalheImovel:
+    """Justificativa por imóvel (Spec §2.1/§3.2/§6.4): os números AUTORITATIVOS
+    que produziram a nota — carregados da costura, não recomputados no B3c.
+
+    `nota_super_destaque` é None para reprovados (só disputam destaque via
+    relaxamento). O "perfil que puxou" (Spec §2.1: identificador e evidência do
+    perfil casado) é incremento rastreado — exige `semelhanca` expor o match;
+    ainda NÃO está aqui, então a planilha justificada só fica completa com ele.
+    """
+
+    imovel_id: int
+    fatores: FatoresNormalizados
+    descontos_por_penalidade: Mapping[Penalidade, float]
+    desconto_total: float
+    nota_super_destaque: float | None
+    nota_destaque: float
+
+
+@dataclass(frozen=True)
 class ResultadoDecisao:
-    """A saída da costura: alocação, relaxamento e as limitações declaradas."""
+    """A saída da costura: alocação, relaxamento, o detalhamento e as limitações."""
 
     alocacao: Alocacao
     relaxamento: ResultadoRelaxamento
+    # Justificativa por imóvel (elegíveis + reprovados que entraram no
+    # relaxamento), carregada da costura para o B3c serializar sem recomputar.
+    detalhes: Mapping[int, DetalheImovel]
     n_elegiveis: int
     n_reprovados: int
     # Limitações da rodada, para a aba de limitações da planilha (B3c).
@@ -112,21 +139,24 @@ def _fatores(
     }
 
 
-def _desconto(
+def _descontos(
     imovel_id: int, penalizaveis: Mapping[int, ImovelPenalizavel], p: ParametrosDecisao
-) -> float:
+) -> dict[Penalidade, float]:
+    """O desconto por penalidade do imóvel (autoritativo; o total é a soma)."""
     pen = penalizaveis.get(imovel_id)
     if pen is None:
         raise ValueError(f"imóvel {imovel_id} sem ImovelPenalizavel: coleta desalinhada")
-    return desconto_total(pen, p.intensidades, p.decaimento_janela)
+    return descontos_por_penalidade(pen, p.intensidades, p.decaimento_janela)
 
 
 DEGRADACOES = (
     "desempenho próprio observado ausente (a piloto não raspa o portal): "
     "rodada DEGRADADA nesse fator, que roda zerado (ordena pelos outros dois).",
     "produtividade do gestor é binária na v0 (captou/vendeu em 30d: sim/não).",
-    "normalização (parâmetro nº 2) e intensidades das penalidades (nº 3) são "
-    "PROVISÓRIAS desta rodada — não adotadas.",
+    "forma de normalização (parâmetro nº 2) = min-max: PROVISÓRIA, não adotada "
+    "pelo dono — a forma não foi decidida (D-016).",
+    "intensidades das penalidades e decaimento (parâmetro nº 3): PROVISÓRIOS "
+    "desta rodada, não adotados.",
 )
 
 
@@ -155,17 +185,29 @@ def decidir(
 
     # Ranking primário: fatores normalizados SOBRE OS ELEGÍVEIS.
     fatores_el = _fatores(elegiveis, dims_por_imovel, perfis, parametros.semelhanca)
+    detalhes: dict[int, DetalheImovel] = {}
     aloc_entrada = []
     for c in elegiveis:
-        desc = _desconto(c.imovel_id, penalizaveis, parametros)  # uma vez por imóvel
         fat = fatores_el[c.imovel_id]
+        descontos = _descontos(c.imovel_id, penalizaveis, parametros)  # uma vez por imóvel
+        desc_total = sum(descontos.values())
+        nota_super = nota_final(fat, PESOS_SUPER_DESTAQUE, desc_total)
+        nota_dest = nota_final(fat, PESOS_DESTAQUE, desc_total)
         aloc_entrada.append(
             CandidatoAlocacao(
                 imovel_id=c.imovel_id,
                 preco=c.preco,
-                nota_super_destaque=nota_final(fat, PESOS_SUPER_DESTAQUE, desc),
-                nota_destaque=nota_final(fat, PESOS_DESTAQUE, desc),
+                nota_super_destaque=nota_super,
+                nota_destaque=nota_dest,
             )
+        )
+        detalhes[c.imovel_id] = DetalheImovel(
+            imovel_id=c.imovel_id,
+            fatores=fat,
+            descontos_por_penalidade=descontos,
+            desconto_total=desc_total,
+            nota_super_destaque=nota_super,
+            nota_destaque=nota_dest,
         )
     alocacao = alocar(aloc_entrada)
 
@@ -174,18 +216,25 @@ def decidir(
     if deficit > 0 and reprovados:
         so_reprovados = [c for c, _ in reprovados]
         fatores_rep = _fatores(so_reprovados, dims_por_imovel, perfis, parametros.semelhanca)
-        pool = [
-            CandidatoRelaxamento(
-                imovel_id=c.imovel_id,
-                nota_destaque=nota_final(
-                    fatores_rep[c.imovel_id],
-                    PESOS_DESTAQUE,
-                    _desconto(c.imovel_id, penalizaveis, parametros),
-                ),
-                regras_reprovadas=rr,
+        pool = []
+        for c, rr in reprovados:
+            fat = fatores_rep[c.imovel_id]
+            descontos = _descontos(c.imovel_id, penalizaveis, parametros)
+            desc_total = sum(descontos.values())
+            nota_dest = nota_final(fat, PESOS_DESTAQUE, desc_total)
+            pool.append(
+                CandidatoRelaxamento(
+                    imovel_id=c.imovel_id, nota_destaque=nota_dest, regras_reprovadas=rr
+                )
             )
-            for c, rr in reprovados
-        ]
+            detalhes[c.imovel_id] = DetalheImovel(
+                imovel_id=c.imovel_id,
+                fatores=fat,
+                descontos_por_penalidade=descontos,
+                desconto_total=desc_total,
+                nota_super_destaque=None,  # reprovado só disputa destaque (relaxamento)
+                nota_destaque=nota_dest,
+            )
         relaxamento = relaxar(deficit, pool)
     else:
         # deficit ≥ 0 sempre (o slice da alocação garante len(destaque) ≤ cota).
@@ -194,6 +243,7 @@ def decidir(
     return ResultadoDecisao(
         alocacao=alocacao,
         relaxamento=relaxamento,
+        detalhes=detalhes,
         n_elegiveis=len(elegiveis),
         n_reprovados=len(reprovados),
         degradacoes=DEGRADACOES,
