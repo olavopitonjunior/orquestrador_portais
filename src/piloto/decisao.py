@@ -96,6 +96,11 @@ class ResultadoDecisao:
     # Justificativa por imóvel (elegíveis + reprovados que entraram no
     # relaxamento), carregada da costura para o B3c serializar sem recomputar.
     detalhes: Mapping[int, DetalheImovel]
+    # As regras reprovadas de CADA imóvel reprovado (por imovel_id), carregadas
+    # do split de elegibilidade — a aba "excluídos por regra" do B3c lê daqui,
+    # não recomputa elegibilidade. Inclui recuperados e não-recuperados; o B3c
+    # separa pelos recuperados do relaxamento.
+    reprovados_regras: Mapping[int, frozenset[Regra]]
     n_elegiveis: int
     n_reprovados: int
     # Limitações da rodada, para a aba de limitações da planilha (B3c).
@@ -266,6 +271,7 @@ def decidir(
         alocacao=alocacao,
         relaxamento=relaxamento,
         detalhes=detalhes,
+        reprovados_regras={c.imovel_id: rr for c, rr in reprovados},
         n_elegiveis=len(elegiveis),
         n_reprovados=len(reprovados),
         degradacoes=DEGRADACOES,
