@@ -109,6 +109,13 @@ test('paginação usa chave IMUTÁVEL (CREATED_AT) para retomada estável', () =
   assert.ok(!src.includes("orderBy: 'UPDATED_AT'"), 'UPDATED_AT muda durante a coleta e quebra a retomada');
 });
 
+test('o adapter passa credentials omit — o Canal Pro autentica por Bearer, não cookie', () => {
+  // O canário provou: credentials include → CORS status 0; omit → 200.
+  // Trava a regressão de alguém re-hardcodar include ou remover o omit.
+  const src = readFileSync(join(__dir, '..', 'src', 'portals', 'canalpro.ts'), 'utf8');
+  assert.ok(/credentials:\s*'omit'/.test(src), "canalpro deve passar credentials: 'omit' na chamada");
+});
+
 test('csvColumns cobre exatamente os campos do Anuncio de performance', () => {
   assert.equal(canalPro.csvColumns.length, 16);
   assert.ok(canalPro.csvColumns.includes('codigoImovel'));

@@ -81,6 +81,16 @@ async function run(portal: Portal, mode: 'canary' | 'full'): Promise<void> {
       log(`Paginação linear: ${total} anúncios, ${totalPages} páginas; retomando da página ${start}.`);
       for (let pg = start; pg <= totalPages; pg++) {
         const anuncios = await portal.collectPage(page, sessionId, pg);
+        // Guard de sub-coleta: uma página NÃO-final com menos que pageSize
+        // significa que o servidor limitou o page size — o totalPages calculado
+        // ficou grande demais e a coleta terminaria incompleta marcada "ok".
+        // Aborta ruidosamente em vez de sub-coletar em silêncio.
+        if (pg < totalPages && anuncios.length > 0 && anuncios.length < size) {
+          throw new Error(
+            `Sub-coleta: página ${pg}/${totalPages} veio com ${anuncios.length} < pageSize ${size} — ` +
+              `o servidor limitou o page size. Reduza pageSize no adapter.`
+          );
+        }
         await csv.appendRows(anuncios.map((a) => portal.rowToCells(a)));
         cp.lastPage = pg;
         cp.rowsWritten += anuncios.length;
