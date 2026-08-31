@@ -25,3 +25,22 @@ jobs:
           "import sqlglot;
           n = len(sqlglot.parse(open('src/dados/registro/001_registro.sql').read(), read='postgres'));
           print(f'DDL OK: {n} statements')"
+
+  # Job do Coletor Externo (TypeScript). Separado de "verificar" e NÃO obrigatório
+  # na proteção de main até ser adicionado a ela pelo dono (ação administrativa).
+  coletor-externo:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coletor-externo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+      - name: Instala dependências (lockfile commitado)
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Testes (módulos puros)
+        run: npm test
