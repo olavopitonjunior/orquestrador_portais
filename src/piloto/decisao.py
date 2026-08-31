@@ -49,7 +49,12 @@ from dominio.ranking import (
     nota_final,
 )
 from dominio.relaxamento import CandidatoRelaxamento, ResultadoRelaxamento, relaxar
-from piloto.semelhanca import DimensoesImovel, ParametrosSemelhanca, semelhanca_por_imovel
+from piloto.semelhanca import (
+    DimensoesImovel,
+    ParametrosSemelhanca,
+    perfil_que_puxou,
+    semelhanca_por_imovel,
+)
 
 
 @dataclass(frozen=True)
@@ -67,9 +72,10 @@ class DetalheImovel:
     que produziram a nota — carregados da costura, não recomputados no B3c.
 
     `nota_super_destaque` é None para reprovados (só disputam destaque via
-    relaxamento). O "perfil que puxou" (Spec §2.1: identificador e evidência do
-    perfil casado) é incremento rastreado — exige `semelhanca` expor o match;
-    ainda NÃO está aqui, então a planilha justificada só fica completa com ele.
+    relaxamento). `perfil_que_puxou` é o perfil de conversão de maior
+    contribuição que o imóvel casou (Spec §2.1: identificador e evidência do
+    perfil casado) — None se não casou nenhum; a própria evidência (num_vendas,
+    frágil) viaja no PerfilConversao.
     """
 
     imovel_id: int
@@ -78,6 +84,7 @@ class DetalheImovel:
     desconto_total: float
     nota_super_destaque: float | None
     nota_destaque: float
+    perfil_que_puxou: PerfilConversao | None
 
 
 @dataclass(frozen=True)
@@ -217,6 +224,9 @@ def decidir(
             desconto_total=desc_total,
             nota_super_destaque=nota_super,
             nota_destaque=nota_dest,
+            perfil_que_puxou=perfil_que_puxou(
+                dims_por_imovel.get(c.imovel_id, {}), perfis, parametros.semelhanca
+            ),
         )
     alocacao = alocar(aloc_entrada)
 
@@ -243,6 +253,9 @@ def decidir(
                 desconto_total=desc_total,
                 nota_super_destaque=None,  # reprovado só disputa destaque (relaxamento)
                 nota_destaque=nota_dest,
+                perfil_que_puxou=perfil_que_puxou(
+                    dims_por_imovel.get(c.imovel_id, {}), perfis, parametros.semelhanca
+                ),
             )
         relaxamento = relaxar(deficit, pool)
     else:

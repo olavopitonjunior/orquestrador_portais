@@ -134,6 +134,22 @@ def test_detalhe_do_elegivel_carrega_fatores_e_notas():
     assert det.desconto_total == sum(det.descontos_por_penalidade.values())
 
 
+def test_detalhe_carrega_o_perfil_que_puxou():
+    # O imóvel casa o perfil (Centro): o detalhe carrega o perfil casado como
+    # justificativa (Spec §2.1).
+    r = _rodar([_candidato(1)], {1: _dims(regiao="Centro")})
+    pqp = r.detalhes[1].perfil_que_puxou
+    assert pqp is not None
+    assert pqp.valores == ("Centro",)
+    assert pqp.num_vendas == 10  # a evidência viaja junto
+
+
+def test_detalhe_sem_perfil_casado_e_none():
+    # Imóvel numa região sem perfil: perfil_que_puxou é None (não inventa).
+    r = _rodar([_candidato(1)], {1: _dims(regiao="RegiaoSemPerfil")})
+    assert r.detalhes[1].perfil_que_puxou is None
+
+
 def test_detalhe_do_reprovado_recuperado_tem_nota_super_none():
     cands = [_candidato(1, preco=400_000), _candidato(2, preco=400_000, elegivel=False)]
     r = _rodar(cands, {1: _dims(), 2: _dims()})
