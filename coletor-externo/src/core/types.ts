@@ -29,6 +29,8 @@ export interface Checkpoint {
   seenCount: number;
   rowsWritten: number;
   lastUpdate: string;
+  /** última página COMPLETA (paginação linear) — retomada continua de lastPage+1 */
+  lastPage?: number;
 }
 
 /** Um bucket de facet: o valor da dimensão e sua contagem. */

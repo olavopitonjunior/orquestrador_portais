@@ -1,7 +1,8 @@
 // Entrypoint do coletor: canário (portão) e full (com checkpoints).
-// Orquestra o núcleo genérico sobre um Portal escolhido. O adapter Canal Pro
-// é um stub que lança (ver src/portals/canalpro.ts) — rodar `full` hoje falha
-// ruidosamente no primeiro método não implementado, por desenho.
+// Orquestra o núcleo genérico sobre um Portal escolhido. Dois modelos de
+// coleta: paginação linear com checkpoint por página (quando o adapter expõe
+// collectPage, ex.: Canal Pro) ou shards por facets (buildShards). O primeiro
+// item do canário é validar o transporte in-page do portal (ver o recipe).
 
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -61,12 +62,6 @@ async function run(portal: Portal, mode: 'canary' | 'full'): Promise<void> {
       return;
     }
 
-    // full: sharding + coleta por shard com checkpoint.
-    const shards: Shard[] = await buildShards(
-      (tokens) => portal.probeList(page, sessionId, tokens),
-      portal.shardDimensions,
-      log
-    );
     const cp: Checkpoint = (await loadCheckpoint()) || {
       startedAt: new Date().toISOString(),
       completedShards: [],
@@ -74,6 +69,35 @@ async function run(portal: Portal, mode: 'canary' | 'full'): Promise<void> {
       rowsWritten: 0,
       lastUpdate: new Date().toISOString(),
     };
+
+    if (portal.collectPage) {
+      // Paginação linear com checkpoint POR PÁGINA: se a coleta morrer no meio,
+      // a retomada continua de lastPage+1 em vez de re-bater o portal do início
+      // (condição anti-bot). Um "shard" único não daria essa granularidade.
+      const size = portal.pageSize ?? 30;
+      const total = (await portal.probeList(page, sessionId, [])).numberOfPostings;
+      const totalPages = Math.max(1, Math.ceil(total / size));
+      const start = (cp.lastPage ?? 0) + 1;
+      log(`Paginação linear: ${total} anúncios, ${totalPages} páginas; retomando da página ${start}.`);
+      for (let pg = start; pg <= totalPages; pg++) {
+        const anuncios = await portal.collectPage(page, sessionId, pg);
+        await csv.appendRows(anuncios.map((a) => portal.rowToCells(a)));
+        cp.lastPage = pg;
+        cp.rowsWritten += anuncios.length;
+        cp.lastUpdate = new Date().toISOString();
+        await saveCheckpoint(cp);
+        log(`Página ${pg}/${totalPages}: ${anuncios.length} anúncios (total ${cp.rowsWritten}).`);
+      }
+      await writeStatus('ok', { mode, portal: portal.id, rows: cp.rowsWritten });
+      return;
+    }
+
+    // Modelo de shards por facets (portais sem paginação linear).
+    const shards: Shard[] = await buildShards(
+      (tokens) => portal.probeList(page, sessionId, tokens),
+      portal.shardDimensions,
+      log
+    );
     const done = new Set(cp.completedShards);
     for (const shard of shards) {
       if (done.has(shard.label)) continue;
