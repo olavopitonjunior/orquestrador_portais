@@ -190,4 +190,5 @@ def desconto_total(
     É a soma de `descontos_por_penalidade` — a fonte autoritativa é o
     detalhamento; o total deriva dele, então breakdown e total nunca divergem.
     """
-    return sum(descontos_por_penalidade(imovel, intensidades, decaimento_janela).values())
+    # start=0.0 garante float mesmo sem penalidade (sum de dict vazio daria int 0).
+    return sum(descontos_por_penalidade(imovel, intensidades, decaimento_janela).values(), 0.0)

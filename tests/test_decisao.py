@@ -8,8 +8,10 @@ já são testados isoladamente; aqui prova-se a FIAÇÃO.
 
 from datetime import date
 
+import pytest
+
 from dominio.elegibilidade import ImovelCandidato
-from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade
+from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, Penalidade
 from dominio.perfil import Dimensao, PerfilConversao
 from piloto.decisao import ParametrosDecisao, decidir
 from piloto.semelhanca import ParametrosSemelhanca
@@ -108,6 +110,7 @@ def test_deterministico():
     b = _rodar(list(reversed(cands)), dims)
     assert a.alocacao == b.alocacao
     assert a.relaxamento == b.relaxamento
+    assert a.detalhes == b.detalhes
 
 
 def test_sem_candidatos_nao_quebra():
@@ -141,10 +144,16 @@ def test_detalhe_do_reprovado_recuperado_tem_nota_super_none():
 def test_detalhe_reflete_penalidade_aplicada():
     # Imóvel elegível mas sem lead em 180d recebe a penalidade SEM_LEAD_180D,
     # visível no breakdown.
-    from dominio.penalidades import Penalidade
-
     cands = [_candidato(1)]
     penalizaveis = {1: _penalizavel(1, leads=0)}
     r = decidir(cands, penalizaveis, {1: _dims()}, PERFIS, PARAMS, HOJE)
     assert Penalidade.SEM_LEAD_180D in r.detalhes[1].descontos_por_penalidade
     assert r.detalhes[1].descontos_por_penalidade[Penalidade.SEM_LEAD_180D] == 0.10
+
+
+def test_imovel_id_duplicado_no_lote_e_erro():
+    # A guarda de unicidade fecha o buraco: id repetido atravessando
+    # elegível↔reprovado sobrescreveria detalhes em silêncio.
+    cands = [_candidato(1), _candidato(1, elegivel=False)]
+    with pytest.raises(ValueError, match="imovel_id duplicado"):
+        _rodar(cands, {1: _dims()})

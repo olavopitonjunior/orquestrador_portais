@@ -28,6 +28,7 @@ adotados (D-014). Vão rotulados na saída para a planilha.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -174,6 +175,14 @@ def decidir(
     saída. As cotas (invariante 6) e o relaxamento só-destaque (invariante 7)
     são garantidos pelos módulos do domínio, não reimplementados aqui.
     """
+    # imovel_id único no lote: alocar/relaxar detectam duplicata dentro do seu
+    # lote, mas um id que atravessasse elegível↔reprovado escaparia das duas
+    # guardas e sobrescreveria silenciosamente em `detalhes`. A costura fecha isso.
+    contagem = Counter(c.imovel_id for c in candidatos)
+    dups = sorted(i for i, n in contagem.items() if n > 1)
+    if dups:
+        raise ValueError(f"imovel_id duplicado no lote de candidatos: {dups}")
+
     elegiveis: list[ImovelCandidato] = []
     reprovados: list[tuple[ImovelCandidato, frozenset[Regra]]] = []
     for c in candidatos:
@@ -190,7 +199,7 @@ def decidir(
     for c in elegiveis:
         fat = fatores_el[c.imovel_id]
         descontos = _descontos(c.imovel_id, penalizaveis, parametros)  # uma vez por imóvel
-        desc_total = sum(descontos.values())
+        desc_total = sum(descontos.values(), 0.0)
         nota_super = nota_final(fat, PESOS_SUPER_DESTAQUE, desc_total)
         nota_dest = nota_final(fat, PESOS_DESTAQUE, desc_total)
         aloc_entrada.append(
@@ -220,7 +229,7 @@ def decidir(
         for c, rr in reprovados:
             fat = fatores_rep[c.imovel_id]
             descontos = _descontos(c.imovel_id, penalizaveis, parametros)
-            desc_total = sum(descontos.values())
+            desc_total = sum(descontos.values(), 0.0)
             nota_dest = nota_final(fat, PESOS_DESTAQUE, desc_total)
             pool.append(
                 CandidatoRelaxamento(
