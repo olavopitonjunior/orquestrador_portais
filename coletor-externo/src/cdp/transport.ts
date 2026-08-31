@@ -36,20 +36,30 @@ export async function readCapturedSessionId(page: Page): Promise<string | null> 
 }
 
 /**
- * Faz um GET JSON DENTRO da página autenticada. `headers` é montado pelo adapter
- * (inclui o header de portal e o de sessão, ambos com nomes do portal). Devolve
- * o envelope InPageResponse padronizado para a classificação de bloqueio/401.
+ * Faz um fetch JSON DENTRO da página autenticada. `headers` é montado pelo
+ * adapter (sessão + headers do portal). `opts` define método e corpo — o
+ * default é GET; POST é usado por APIs GraphQL (ex.: Canal Pro). `credentials:
+ * 'include'` herda cookies. Devolve o envelope InPageResponse padronizado para
+ * a classificação de bloqueio/401.
  */
 export async function fetchInPage<T = unknown>(
   page: Page,
   url: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  opts: { method?: string; body?: string } = {}
 ): Promise<InPageResponse<T>> {
-  const PAGE_FN = function (u: string, h: Record<string, string>): Promise<InPageResponse> {
+  const PAGE_FN = function (
+    u: string,
+    h: Record<string, string>,
+    o: { method?: string; body?: string }
+  ): Promise<InPageResponse> {
     function mk(ok: boolean, status: number, ct: string, json: unknown, snip: string | null): InPageResponse {
       return { ok: ok, status: status, contentType: ct, json: json, bodySnippet: snip };
     }
-    return fetch(u, { headers: h, credentials: 'include' })
+    const init: RequestInit = { headers: h, credentials: 'include' };
+    if (o.method) init.method = o.method;
+    if (o.body != null) init.body = o.body;
+    return fetch(u, init)
       .then(function (r): Promise<InPageResponse> {
         const ct = r.headers.get('content-type') || '';
         if (ct.indexOf('application/json') >= 0) {
@@ -62,7 +72,7 @@ export async function fetchInPage<T = unknown>(
       })
       .catch((e: { message?: string }) => mk(false, -1, '', null, String((e && e.message) || e)));
   };
-  return (await page.evaluate(PAGE_FN, url, headers)) as InPageResponse<T>;
+  return (await page.evaluate(PAGE_FN, url, headers, opts)) as InPageResponse<T>;
 }
 
 export function sessionOverride(): string {

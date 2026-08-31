@@ -1,0 +1,67 @@
+{
+  "_nota": "Fixture SINTÉTICA da resposta da query listings do Canal Pro. Sem headers de auth, sem campo pessoal, ids inventados. Reproduz só o shape dos campos que o adapter consome (docs coletor: CANALPRO_SCRAPE_RECIPE.md).",
+  "data": {
+    "listings": {
+      "listListing": [
+        {
+          "externalId": "IMOVEL-0001",
+          "id": "9000000001",
+          "score": 8442.5,
+          "scoreName": "lqsBeta",
+          "scoreStatus": "Status_NONE",
+          "publicationType": "PREMIUM",
+          "status": "ACTIVE",
+          "createdAt": "10/01/2026 09:00:00",
+          "portals": ["OLX", "VIVAREAL", "ZAP"],
+          "pricingInfos": [
+            { "price": 850000, "businessType": "SALE", "monthlyCondoFee": 600, "yearlyIptu": 3200 }
+          ],
+          "leads": {
+            "views": 128,
+            "contactForm": 4,
+            "phoneView": 9,
+            "clickProposal": 2,
+            "clickWhatsapp": 15,
+            "clickSchedule": 1
+          }
+        },
+        {
+          "externalId": "IMOVEL-0002",
+          "id": "9000000002",
+          "score": 5580,
+          "scoreName": "lqsBeta",
+          "scoreStatus": "Status_NONE",
+          "publicationType": "STANDARD",
+          "status": "ACTIVE",
+          "createdAt": "12/02/2026 14:30:00",
+          "portals": ["ZAP"],
+          "pricingInfos": [{ "price": 320000, "businessType": "SALE" }],
+          "leads": {
+            "views": 0,
+            "contactForm": 0,
+            "phoneView": 0,
+            "clickProposal": 0,
+            "clickWhatsapp": 0,
+            "clickSchedule": 0
+          }
+        },
+        {
+          "externalId": null,
+          "id": "9000000003",
+          "score": null,
+          "scoreName": "lqsBeta",
+          "publicationType": "STANDARD",
+          "status": "ACTIVE",
+          "createdAt": "01/03/2026 08:15:00",
+          "portals": [],
+          "pricingInfos": [],
+          "leads": { "views": 3 }
+        }
+      ],
+      "pageNumber": 1,
+      "pageSize": 30,
+      "totalPages": 2,
+      "totalResults": 33
+    }
+  }
+}
