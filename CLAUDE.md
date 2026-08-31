@@ -81,11 +81,11 @@ Divergência entre código e documento é **bug do código** até prova em contr
 
 ## Parâmetros ainda sem valor
 
-Onze parâmetros pendentes — lista consolidada pela decisão D-004 a partir de Spec §8, Ferramentas §6 e da tabela de parâmetros do PRD, que divergiam entre si. **Nenhum pode ser preenchido com valor inventado** — permanecem explicitamente nulos até serem definidos pelo dono da decisão.
+Onze parâmetros — lista consolidada pela decisão D-004 a partir de Spec §8, Ferramentas §6 e da tabela de parâmetros do PRD, que divergiam entre si. O nº 1 foi resolvido pelo dono em 2026-08-31 (D-014); os outros **dez seguem pendentes**. **Nenhum pendente pode ser preenchido com valor inventado** — permanecem explicitamente nulos até serem definidos pelo dono da decisão. Os provisórios da planilha-piloto (nº 2 e nº 3) são run-local, rotulados PROVISÓRIO na própria planilha e **não adotados**: seguem nulos aqui e nunca entram em `src/config`.
 
 | # | Parâmetro | Valor |
 |---|---|---|
-| 1 | Evidência mínima por combinação de perfil | nulo |
+| 1 | Evidência mínima por combinação de perfil | **N ≥ 3** (D-014, 2026-08-31) |
 | 2 | Forma de normalização de cada fator do ranking | nulo |
 | 3 | Intensidade das três penalidades e decaimento da penalidade por janela | nulo |
 | 4 | Tentativas e intervalo de repetição do Orquestrador | nulo |

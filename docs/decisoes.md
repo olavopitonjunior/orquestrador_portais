@@ -35,9 +35,9 @@ Onde os documentos disserem "nove regras", leia-se "oito regras gerais + piso de
 
 **Data**: 2026-08-29 · **Resolve**: contradição C2 (Spec §8 vs. Ferramentas §6 vs. tabela de parâmetros do PRD)
 
-A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais os dois que aparecem em apenas um documento. São **onze**, mantidos no CLAUDE.md, todos nulos até definição:
+A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais os dois que aparecem em apenas um documento. São **onze**, mantidos no CLAUDE.md. O nº 1 foi resolvido em 2026-08-31 (D-014, `N ≥ 3`); os outros **dez seguem nulos** até definição:
 
-1. Evidência mínima por combinação de perfil
+1. ~~Evidência mínima por combinação de perfil~~ — **resolvido: N ≥ 3 (D-014)**
 2. Forma de normalização de cada fator do ranking
 3. Intensidade das três penalidades e decaimento da penalidade por janela
 4. Tentativas e intervalo de repetição do Orquestrador
@@ -143,3 +143,31 @@ O código do coletor (portado do `imovelweb-ativos`) é a receita executável qu
 **Limites desta decisão** (ela autoriza o núcleo do coletor, e só ele): **NÃO** autoriza publicar credenciais, senha ou e-mail de conta do portal, o perfil do Chrome (`profileDir`), cookies, `cf_clearance` capturado, nem nomes de cluster/serviço AWS ou o runbook do ECS. Isso nunca foi sobre técnica e permanece fora de qualquer repositório público. A varredura de segredos do coletor (além do gitleaks) verifica essa fronteira; a proveniência da cópia é declarada no README do diretório.
 
 Esta é decisão de **processo**, não regra de decisão: registrada no CHANGELOG pela convenção do repositório, sem afetar nenhum invariante.
+
+## D-013 — Venda assinada em 180 dias inclui as posteriormente canceladas (177, não 171)
+
+**Data**: 2026-08-31 · **Resolve**: definição da métrica "venda assinada em 180 dias" que alimenta o perfil de conversão — nenhum documento-fonte fixava se um cancelamento posterior exclui a venda da contagem
+
+Medição (investigador de dados, 31/08): `FT_LeadsOffers.SignedAt` não nulo nos últimos 180 dias = **177 ofertas / 174 imóveis distintos**, batendo com a referência ~176 de 28/08 (+1 de deriva). Dessas 177, o `Status` traz **6 "Cancelado definitivamente" + 1 "aguardando cobrança"**, todas com `CancellationAt` nulo. A referência histórica inclui essas linhas; excluí-las daria **171** ("venda líquida").
+
+**Decisão do dono: venda = 177 (assinada em 180 dias), inclui as posteriormente canceladas.** A alternativa "líquida de cancelamento" (171) fica registrada como não escolhida. Consequência: o perfil de conversão (D-014) e qualquer contagem de vendas contam sobre 177. Se o dono um dia quiser a leitura líquida, esta decisão deve ser revista — muda a base de todo o perfil.
+
+## D-014 — Evidência mínima por perfil (parâmetro pendente nº 1) = N ≥ 3
+
+**Data**: 2026-08-31 · **Resolve**: parâmetro pendente nº 1 da D-004 ("evidência mínima por combinação de perfil")
+
+Ancorado em medição (distribuição de vendas por perfil, investigador 31/08, sobre as 177 vendas da D-013): **a localização é o gargalo do sinal**. Cobertura das vendas por buckets que atingem o limiar — localização isolada cai de **69% (N≥3) para 32% (N≥5)**; o par localização×dormitórios **zera em N≥8**. Dimensões grosseiras (metragem, vagas) aguentam limiar alto sem perder cobertura, mas dão perfis pouco específicos.
+
+**Decisão do dono: piso único N ≥ 3 para a piloto.** É o menor limiar defensável — abaixo dele, um bucket sobre 177 vendas é coincidência e não padrão — e o único que mantém o sinal geográfico e os pares finos utilizáveis. O dono considerou o esquema diferenciado (N≥3 para dimensões finas, N≥5 para grosseiras) e optou pelo piso único, mais simples de auditar na piloto.
+
+**Isto resolve o nº 1 na lista da D-004.** Os outros dez parâmetros seguem nulos. Os provisórios nº 2 (normalização) e nº 3 (intensidades das penalidades) usados na planilha-piloto são **run-local, rotulados PROVISÓRIO na própria planilha, e NÃO adotados** — continuam nulos na lista canônica e nunca entram em `src/config`.
+
+## D-015 — "Corretor ativo no distrito" = captou ou vendeu em 30 dias (produtivos), fiel à Spec §6.1
+
+**Data**: 2026-08-31 · **Resolve**: `DefinicaoAtivoDistrito`, pendência de mapeamento declarada no Coletor Interno (PR #14) — qual coluna de `FT_Districts` implementa a regra de capacidade do distrito
+
+**Não é lacuna de regra.** A Spec §6.1 já define "corretor ativo no distrito" por extenso: *"Dois ou mais corretores que **captaram ou venderam** nos últimos 30 dias"*. A pendência do PR-A era só de implementação — qual coluna materializa esse texto — não de qual critério adotar.
+
+Medição 31/08: a cobertura de distritos com ≥2 muda conforme a coluna — total 94,8% · logou-30d 76,8% · **produtivos (captou ou vendeu) 45,9%**.
+
+**Decisão do dono: seguir a Spec — "ativo" = captou ou vendeu nos últimos 30 dias** (coluna `BrokersProductivity`, 45,9%). Alinhado ao texto literal da §6.1; **nenhuma divergência a declarar**. A alternativa "logou em 30d" (`Brokers_logged30d`, 76,8%) foi apresentada e **descartada por divergir da Spec** — adotá-la seria override do texto de §6.1, exigindo atualização de Spec/PRD (modelo D-011), e o dono optou por não abrir essa divergência. **Move o funil de elegibilidade para 45,9% de cobertura ≥2: é decisão que muda quem é elegível, não detalhe de operação.**
