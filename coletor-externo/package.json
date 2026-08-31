@@ -1,0 +1,26 @@
+{
+  "name": "coletor-externo",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Coletor Externo: raspagem do Canal Pro via CDP no Chrome real (núcleo agnóstico + adapter por portal). Ver docs/decisoes.md D-010.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "canary": "node --import tsx src/run.ts --canary",
+    "full": "node --import tsx src/run.ts --full"
+  },
+  "dependencies": {
+    "dotenv": "16.4.7",
+    "puppeteer-core": "23.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2"
+  }
+}

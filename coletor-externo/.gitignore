@@ -1,0 +1,10 @@
+# Saída de rodada e artefatos de sessão — NUNCA commitados (D-012).
+# out/ guarda o CSV raspado, status.json, NEEDS_WARM.flag; tmp/ o perfil do Chrome.
+out/
+tmp/
+
+# Node
+node_modules/
+
+# Ambiente (segredos vêm de process.env; .env é local)
+.env
