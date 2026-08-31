@@ -15,6 +15,7 @@ from dominio.penalidades import (
     Penalidade,
     ciclos_desde_janela_sem_resultado,
     desconto_total,
+    descontos_por_penalidade,
     penalidades_aplicaveis,
 )
 
@@ -251,3 +252,34 @@ def test_mesma_entrada_mesma_saida():
         for _ in range(50)
     }
     assert len(resultados) == 1
+
+
+# --- detalhamento por penalidade (Spec §2.1/§6.4): breakdown e soma ---------
+
+
+def test_descontos_por_penalidade_soma_bate_com_total():
+    # As três penalidades ligadas: o breakdown por penalidade soma exatamente o
+    # desconto_total (o total deriva do breakdown — sem divergência possível).
+    alvo = imovel(
+        janelas_anteriores=(janela(atingiu=False),),
+        alguma_categoria_avaliada=False,
+        leads_180d=0,
+    )
+    breakdown = descontos_por_penalidade(alvo, INTENSIDADES, sem_decaimento)
+    assert breakdown == {
+        Penalidade.JANELA_SEM_RESULTADO: 10.0,
+        Penalidade.SEM_AVALIACAO_POR_CATEGORIA: 5.0,
+        Penalidade.SEM_LEAD_180D: 2.0,
+    }
+    assert sum(breakdown.values()) == desconto_total(alvo, INTENSIDADES, sem_decaimento)
+
+
+def test_descontos_por_penalidade_so_lista_aplicadas():
+    # Imóvel sem nenhuma penalidade: dict vazio (ausência = não aplicada).
+    assert descontos_por_penalidade(imovel(), INTENSIDADES, sem_decaimento) == {}
+
+
+def test_descontos_por_penalidade_aplica_decaimento_na_janela():
+    alvo = imovel(janelas_anteriores=(janela(atingiu=False),))
+    breakdown = descontos_por_penalidade(alvo, INTENSIDADES, lambda _: 0.5)
+    assert breakdown[Penalidade.JANELA_SEM_RESULTADO] == 5.0  # 10.0 × 0.5

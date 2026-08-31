@@ -143,12 +143,17 @@ def ciclos_desde_janela_sem_resultado(imovel: ImovelPenalizavel) -> int | None:
     return min(ciclos) if ciclos else None
 
 
-def desconto_total(
+def descontos_por_penalidade(
     imovel: ImovelPenalizavel,
     intensidades: IntensidadesPenalidade,
     decaimento_janela: Callable[[int], float],
-) -> float:
-    """Soma dos descontos a subtrair da nota final (Spec §6.3).
+) -> dict[Penalidade, float]:
+    """O desconto de CADA penalidade aplicável, por penalidade (Spec §6.4/§2.1).
+
+    A planilha justificada exige "o valor de cada uma das três penalidades"
+    (Spec §2.1) — este é o detalhamento autoritativo, e `desconto_total` é a
+    soma dele (nenhuma recomputação divergente possível). Só penalidades
+    efetivamente aplicadas entram no dict; ausência = não aplicada.
 
     `decaimento_janela` é a forma pendente do parâmetro nº 3: recebe os
     ciclos desde a janela sem resultado mais recente e devolve o fator
@@ -157,7 +162,7 @@ def desconto_total(
     nem a converte em bônus. Fora da faixa, erro determinístico.
     """
     aplicaveis = penalidades_aplicaveis(imovel)
-    total = 0.0
+    descontos: dict[Penalidade, float] = {}
 
     # ciclos não é None ⇔ JANELA_SEM_RESULTADO ∈ aplicaveis (mesmo predicado
     # sobre a mesma tupla imutável); condicionar por ele dispensa narrowing.
@@ -166,10 +171,24 @@ def desconto_total(
         fator = decaimento_janela(ciclos)
         if not 0.0 <= fator <= 1.0:
             raise ValueError(f"decaimento fora de [0, 1]: {fator} para {ciclos} ciclos")
-        total += intensidades.janela_sem_resultado * fator
+        descontos[Penalidade.JANELA_SEM_RESULTADO] = intensidades.janela_sem_resultado * fator
     if Penalidade.SEM_AVALIACAO_POR_CATEGORIA in aplicaveis:
-        total += intensidades.sem_avaliacao_por_categoria
+        descontos[Penalidade.SEM_AVALIACAO_POR_CATEGORIA] = intensidades.sem_avaliacao_por_categoria
     if Penalidade.SEM_LEAD_180D in aplicaveis:
-        total += intensidades.sem_lead_180d
+        descontos[Penalidade.SEM_LEAD_180D] = intensidades.sem_lead_180d
 
-    return total
+    return descontos
+
+
+def desconto_total(
+    imovel: ImovelPenalizavel,
+    intensidades: IntensidadesPenalidade,
+    decaimento_janela: Callable[[int], float],
+) -> float:
+    """Soma dos descontos a subtrair da nota final (Spec §6.3).
+
+    É a soma de `descontos_por_penalidade` — a fonte autoritativa é o
+    detalhamento; o total deriva dele, então breakdown e total nunca divergem.
+    """
+    # start=0.0 garante float mesmo sem penalidade (sum de dict vazio daria int 0).
+    return sum(descontos_por_penalidade(imovel, intensidades, decaimento_janela).values(), 0.0)
