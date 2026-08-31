@@ -8,9 +8,14 @@ nunca casaria e a semelhança viraria zero para todos — sem erro nenhum. Por i
 a lógica vive fora de vendas.py e de qualquer leitor de candidato: os dois
 importam daqui.
 
-A bucketização é escolha da coleta (não do domínio), declarada e calibrável —
-não é nenhum dos onze parâmetros pendentes da D-004. Faixas de preço ancoradas
-nos pisos da Spec §6.1 (R$ 300.000 geral, R$ 700.000 super destaque).
+A bucketização é escolha da coleta (não do domínio), declarada e calibrável.
+NÃO é um dos onze parâmetros pendentes da D-004 (tem valor concreto, não é nulo),
+MAS é config que AFETA a decisão: as faixas determinam qual candidato casa qual
+perfil, que alimenta `semelhanca_perfil` (peso 60/80, o maior do ranking). Mudar
+uma faixa muda quem casa qual perfil, muda o ranking, muda quem ganha posição
+paga — portanto **mudança nas faixas EXIGE entrada no CHANGELOG** (a convenção
+existe pela comparabilidade entre rodadas). Faixas de preço ancoradas nos pisos
+da Spec §6.1 (R$ 300.000 geral, R$ 700.000 super destaque).
 """
 
 from __future__ import annotations
@@ -18,8 +23,8 @@ from __future__ import annotations
 from typing import Any
 
 # Faixas de preço em REAIS, faixa [inferior, superior). Ancoradas nos pisos da
-# Spec §6.1. Mudar as faixas muda como imóveis se agrupam no perfil — é decisão
-# de coleta, registrada, não um parâmetro pendente.
+# Spec §6.1. Mudar as faixas muda quem casa qual perfil e portanto o ranking —
+# config que afeta a decisão: mudança aqui EXIGE entrada no CHANGELOG (ver topo).
 _FAIXAS_PRECO: tuple[tuple[int, str], ...] = (
     (300_000, "< 300k"),
     (500_000, "300k–500k"),
