@@ -37,26 +37,29 @@ export async function readCapturedSessionId(page: Page): Promise<string | null> 
 
 /**
  * Faz um fetch JSON DENTRO da página autenticada. `headers` é montado pelo
- * adapter (sessão + headers do portal). `opts` define método e corpo — o
- * default é GET; POST é usado por APIs GraphQL (ex.: Canal Pro). `credentials:
- * 'include'` herda cookies. Devolve o envelope InPageResponse padronizado para
- * a classificação de bloqueio/401.
+ * adapter (sessão + headers do portal). `opts` define método, corpo e
+ * credenciais. O default de `credentials` é 'include' (herda cookies, para
+ * portais que autenticam por cookie). Portais que autenticam por header
+ * (Bearer) devem passar 'omit' EXPLICITAMENTE: um servidor GraphQL com
+ * Access-Control-Allow-Origin permissivo rejeita no preflight uma requisição
+ * cross-origin com credenciais (validado no canário do Canal Pro em 31/08 —
+ * 'include' → CORS status 0; 'omit' → 200). Devolve o envelope InPageResponse.
  */
 export async function fetchInPage<T = unknown>(
   page: Page,
   url: string,
   headers: Record<string, string>,
-  opts: { method?: string; body?: string } = {}
+  opts: { method?: string; body?: string; credentials?: RequestCredentials } = {}
 ): Promise<InPageResponse<T>> {
   const PAGE_FN = function (
     u: string,
     h: Record<string, string>,
-    o: { method?: string; body?: string }
+    o: { method?: string; body?: string; credentials?: RequestCredentials }
   ): Promise<InPageResponse> {
     function mk(ok: boolean, status: number, ct: string, json: unknown, snip: string | null): InPageResponse {
       return { ok: ok, status: status, contentType: ct, json: json, bodySnippet: snip };
     }
-    const init: RequestInit = { headers: h, credentials: 'include' };
+    const init: RequestInit = { headers: h, credentials: o.credentials ?? 'include' };
     if (o.method) init.method = o.method;
     if (o.body != null) init.body = o.body;
     return fetch(u, init)

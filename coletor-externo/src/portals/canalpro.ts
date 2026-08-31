@@ -17,7 +17,10 @@ import { InPageResponse } from '../core/types';
 
 const ID = 'canalpro';
 const ENDPOINT = 'https://gandalf-api.grupozap.com/';
-const PAGE_SIZE = 30;
+// 100/página (o máximo que o canário validou): com ~55 mil anúncios, são ~551
+// requisições em vez de ~1.836 a 30/página — 3× menos batidas no portal
+// (superfície anti-bot). O checkpoint por página continua igual.
+const PAGE_SIZE = 100;
 
 // Sessão do Canal Pro: os headers de auth capturados de uma XHR real.
 // Opaca ao núcleo; NUNCA logada, persistida ou impressa (segredo de sessão).
@@ -141,7 +144,9 @@ async function postListings(
     page,
     ENDPOINT,
     headers,
-    { method: 'POST', body }
+    // credentials 'omit' EXPLÍCITO: o Canal Pro autentica por Bearer no header,
+    // não por cookie; com credenciais o preflight CORS rejeita (canário 31/08).
+    { method: 'POST', body, credentials: 'omit' }
   );
   return classificarResposta(resp);
 }
