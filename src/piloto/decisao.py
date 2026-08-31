@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from dominio.alocacao import COTA_DESTAQUE, Alocacao, CandidatoAlocacao, alocar
-from dominio.elegibilidade import ImovelCandidato, regras_reprovadas
+from dominio.elegibilidade import ImovelCandidato, Regra, regras_reprovadas
 from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, desconto_total
 from dominio.perfil import PerfilConversao
 from dominio.ranking import (
@@ -112,7 +112,9 @@ def _fatores(
     }
 
 
-def _desconto(imovel_id: int, penalizaveis: Mapping[int, ImovelPenalizavel], p: ParametrosDecisao):
+def _desconto(
+    imovel_id: int, penalizaveis: Mapping[int, ImovelPenalizavel], p: ParametrosDecisao
+) -> float:
     pen = penalizaveis.get(imovel_id)
     if pen is None:
         raise ValueError(f"imóvel {imovel_id} sem ImovelPenalizavel: coleta desalinhada")
@@ -143,7 +145,7 @@ def decidir(
     são garantidos pelos módulos do domínio, não reimplementados aqui.
     """
     elegiveis: list[ImovelCandidato] = []
-    reprovados: list[tuple[ImovelCandidato, frozenset]] = []
+    reprovados: list[tuple[ImovelCandidato, frozenset[Regra]]] = []
     for c in candidatos:
         rr = regras_reprovadas(c, data_referencia)
         if rr:
@@ -186,7 +188,8 @@ def decidir(
         ]
         relaxamento = relaxar(deficit, pool)
     else:
-        relaxamento = relaxar(max(deficit, 0), [])
+        # deficit ≥ 0 sempre (o slice da alocação garante len(destaque) ≤ cota).
+        relaxamento = relaxar(deficit, [])
 
     return ResultadoDecisao(
         alocacao=alocacao,
