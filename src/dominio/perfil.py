@@ -96,9 +96,7 @@ class PerfilConversao:
 
     def __post_init__(self) -> None:
         if not 1 <= len(self.dimensoes) <= 2:
-            raise ValueError(
-                f"perfil deve ter 1 ou 2 dimensões, tem {len(self.dimensoes)}"
-            )
+            raise ValueError(f"perfil deve ter 1 ou 2 dimensões, tem {len(self.dimensoes)}")
         if len(self.dimensoes) != len(self.valores):
             raise ValueError("dimensoes e valores devem ter o mesmo comprimento")
         if self.num_vendas < 1:

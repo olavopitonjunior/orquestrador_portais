@@ -16,8 +16,9 @@ from dominio.perfil import (
 )
 
 
-def _vendido(imovel_id, regiao=None, faixa_preco=None, faixa_metragem=None,
-             dormitorios=None, vagas=None):
+def _vendido(
+    imovel_id, regiao=None, faixa_preco=None, faixa_metragem=None, dormitorios=None, vagas=None
+):
     return ImovelVendido(
         imovel_id=imovel_id,
         regiao=regiao,
@@ -34,11 +35,9 @@ def test_valores_exclui_none():
 
 
 def test_conta_uma_dimensao():
-    vendas = [_vendido(1, regiao="Centro"), _vendido(2, regiao="Centro"),
-              _vendido(3, regiao="Sul")]
+    vendas = [_vendido(1, regiao="Centro"), _vendido(2, regiao="Centro"), _vendido(3, regiao="Sul")]
     perfis = perfis_de_conversao(vendas)
-    por_regiao = {p.valores: p.num_vendas for p in perfis
-                  if p.dimensoes == (Dimensao.REGIAO,)}
+    por_regiao = {p.valores: p.num_vendas for p in perfis if p.dimensoes == (Dimensao.REGIAO,)}
     assert por_regiao == {("Centro",): 2, ("Sul",): 1}
 
 
@@ -48,16 +47,18 @@ def test_conta_duas_dimensoes():
         _vendido(2, regiao="Centro", dormitorios=2),
         _vendido(3, regiao="Centro", dormitorios=3),
     ]
-    par = [p for p in perfis_de_conversao(vendas)
-           if p.dimensoes == (Dimensao.REGIAO, Dimensao.DORMITORIOS)]
+    par = [
+        p
+        for p in perfis_de_conversao(vendas)
+        if p.dimensoes == (Dimensao.REGIAO, Dimensao.DORMITORIOS)
+    ]
     contagem = {p.valores: p.num_vendas for p in par}
     assert contagem == {("Centro", 2): 2, ("Centro", 3): 1}
 
 
 def test_nunca_tres_dimensoes():
     # Spec §6.2: nunca as cinco (nem três) simultaneamente. Só 1 e 2 dims saem.
-    vendas = [_vendido(1, regiao="C", faixa_preco="A", faixa_metragem="M",
-                       dormitorios=2, vagas=1)]
+    vendas = [_vendido(1, regiao="C", faixa_preco="A", faixa_metragem="M", dormitorios=2, vagas=1)]
     assert all(1 <= len(p.dimensoes) <= 2 for p in perfis_de_conversao(vendas))
 
 
@@ -76,10 +77,12 @@ def test_dimensao_nula_nao_entra_em_combinacao():
 
 def test_fragilidade_no_limiar():
     # N == EVIDENCIA_MINIMA (3) é robusto; N < 3 é frágil. Ambos permanecem.
-    vendas = ([_vendido(i, regiao="Robusto") for i in range(EVIDENCIA_MINIMA)]
-              + [_vendido(99, regiao="Fragil")])
-    perfis = {p.valores[0]: p for p in perfis_de_conversao(vendas)
-              if p.dimensoes == (Dimensao.REGIAO,)}
+    vendas = [_vendido(i, regiao="Robusto") for i in range(EVIDENCIA_MINIMA)] + [
+        _vendido(99, regiao="Fragil")
+    ]
+    perfis = {
+        p.valores[0]: p for p in perfis_de_conversao(vendas) if p.dimensoes == (Dimensao.REGIAO,)
+    }
     assert perfis["Robusto"].num_vendas == 3
     assert perfis["Robusto"].fragil is False
     assert perfis["Fragil"].num_vendas == 1
@@ -89,8 +92,7 @@ def test_fragilidade_no_limiar():
 def test_fragilidade_vizinho_do_limiar():
     # N=2 (logo abaixo de 3) é frágil; N=3 é robusto. Cobre a borda exata.
     vendas = [_vendido(1, regiao="Dois"), _vendido(2, regiao="Dois")]
-    perfil = next(p for p in perfis_de_conversao(vendas)
-                  if p.dimensoes == (Dimensao.REGIAO,))
+    perfil = next(p for p in perfis_de_conversao(vendas) if p.dimensoes == (Dimensao.REGIAO,))
     assert perfil.num_vendas == 2
     assert perfil.fragil is True
 
@@ -134,8 +136,7 @@ def test_ordem_canonica_e_deterministica():
 
 
 def test_ordem_por_dimensao_depois_valor():
-    vendas = [_vendido(1, regiao="Sul", dormitorios=1),
-              _vendido(2, regiao="Centro", dormitorios=1)]
+    vendas = [_vendido(1, regiao="Sul", dormitorios=1), _vendido(2, regiao="Centro", dormitorios=1)]
     perfis = perfis_de_conversao(vendas)
     # Perfis de 1 dimensão de REGIAO vêm antes dos de DORMITORIOS (ordem do enum),
     # e dentro de REGIAO, "Centro" antes de "Sul".

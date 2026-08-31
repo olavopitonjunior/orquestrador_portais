@@ -35,7 +35,7 @@ def test_linha_para_vendido_monta_dimensoes():
 def test_faixa_de_preco_nos_limites():
     assert _faixa_de_preco(299_999) == "< 300k"
     assert _faixa_de_preco(300_000) == "300k–500k"  # limite inferior inclusivo
-    assert _faixa_de_preco(700_000) == "700k–1M"    # piso do super destaque
+    assert _faixa_de_preco(700_000) == "700k–1M"  # piso do super destaque
     assert _faixa_de_preco(3_000_000) == "≥ 3M"
     assert _faixa_de_preco(None) is None
 
