@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <header className="topo">
           <div className="marca">Vitrine · Console do Operador</div>
           <nav className="nav">
-            <a href="/">Rodadas</a>
+            <a href="/">Painel</a>
           </nav>
         </header>
         <main className="conteudo">{children}</main>
