@@ -1,9 +1,10 @@
-"""Testes do ranking (Spec §6.3, D-008).
+"""Testes do ranking (Spec §6.3, D-008, redesenho D-017).
 
-Contratos cobertos: os dois conjuntos de pesos exatamente como na Spec,
-soma 100 obrigatória, aritmética da soma ponderada, desconto de penalidades
-(inclusive integração com dominio.penalidades), validação de finitude e
-determinismo (invariantes 4 e 5).
+Contratos cobertos: os default-ponte PROVISÓRIOS dos pesos (D-017 tornou os
+pesos parâmetro nulo, leads dormente), soma 100 obrigatória sobre os QUATRO
+fatores, o fator leads positivo (F2), aritmética da soma ponderada, desconto
+de penalidades (inclusive integração com dominio.penalidades), validação de
+finitude e determinismo (invariantes 4 e 5).
 """
 
 import pytest
@@ -31,42 +32,62 @@ def fatores(**kwargs) -> FatoresNormalizados:
     return FatoresNormalizados(**base)
 
 
-# --- pesos: os dois conjuntos da Spec §6.3 -----------------------------------
+# --- pesos: default-ponte PROVISÓRIO (D-017 tornou os pesos parâmetro nulo) ---
 
 
-def test_pesos_super_destaque_sao_os_da_spec():
+def test_pesos_super_destaque_default_provisorio_com_leads_dormente():
+    # D-017: os pesos deixaram de ser adotados (nulos). A constante é
+    # default-ponte PROVISÓRIO — valores pré-D-017 da §6.3 com leads dormente (0).
     assert (
         PESOS_SUPER_DESTAQUE.semelhanca_perfil,
+        PESOS_SUPER_DESTAQUE.leads_positivo,
         PESOS_SUPER_DESTAQUE.desempenho_proprio,
         PESOS_SUPER_DESTAQUE.produtividade_gestor,
-    ) == (60, 25, 15)
+    ) == (60, 0, 25, 15)
 
 
-def test_pesos_destaque_sao_os_da_spec():
+def test_pesos_destaque_default_provisorio_com_leads_dormente():
     assert (
         PESOS_DESTAQUE.semelhanca_perfil,
+        PESOS_DESTAQUE.leads_positivo,
         PESOS_DESTAQUE.desempenho_proprio,
         PESOS_DESTAQUE.produtividade_gestor,
-    ) == (80, 10, 10)
+    ) == (80, 0, 10, 10)
 
 
-@pytest.mark.parametrize("pesos", [(60, 25, 16), (100, 0, 1), (0, 0, 0)])  # soma != 100
+@pytest.mark.parametrize("pesos", [(60, 0, 25, 16), (100, 0, 0, 1), (0, 0, 0, 0)])  # soma != 100
 def test_pesos_que_nao_somam_100_sao_erro(pesos):
-    s, d, p = pesos
+    s, le, d, p = pesos
     with pytest.raises(ValueError, match="pesos devem somar 100"):
-        PesosNivel(semelhanca_perfil=s, desempenho_proprio=d, produtividade_gestor=p)
+        PesosNivel(
+            semelhanca_perfil=s, leads_positivo=le, desempenho_proprio=d, produtividade_gestor=p
+        )
 
 
-@pytest.mark.parametrize("pesos", [(150, -30, -20), (110, 0, -10)])
+@pytest.mark.parametrize("pesos", [(150, 0, -30, -20), (110, 0, 0, -10)])
 def test_peso_negativo_e_erro_mesmo_somando_100(pesos):
-    s, d, p = pesos
+    s, le, d, p = pesos
     with pytest.raises(ValueError, match="peso inválido"):
-        PesosNivel(semelhanca_perfil=s, desempenho_proprio=d, produtividade_gestor=p)
+        PesosNivel(
+            semelhanca_perfil=s, leads_positivo=le, desempenho_proprio=d, produtividade_gestor=p
+        )
 
 
 def test_peso_nao_inteiro_e_erro():
     with pytest.raises(ValueError, match="peso inválido"):
-        PesosNivel(semelhanca_perfil=50.5, desempenho_proprio=49.5, produtividade_gestor=0.0)  # type: ignore[arg-type]
+        PesosNivel(
+            semelhanca_perfil=50.5,  # type: ignore[arg-type]
+            leads_positivo=0,
+            desempenho_proprio=49.5,  # type: ignore[arg-type]
+            produtividade_gestor=0.0,  # type: ignore[arg-type]
+        )
+
+
+def test_peso_leads_negativo_e_erro():
+    with pytest.raises(ValueError, match="peso inválido para leads_positivo"):
+        PesosNivel(
+            semelhanca_perfil=60, leads_positivo=-10, desempenho_proprio=25, produtividade_gestor=25
+        )
 
 
 def test_pesos_sem_todos_os_campos_falham():
@@ -83,7 +104,9 @@ def test_nota_bruta_e_a_soma_ponderada_literal():
     assert nota_bruta(f, PESOS_DESTAQUE) == 80.0
 
 
-def test_nota_bruta_combina_os_tres_fatores():
+def test_nota_bruta_combina_os_quatro_fatores():
+    # leads dormente (default 0.0, peso 0 nas constantes-ponte) → o termo novo
+    # some, então a combinação reduz aos três fatores pré-D-017.
     f = fatores(semelhanca_perfil=1.0, desempenho_proprio=0.5, produtividade_gestor=0.2)
     assert nota_bruta(f, PESOS_SUPER_DESTAQUE) == 60 * 1.0 + 25 * 0.5 + 15 * 0.2
     assert nota_bruta(f, PESOS_DESTAQUE) == 80 * 1.0 + 10 * 0.5 + 10 * 0.2
@@ -94,6 +117,42 @@ def test_mesmos_fatores_notas_diferentes_por_nivel():
     # mais no super destaque.
     f = fatores(semelhanca_perfil=0.0, desempenho_proprio=1.0, produtividade_gestor=0.0)
     assert nota_bruta(f, PESOS_SUPER_DESTAQUE) == 2.5 * nota_bruta(f, PESOS_DESTAQUE)
+
+
+# --- F2: fator leads positivo (D-017) -----------------------------------------
+
+
+def test_leads_positivo_entra_na_soma_ponderada():
+    pesos = PesosNivel(
+        semelhanca_perfil=50, leads_positivo=30, desempenho_proprio=10, produtividade_gestor=10
+    )
+    f = fatores(semelhanca_perfil=0.0, desempenho_proprio=0.0, produtividade_gestor=0.0, leads=1.0)
+    assert nota_bruta(f, pesos) == 30.0
+
+
+def test_leads_dormente_por_default_nao_altera_a_nota():
+    # Sem leads no fator (default 0.0) e peso 0 nas constantes-ponte: a nota é
+    # exatamente a do esquema pré-D-017 — garante a compat da fatia dormente.
+    f = fatores(semelhanca_perfil=1.0, desempenho_proprio=0.5, produtividade_gestor=0.2)
+    assert f.leads == 0.0
+    assert nota_bruta(f, PESOS_SUPER_DESTAQUE) == 60 * 1.0 + 25 * 0.5 + 15 * 0.2
+
+
+@pytest.mark.parametrize("invalido", [float("nan"), float("inf"), float("-inf")])
+def test_fator_leads_nao_finito_e_erro(invalido):
+    with pytest.raises(ValueError, match="fator não finito para leads"):
+        fatores(leads=invalido)
+
+
+def test_fator_leads_negativo_e_aceito():
+    # Simetria com test_fator_negativo_e_aceito: o módulo só impõe finitude, não
+    # faixa (a escala é o parâmetro pendente nº 2). Um leads negativo é aceito;
+    # se a normalização definida excluir negativos, a faixa nasce com ela.
+    pesos = PesosNivel(
+        semelhanca_perfil=50, leads_positivo=30, desempenho_proprio=10, produtividade_gestor=10
+    )
+    f = fatores(semelhanca_perfil=0.0, desempenho_proprio=0.0, produtividade_gestor=0.0, leads=-1.0)
+    assert nota_bruta(f, pesos) == -30.0
 
 
 # --- nota final: desconto de penalidades --------------------------------------

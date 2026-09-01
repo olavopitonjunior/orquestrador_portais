@@ -81,7 +81,7 @@ Divergência entre código e documento é **bug do código** até prova em contr
 
 ## Parâmetros ainda sem valor
 
-Onze parâmetros — lista consolidada pela decisão D-004 a partir de Spec §8, Ferramentas §6 e da tabela de parâmetros do PRD, que divergiam entre si. O nº 1 foi resolvido pelo dono em 2026-08-31 (D-014); os outros **dez seguem pendentes**. **Nenhum pendente pode ser preenchido com valor inventado** — permanecem explicitamente nulos até serem definidos pelo dono da decisão. Os provisórios da planilha-piloto (nº 2 e nº 3) são run-local, rotulados PROVISÓRIO na própria planilha e **não adotados**: seguem nulos aqui e nunca entram em `src/config`.
+Treze parâmetros. Os onze primeiros foram consolidados pela decisão D-004 a partir de Spec §8, Ferramentas §6 e da tabela de parâmetros do PRD, que divergiam entre si; a **D-017** acrescentou o nº 12 e o nº 13, que a Spec §6.3 dava como **definidos** e o redesenho do ranking tornou nulos. O nº 1 foi resolvido pelo dono em 2026-08-31 (D-014); os outros **doze seguem pendentes**. **Nenhum pendente pode ser preenchido com valor inventado** — permanecem explicitamente nulos até serem definidos pelo dono da decisão. Os provisórios da planilha-piloto (nº 2, nº 3, nº 12 e nº 13) são run-local, rotulados PROVISÓRIO na própria planilha e **não adotados**: seguem nulos aqui e nunca entram em `src/config`.
 
 | # | Parâmetro | Valor |
 |---|---|---|
@@ -96,6 +96,8 @@ Onze parâmetros — lista consolidada pela decisão D-004 a partir de Spec §8,
 | 9 | Política de retenção do Registro | nulo |
 | 10 | Prazo da aprovação tácita | nulo |
 | 11 | Prazo de atendimento de lead e limite de inatividade | nulo |
+| 12 | Pesos dos quatro fatores do ranking por nível (semelhança, leads, desempenho, produtividade) — antes definidos na Spec §6.3 | nulo (D-017) |
+| 13 | Decaimento do peso por dimensão do F1 (magnitude da queda na ordem preço > localização > metragem > dormitórios > vagas; a ordem é adotada, a magnitude é nula) | nulo (D-017) |
 
 ## Antes de commitar
 
