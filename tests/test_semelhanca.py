@@ -16,7 +16,10 @@ from piloto.semelhanca import (
     sinal_bruto,
 )
 
-PARAMS = ParametrosSemelhanca(desconto_fragil=0.5)
+# decaimento=1.0 → todos os pesos de dimensão são 1.0, então a ponderação por
+# dimensão (D-017) é identidade e estes testes seguem exercitando o sinal cru.
+# A de-saturação (decaimento < 1) tem testes próprios abaixo.
+PARAMS = ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0)
 
 
 def _perfil(dims, vals, n):
@@ -109,9 +112,16 @@ def test_vazio():
 
 def test_parametros_rejeita_desconto_fora_da_faixa():
     with pytest.raises(ValueError, match="desconto_fragil"):
-        ParametrosSemelhanca(desconto_fragil=1.5)
+        ParametrosSemelhanca(desconto_fragil=1.5, decaimento=1.0)
     with pytest.raises(ValueError, match="desconto_fragil"):
-        ParametrosSemelhanca(desconto_fragil=-0.1)
+        ParametrosSemelhanca(desconto_fragil=-0.1, decaimento=1.0)
+
+
+def test_parametros_rejeita_decaimento_fora_da_faixa():
+    # (0, 1]: 0 e negativos e >1 são inválidos; 1.0 é válido (não de-satura).
+    for invalido in (0.0, -0.1, 1.0001, 2.0):
+        with pytest.raises(ValueError, match="decaimento fora de"):
+            ParametrosSemelhanca(desconto_fragil=0.5, decaimento=invalido)
 
 
 # --- perfil que puxou (argmax) e a concordância com o sinal (fonte única) -----
@@ -154,3 +164,41 @@ def test_concordancia_com_fragil_descontado():
     pqp = perfil_que_puxou(dims, perfis, PARAMS)
     assert pqp is FRAGIL
     assert pqp.num_vendas * PARAMS.desconto_fragil == sinal
+
+
+# --- de-saturação: peso decrescente por dimensão (D-017) ----------------------
+
+# Candidato que casa DOIS perfis: um de FAIXA_PRECO (prioridade máxima) com
+# menos vendas, e um amplo de VAGAS (prioridade mínima) com mais vendas — o
+# padrão da saturação real (um perfil amplo de dimensão pouco importante
+# dominando pela contagem).
+CAND_PRECO_VAGAS = {Dimensao.FAIXA_PRECO: "700k-1M", Dimensao.VAGAS: 2}
+PERFIL_PRECO = _perfil((Dimensao.FAIXA_PRECO,), ("700k-1M",), 5)  # alta prioridade, N=5
+PERFIL_VAGAS = _perfil((Dimensao.VAGAS,), (2,), 10)  # baixa prioridade, N=10 (amplo)
+PERFIS_DESATURA = (PERFIL_PRECO, PERFIL_VAGAS)
+
+
+def test_sem_de_saturacao_o_perfil_amplo_de_baixa_prioridade_domina():
+    # decaimento=1.0: pesos de dimensão todos 1.0, então vence a maior contagem
+    # (vagas, N=10) — a saturação.
+    params = ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0)
+    assert sinal_bruto(CAND_PRECO_VAGAS, PERFIS_DESATURA, params) == 10.0
+    assert perfil_que_puxou(CAND_PRECO_VAGAS, PERFIS_DESATURA, params) == PERFIL_VAGAS
+
+
+def test_de_saturacao_faz_preco_vencer_vagas():
+    # decaimento=0.5: peso(vagas)=0.5**4=0.0625 → contribuição vagas=10*0.0625=0.625;
+    # peso(preço)=1.0 → contribuição preço=5. Preço passa a puxar. De-satura.
+    params = ParametrosSemelhanca(desconto_fragil=0.5, decaimento=0.5)
+    assert sinal_bruto(CAND_PRECO_VAGAS, PERFIS_DESATURA, params) == 5.0
+    assert perfil_que_puxou(CAND_PRECO_VAGAS, PERFIS_DESATURA, params) == PERFIL_PRECO
+
+
+def test_perfil_2d_vale_pela_dimensao_mais_importante():
+    # _peso_do_perfil = MÁXIMO dos pesos: um perfil (preço, vagas) vale como preço
+    # (peso 1.0), não como vagas — ancorado na dimensão mais importante.
+    params = ParametrosSemelhanca(desconto_fragil=0.5, decaimento=0.5)
+    cand = {Dimensao.FAIXA_PRECO: "700k-1M", Dimensao.VAGAS: 2}
+    perfil_2d = _perfil((Dimensao.FAIXA_PRECO, Dimensao.VAGAS), ("700k-1M", 2), 3)
+    # contribuição = 3 (N) * 1.0 (não frágil) * 1.0 (max(peso preço=1, peso vagas=0.0625))
+    assert sinal_bruto(cand, (perfil_2d,), params) == 3.0

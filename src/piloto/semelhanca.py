@@ -16,12 +16,18 @@ Leituras estruturais declaradas:
 1. MATCH: um candidato casa com um perfil quando, para TODA dimensão do perfil,
    o valor bucketizado do candidato é igual ao do perfil (mesma bucketização de
    dominio/dados.vendas). Dimensão que o candidato não tem (None) não casa.
-2. SINAL BRUTO: entre os perfis que o candidato casa, o sinal é o MAIOR número
-   de vendas (o padrão de conversão mais forte que ele satisfaz). Perfil frágil
-   (Spec §6.2 "não recebe peso pleno") contribui com num_vendas × desconto_fragil
-   (provisório). Candidato que não casa nenhum perfil tem sinal bruto 0.
-   Alternativa registrada (calibrável): ponderar por especificidade (2-dim > 1-dim)
-   em vez do máximo — fica para a calibração do dono, não v0.
+2. SINAL BRUTO: entre os perfis que o candidato casa, o sinal é a MAIOR
+   contribuição (o padrão de conversão mais forte que ele satisfaz). A
+   contribuição de um perfil é num_vendas × desconto_fragil (se frágil, Spec
+   §6.2 "não recebe peso pleno") × PESO DIMENSIONAL. O peso dimensional (D-017)
+   pondera pela importância das dimensões do perfil — preço > localização >
+   metragem > dormitórios > vagas, com o `decaimento` injetado (nº 13, nulo) —
+   e é o MAIOR peso entre as dimensões do perfil (`_peso_do_perfil`). É o que
+   de-satura: um perfil de "dormitórios" (dimensão de baixa prioridade) deixa de
+   dominar. Candidato que não casa nenhum perfil tem sinal bruto 0.
+   Alternativas de combinação registradas (calibráveis): produto ou média dos
+   pesos das dimensões, e ponderar por especificidade (2-dim > 1-dim) —
+   ficam para a calibração do dono, não v0.
 3. NORMALIZAÇÃO (parâmetro nº 2, nulo): min-max sobre o conjunto elegível da
    rodada — reescala o sinal bruto para [0, 1]. Forma provisória escolhida pelo
    dono para a piloto; quando todos os sinais são iguais (min == max), todos
@@ -36,7 +42,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from dominio.perfil import Dimensao, PerfilConversao, ValorDimensao
+from dominio.perfil import Dimensao, PerfilConversao, ValorDimensao, pesos_por_prioridade
 
 # Dimensões bucketizadas de um imóvel (candidato ou vendido): as preenchidas,
 # no mesmo formato que ImovelVendido.valores() devolve.
@@ -52,13 +58,24 @@ class ParametrosSemelhanca:
     frágil no sinal bruto. Vive fora do código (escolha do dono na rodada);
     a validação de faixa é aqui. Não é nenhum dos onze parâmetros da D-004 —
     é tratamento de fragilidade, rotulado PROVISÓRIO na saída.
+
+    `decaimento` é a magnitude do peso decrescente por dimensão (D-017,
+    parâmetro nulo nº 13): passado a `dominio.perfil.pesos_por_prioridade` para
+    ponderar a contribuição de cada perfil pela importância das suas dimensões
+    (preço > localização > metragem > dormitórios > vagas). Em (0, 1]:
+    `1.0` não de-satura (todas as dimensões pesam igual, comportamento
+    pré-D-017); `< 1.0` reduz o peso das dimensões de baixa prioridade,
+    corrigindo a saturação. Injetado run-local, rotulado PROVISÓRIO na saída.
     """
 
     desconto_fragil: float
+    decaimento: float
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.desconto_fragil <= 1.0:
             raise ValueError(f"desconto_fragil fora de [0, 1]: {self.desconto_fragil}")
+        if not 0.0 < self.decaimento <= 1.0:
+            raise ValueError(f"decaimento fora de (0, 1]: {self.decaimento}")
 
 
 def casa(dims_candidato: DimensoesImovel, perfil: PerfilConversao) -> bool:
@@ -67,6 +84,21 @@ def casa(dims_candidato: DimensoesImovel, perfil: PerfilConversao) -> bool:
         dims_candidato.get(dim) == valor
         for dim, valor in zip(perfil.dimensoes, perfil.valores, strict=True)
     )
+
+
+def _peso_do_perfil(perfil: PerfilConversao, pesos_dim: Mapping[Dimensao, float]) -> float:
+    """Peso dimensional de um perfil (D-017): o MAIOR peso entre as dimensões
+    que o compõem.
+
+    Leitura estrutural DECLARADA (não resolvida em silêncio): um perfil vale o
+    quanto vale sua dimensão mais importante. Um padrão ancorado em preço pesa
+    pleno mesmo que a 2ª dimensão seja de baixa prioridade; um padrão só de
+    dormitórios/vagas fica reduzido — é o que de-satura o sinal (a saturação da
+    primeira rodada era um perfil de "dormitórios", dimensão de baixa
+    prioridade). Alternativas calibráveis registradas: produto (exige as duas
+    dimensões altas) ou média — ficam para a calibração do dono, não v0.
+    """
+    return max(pesos_dim[d] for d in perfil.dimensoes)
 
 
 def _contribuicoes(
@@ -78,11 +110,20 @@ def _contribuicoes(
 
     FONTE ÚNICA do sinal (max desta lista) e do perfil que puxou (argmax): os
     dois derivam daqui, então o número e o perfil exibido como justificativa
-    nunca divergem. Robusto contribui com num_vendas; frágil com
-    num_vendas × desconto_fragil (Spec §6.2, "não recebe peso pleno").
+    nunca divergem. A contribuição de um perfil é
+    `num_vendas × (desconto_fragil se frágil) × peso_dimensional`, onde o peso
+    dimensional (D-017) pondera pela importância das dimensões do perfil
+    (`decaimento` injetado). Frágil "não recebe peso pleno" (Spec §6.2); o peso
+    por dimensão realiza a priorização preço > … > vagas (de-satura).
     """
+    pesos_dim = pesos_por_prioridade(params.decaimento)
     return [
-        (p, p.num_vendas * (params.desconto_fragil if p.fragil else 1.0))
+        (
+            p,
+            p.num_vendas
+            * (params.desconto_fragil if p.fragil else 1.0)
+            * _peso_do_perfil(p, pesos_dim),
+        )
         for p in perfis
         if casa(dims_candidato, p)
     ]

@@ -3,27 +3,39 @@
 Rodada de TESTE fora do ciclo (não é o grafo de produção). Encadeia, como
 cálculo puro (invariantes 4/5), as funções já revisadas do domínio:
 
-  elegibilidade → fatores (semelhança + produtividade; desempenho degradado)
-  → penalidades → ranking (nota por nível) → alocação (cotas) → relaxamento.
+  elegibilidade → fatores (semelhança ponderada por dimensão + leads + produtividade;
+  desempenho degradado) → penalidades → ranking (nota por nível, pesos INJETADOS)
+  → alocação (cotas) → relaxamento.
 
-Leituras estruturais desta rodada (D-016), declaradas — não inventadas:
+Leituras estruturais desta rodada (D-016/D-017), declaradas — não inventadas:
 
 1. NORMALIZAÇÃO sobre os ELEGÍVEIS (forma do parâmetro nº 2, provisória). Os
    fatores são reescalados [0,1] por min-max SOBRE OS ELEGÍVEIS, para que o
    ranking das 475/6.495 posições NÃO dependa de imóveis reprovados (que nunca
    serão colocados). O pool de reprovados do relaxamento é normalizado ENTRE SI
    — e como min-max preserva ordem, isso não altera a saída do relaxamento
-   (que ordena dentro do grau, sem comparar com corte).
-2. desempenho_proprio = 0 para todos: a piloto não raspa o portal, então o
-   fator (peso 25 super / 10 destaque) roda DEGRADADO. Zerar uniformemente é
-   order-preserving — a rodada é degradada nesse fator, declarado na saída.
-3. produtividade_gestor = sinal binário `gestor_captou_ou_vendeu_30d` (1/0),
-   min-max — na v0 vira efetivamente um flag. Alternativa futura: o sinal rico
-   de productivityrating, que o candidato não traz hoje.
+   (que ordena dentro do grau, sem comparar com corte). Vale para os quatro
+   fatores, incluindo o F2 leads.
+2. semelhança PONDERADA POR DIMENSÃO (F1, D-017): a contribuição de cada perfil
+   é escalada pela importância das suas dimensões (preço > … > vagas), com o
+   `decaimento` injetado (nº 13). É o que de-satura o sinal. A combinação para
+   perfis de duas dimensões (máximo dos pesos) é leitura declarada em
+   `piloto.semelhanca`.
+3. F2 leads = min-max de `Leads180D` (fator POSITIVO vivo, do banco, via
+   ImovelPenalizavel — D-017). Lead deixa de ser só penalidade e vira sinal.
+4. desempenho_proprio = 0 para todos: a piloto não raspa o portal, então o
+   fator roda DEGRADADO (D-017: é reforço, não bloqueia). Zerar uniformemente é
+   order-preserving — declarado na saída.
+5. produtividade_gestor = sinal BINÁRIO `gestor_captou_ou_vendeu_30d` (1/0),
+   min-max. A versão contínua (F4, D-017) depende do sinal rico de
+   productivityrating, que o candidato não traz hoje — fica para fatia com o
+   coletor. NÃO tocada aqui.
 
-Os provisórios nº 2 (forma da normalização) e nº 3 (intensidades das
-penalidades + decaimento) são INJETADOS run-local — nunca em src/config, nunca
-adotados (D-014). Vão rotulados na saída para a planilha.
+Os pesos dos quatro fatores (nº 12) e o decaimento por dimensão (nº 13) são
+INJETADOS run-local via `ParametrosDecisao`/`ParametrosSemelhanca` — fecha o
+mandato de injeção da D-017 (invariante 5). Junto dos provisórios nº 2 (forma da
+normalização) e nº 3 (intensidades), nunca em src/config, nunca adotados
+(D-014). Todos rotulados na saída para a planilha.
 """
 
 from __future__ import annotations
@@ -43,9 +55,8 @@ from dominio.penalidades import (
 )
 from dominio.perfil import PerfilConversao
 from dominio.ranking import (
-    PESOS_DESTAQUE,
-    PESOS_SUPER_DESTAQUE,
     FatoresNormalizados,
+    PesosNivel,
     nota_final,
 )
 from dominio.relaxamento import CandidatoRelaxamento, ResultadoRelaxamento, relaxar
@@ -59,11 +70,20 @@ from piloto.semelhanca import (
 
 @dataclass(frozen=True)
 class ParametrosDecisao:
-    """Os provisórios da rodada, injetados run-local (nunca em src/config)."""
+    """Os provisórios da rodada, injetados run-local (nunca em src/config).
+
+    `pesos_super`/`pesos_destaque` são os pesos dos quatro fatores por nível
+    (D-017, parâmetro nulo nº 12): INJETADOS aqui, não lidos de constante em
+    `src/dominio` — é o que fecha o mandato de injeção da D-017 (invariante 5:
+    pesos injetados, não constantes escondidas). Provisórios da rodada,
+    rotulados PROVISÓRIO na saída; nunca adotados.
+    """
 
     semelhanca: ParametrosSemelhanca
     intensidades: IntensidadesPenalidade
     decaimento_janela: Callable[[int], float]
+    pesos_super: PesosNivel
+    pesos_destaque: PesosNivel
 
 
 @dataclass(frozen=True)
@@ -124,22 +144,42 @@ def _normalizar_minmax(bruto: dict[int, float]) -> dict[int, float]:
     return {iid: (v - menor) / faixa for iid, v in bruto.items()}
 
 
+def _leads_do(imovel_id: int, penalizaveis: Mapping[int, ImovelPenalizavel]) -> int:
+    """`Leads180D` do imóvel (via ImovelPenalizavel, onde o dado já é coletado).
+
+    Falha alta se o imóvel não tem penalizável — a mesma garantia que `_descontos`
+    exige, para não montar o fator de leads sobre coleta desalinhada.
+    """
+    pen = penalizaveis.get(imovel_id)
+    if pen is None:
+        raise ValueError(f"imóvel {imovel_id} sem ImovelPenalizavel: coleta desalinhada")
+    return pen.leads_180d
+
+
 def _fatores(
     imoveis: Sequence[ImovelCandidato],
     dims_por_imovel: Mapping[int, DimensoesImovel],
     perfis: tuple[PerfilConversao, ...],
     params_sem: ParametrosSemelhanca,
+    penalizaveis: Mapping[int, ImovelPenalizavel],
 ) -> dict[int, FatoresNormalizados]:
-    """Monta os três fatores normalizados SOBRE ESTA população.
+    """Monta os QUATRO fatores normalizados SOBRE ESTA população (D-017).
 
-    semelhança e produtividade são normalizadas entre os imóveis passados;
-    desempenho_proprio é 0 (degradado). Passe os elegíveis para o ranking
-    primário e os reprovados (entre si) para o relaxamento.
+    semelhança, LEADS e produtividade são normalizados (min-max) ENTRE os
+    imóveis passados — sobre os elegíveis no ranking primário, entre os
+    reprovados no relaxamento (D-016); desempenho_proprio é 0 (degradado, sem
+    raspagem). F2 leads = min-max de `Leads180D` (fator POSITIVO vivo, do banco).
+    F4 produtividade segue BINÁRIO (captou/vendeu em 30d) — a versão contínua
+    depende de campo novo do coletor e fica para fatia própria.
+    Passe os elegíveis para o ranking primário e os reprovados para o relaxamento.
     """
     dims_pop = {im.imovel_id: dims_por_imovel.get(im.imovel_id, {}) for im in imoveis}
     semelhanca = semelhanca_por_imovel(dims_pop, perfis, params_sem)
     produtividade = _normalizar_minmax(
         {im.imovel_id: (1.0 if im.gestor_captou_ou_vendeu_30d else 0.0) for im in imoveis}
+    )
+    leads = _normalizar_minmax(
+        {im.imovel_id: float(_leads_do(im.imovel_id, penalizaveis)) for im in imoveis}
     )
     return {
         im.imovel_id: FatoresNormalizados(
@@ -147,6 +187,7 @@ def _fatores(
             semelhanca_perfil=semelhanca.get(im.imovel_id, 0.0),
             desempenho_proprio=0.0,  # D-016: degradado (sem raspagem de portal)
             produtividade_gestor=produtividade[im.imovel_id],
+            leads=leads[im.imovel_id],
         )
         for im in imoveis
     }
@@ -163,12 +204,16 @@ def _descontos(
 
 
 DEGRADACOES = (
-    "desempenho próprio observado ausente (a piloto não raspa o portal): "
-    "rodada DEGRADADA nesse fator, que roda zerado (ordena pelos outros dois).",
-    "produtividade do gestor é binária na v0 (captou/vendeu em 30d: sim/não).",
+    "desempenho próprio observado (portal) ausente (a piloto não raspa o portal): "
+    "rodada DEGRADADA nesse fator, que roda zerado (D-017: é reforço, não bloqueia).",
+    "F2 leads = min-max de Leads180D (fator POSITIVO vivo, do banco — D-017).",
+    "F4 produtividade do gestor ainda BINÁRIA (captou/vendeu em 30d: sim/não); a "
+    "versão contínua (D-017) depende de campo novo do coletor e fica para fatia própria.",
+    "pesos dos quatro fatores por nível (parâmetro nº 12) e decaimento por dimensão "
+    "do F1 (parâmetro nº 13): PROVISÓRIOS desta rodada, injetados run-local, NÃO adotados (D-017).",
     "forma de normalização (parâmetro nº 2) = min-max: PROVISÓRIA, não adotada "
     "pelo dono — a forma não foi decidida (D-016).",
-    "intensidades das penalidades e decaimento (parâmetro nº 3): PROVISÓRIOS "
+    "intensidades das penalidades e decaimento por janela (parâmetro nº 3): PROVISÓRIOS "
     "desta rodada, não adotados.",
 )
 
@@ -205,15 +250,15 @@ def decidir(
             elegiveis.append(c)
 
     # Ranking primário: fatores normalizados SOBRE OS ELEGÍVEIS.
-    fatores_el = _fatores(elegiveis, dims_por_imovel, perfis, parametros.semelhanca)
+    fatores_el = _fatores(elegiveis, dims_por_imovel, perfis, parametros.semelhanca, penalizaveis)
     detalhes: dict[int, DetalheImovel] = {}
-    aloc_entrada = []
+    aloc_entrada: list[CandidatoAlocacao] = []
     for c in elegiveis:
         fat = fatores_el[c.imovel_id]
         descontos = _descontos(c.imovel_id, penalizaveis, parametros)  # uma vez por imóvel
         desc_total = sum(descontos.values(), 0.0)
-        nota_super = nota_final(fat, PESOS_SUPER_DESTAQUE, desc_total)
-        nota_dest = nota_final(fat, PESOS_DESTAQUE, desc_total)
+        nota_super = nota_final(fat, parametros.pesos_super, desc_total)
+        nota_dest = nota_final(fat, parametros.pesos_destaque, desc_total)
         aloc_entrada.append(
             CandidatoAlocacao(
                 imovel_id=c.imovel_id,
@@ -239,13 +284,15 @@ def decidir(
     deficit = COTA_DESTAQUE - len(alocacao.destaque)
     if deficit > 0 and reprovados:
         so_reprovados = [c for c, _ in reprovados]
-        fatores_rep = _fatores(so_reprovados, dims_por_imovel, perfis, parametros.semelhanca)
-        pool = []
+        fatores_rep = _fatores(
+            so_reprovados, dims_por_imovel, perfis, parametros.semelhanca, penalizaveis
+        )
+        pool: list[CandidatoRelaxamento] = []
         for c, rr in reprovados:
             fat = fatores_rep[c.imovel_id]
             descontos = _descontos(c.imovel_id, penalizaveis, parametros)
             desc_total = sum(descontos.values(), 0.0)
-            nota_dest = nota_final(fat, PESOS_DESTAQUE, desc_total)
+            nota_dest = nota_final(fat, parametros.pesos_destaque, desc_total)
             pool.append(
                 CandidatoRelaxamento(
                     imovel_id=c.imovel_id, nota_destaque=nota_dest, regras_reprovadas=rr

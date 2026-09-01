@@ -27,6 +27,7 @@ from pathlib import Path
 
 from dominio.penalidades import Penalidade
 from dominio.perfil import PerfilConversao
+from dominio.ranking import PesosNivel
 from piloto.decisao import DetalheImovel, ParametrosDecisao, ResultadoDecisao
 
 # As três penalidades, em ordem fixa de coluna (Spec §3.2, grupo Penalidades).
@@ -48,10 +49,11 @@ def _perfil_texto(perfil: PerfilConversao | None) -> str:
 
 def _colunas_justificativa(det: DetalheImovel) -> dict[str, object]:
     """As colunas de justificativa comuns aos dois níveis (Spec §2.1/§3.2):
-    os três fatores, cada penalidade, o desconto total e o perfil que puxou
-    com sua evidência. Tudo lido do DetalheImovel — nada recalculado."""
+    os QUATRO fatores (D-017), cada penalidade, o desconto total e o perfil que
+    puxou com sua evidência. Tudo lido do DetalheImovel — nada recalculado."""
     colunas: dict[str, object] = {
         "semelhanca_perfil": det.fatores.semelhanca_perfil,
+        "leads": det.fatores.leads,
         "desempenho_proprio": det.fatores.desempenho_proprio,
         "produtividade_gestor": det.fatores.produtividade_gestor,
     }
@@ -128,6 +130,15 @@ def linhas_excluidos_por_regra(resultado: ResultadoDecisao) -> list[dict[str, ob
     return linhas
 
 
+def _texto_pesos(pesos: PesosNivel) -> str:
+    """Os quatro pesos do nível como texto, na ordem semelhança/leads/desempenho/
+    produtividade (mesma ordem do rótulo da linha)."""
+    return (
+        f"{pesos.semelhanca_perfil}/{pesos.leads_positivo}/"
+        f"{pesos.desempenho_proprio}/{pesos.produtividade_gestor}"
+    )
+
+
 def linhas_parametros_e_limitacoes(
     resultado: ResultadoDecisao,
     parametros: ParametrosDecisao,
@@ -159,6 +170,21 @@ def linhas_parametros_e_limitacoes(
             "tipo": "PROVISÓRIO",
             "item": "desconto de perfil frágil",
             "valor": parametros.semelhanca.desconto_fragil,
+        },
+        {
+            "tipo": "PROVISÓRIO",
+            "item": "decaimento do peso por dimensão do F1 (parâmetro nº 13)",
+            "valor": parametros.semelhanca.decaimento,
+        },
+        {
+            "tipo": "PROVISÓRIO",
+            "item": ("pesos super destaque (nº 12) — semelhança/leads/desempenho/produtividade"),
+            "valor": _texto_pesos(parametros.pesos_super),
+        },
+        {
+            "tipo": "PROVISÓRIO",
+            "item": ("pesos destaque (nº 12) — semelhança/leads/desempenho/produtividade"),
+            "valor": _texto_pesos(parametros.pesos_destaque),
         },
     ]
     for limitacao in resultado.degradacoes:
