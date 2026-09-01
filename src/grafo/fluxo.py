@@ -14,9 +14,12 @@ estratégia de serialização dos objetos de domínio no estado — fica na G2, 
 do Registro. A aprovação humana (interrupção, que depende do checkpointer) e o
 retry do Orquestrador (parâmetro nº 4, nulo) são fatias próprias.
 
-Limitações declaradas da G1 (honestas quanto ao estado, Spec §7.2):
-- Coletor Externo é STUB (sem raspagem): a rodada nunca é COMPLETA, é DEGRADADA,
-  com o desempenho de portal ausente declarado.
+Limitações declaradas (honestas quanto ao estado, Spec §7.2):
+- Coletor Externo (G4): quando `fontes.coletar_externo`/`parametros_externo` são
+  injetados, lê a saída do raspador e, passando as portas (amarração, idade), o
+  desempenho de portal (F3) entra e a rodada pode ser COMPLETA; sem eles, segue
+  STUB (DEGRADADA, ausência declarada). A "reserva" da coleta velha (Spec §7.3)
+  ainda não é reusada — coleta fora da janela degrada.
 - Sem modelo: o Analista de Perfil roda por contagem (o determinístico da Spec
   §6.2) e o Redator não gera resumo por modelo aqui.
 """
@@ -28,6 +31,7 @@ from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 
+from dados.coletor_externo import ParametrosExterno, avaliar_coleta
 from dominio.auditoria import ItemAuditavel, auditar
 from dominio.perfil import perfis_de_conversao
 from grafo.estado import Estado, EstadoRodada, Fontes, estado_final
@@ -68,16 +72,42 @@ def no_analista_perfil(estado: EstadoRodada, *, fontes: Fontes) -> dict:
     return saida
 
 
-def no_coletor_externo(estado: EstadoRodada) -> dict:
-    """Coletor Externo — STUB na G1 (sem raspagem do Canal Pro). Declara a
-    ausência: o desempenho de portal não entra, rodada DEGRADADA nesse fator."""
+def no_coletor_externo(
+    estado: EstadoRodada,
+    *,
+    fontes: Fontes,
+    parametros_externo: ParametrosExterno | None,
+) -> dict:
+    """Coletor Externo (G4): lê a saída do raspador e decide se a performance de
+    portal entra no ranking (F3, Spec §7.3).
+
+    Sem `coletar_externo`/`parametros_externo` injetados (esqueleto), continua
+    STUB: sem raspagem, rodada DEGRADADA nesse fator. Com eles, `avaliar_coleta`
+    aplica as portas (estado ok, amarração ≥ limiar nº 7, idade ≤ máxima nº 5) e,
+    passando, compõe o sinal F3 por imóvel; falhando qualquer porta, o desempenho
+    não entra e a degradação é declarada com o motivo — a rodada não é COMPLETA."""
+    if fontes.coletar_externo is None or parametros_externo is None:
+        return {
+            "externo_presente": False,
+            "prontos": {"externo": False},
+            "degradacoes": [
+                "Coletor Externo não executado (esqueleto, sem raspagem): "
+                "desempenho de portal ausente — rodada DEGRADADA nesse fator"
+            ],
+        }
+    coleta = fontes.coletar_externo()
+    alvo = [c.imovel_id for c in estado["candidatos"]]
+    r = avaliar_coleta(coleta, alvo, parametros_externo, estado["data_referencia"])
+    if r.entra:
+        return {
+            "externo_presente": True,
+            "desempenho_por_imovel": dict(r.desempenho_por_imovel),
+            "prontos": {"externo": True},
+        }
     return {
         "externo_presente": False,
         "prontos": {"externo": False},
-        "degradacoes": [
-            "Coletor Externo não executado (esqueleto G1, sem raspagem): "
-            "desempenho de portal ausente — rodada DEGRADADA nesse fator"
-        ],
+        "degradacoes": [f"Coletor Externo: {r.motivo}"],
     }
 
 
@@ -91,6 +121,7 @@ def no_decisor(estado: EstadoRodada, *, parametros: ParametrosDecisao) -> dict:
         estado["perfis"],
         parametros,
         estado["data_referencia"],
+        desempenho_por_imovel=estado.get("desempenho_por_imovel"),
     )
     return {"resultado": resultado, "prontos": {"decisor": True}}
 
@@ -207,23 +238,35 @@ def construir_grafo(
     fontes: Fontes,
     parametros: ParametrosDecisao,
     *,
+    parametros_externo: ParametrosExterno | None = None,
     registrar: Callable[[EstadoRodada], object] | None = None,
     checkpointer=None,
 ):
     """Monta e compila o grafo da rodada de sexta.
 
-    `fontes`, `parametros` e `registrar` são INJETADOS (run-local; provisórios,
-    nunca adotados). `registrar` é o SINK de persistência (G2a-wire): se
-    fornecido, a rodada NÃO-abortada passa por um nó que grava no Registro; se
-    None, o grafo termina sem persistir (usado nos testes e no marco F sem banco).
-    `checkpointer` default = None (sem persistência de ESTADO do grafo): o estado
-    carrega objetos de domínio não-serializáveis; o checkpointer Postgres e a
-    interrupção de aprovação são a G2b/G3.
+    `fontes`, `parametros`, `parametros_externo` e `registrar` são INJETADOS
+    (run-local; provisórios, nunca adotados). `parametros_externo` (G4) leva os
+    limiares nulos da coleta externa (amarração nº 7, idade nº 5) e a composição
+    do sinal F3 — provisórios; None (com `fontes.coletar_externo` None) mantém o
+    Coletor Externo em STUB e a rodada DEGRADADA nesse fator. `registrar` é o SINK
+    de persistência (G2a-wire): se fornecido, a rodada NÃO-abortada passa por um
+    nó que grava no Registro; se None, o grafo termina sem persistir. `checkpointer`
+    default = None (sem persistência de ESTADO do grafo): o estado carrega objetos
+    de domínio não-serializáveis; o checkpointer Postgres da aprovação é a G2b/G3.
     """
+    if (fontes.coletar_externo is None) != (parametros_externo is None):
+        raise ValueError(
+            "Coletor Externo meio-fiado: forneça `fontes.coletar_externo` E "
+            "`parametros_externo` juntos (raspagem viva), ou nenhum (stub). Um só "
+            "dos dois degradaria a rodada em silêncio em vez de sinalizar a fiação."
+        )
     g = StateGraph(EstadoRodada)
     g.add_node("coletor_interno", partial(no_coletor_interno, fontes=fontes))
     g.add_node("analista_perfil", partial(no_analista_perfil, fontes=fontes))
-    g.add_node("coletor_externo", no_coletor_externo)
+    g.add_node(
+        "coletor_externo",
+        partial(no_coletor_externo, fontes=fontes, parametros_externo=parametros_externo),
+    )
     g.add_node("decisor", partial(no_decisor, parametros=parametros))
     g.add_node("crivo", no_crivo)
     g.add_node("redator", no_redator)

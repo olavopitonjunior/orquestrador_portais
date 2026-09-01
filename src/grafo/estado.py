@@ -20,6 +20,7 @@ from datetime import date
 from enum import StrEnum
 from typing import Annotated, TypedDict
 
+from dados.coletor_externo import ColetaExterna
 from dominio.auditoria import ResultadoAuditoria
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel
@@ -58,6 +59,7 @@ class EstadoRodada(TypedDict, total=False):
     dims: dict[int, DimensoesImovel]
     perfis: tuple[PerfilConversao, ...]
     externo_presente: bool
+    desempenho_por_imovel: dict[int, float]  # sinal de portal (F3) do Coletor Externo
     resultado: ResultadoDecisao | None
     veredito: ResultadoAuditoria | None
     # controle
@@ -77,12 +79,15 @@ class Fontes:
     coletar_interno: Callable[[], tuple[Sequence[ImovelCandidato], Sequence[ImovelPenalizavel]]]
     coletar_dimensoes: Callable[[], Mapping[int, DimensoesImovel]]
     coletar_vendas: Callable[[], tuple[Sequence[ImovelVendido], int]]
+    # Coletor Externo: lê a saída do raspador (out/*.csv + status.json). None =
+    # sem raspagem (esqueleto) → a rodada degrada nesse fator, como antes.
+    coletar_externo: Callable[[], ColetaExterna] | None = None
 
 
 # Etapas cujo "pronto" precisa valer para a rodada ser COMPLETA (Spec §7.3).
-# O Coletor Externo entra aqui: sem ele (esqueleto G1, sem raspagem) a rodada
-# nunca é completa — é degradada, com a limitação declarada (condição honesta
-# do estado, Spec §7.2).
+# O Coletor Externo entra aqui: sem raspagem admitida (ausente/velha/amarração
+# baixa) a rodada é DEGRADADA nesse fator; com a raspagem fresca e amarrada (G4),
+# o "externo" fica pronto e a rodada pode ser COMPLETA.
 ETAPAS_PARA_COMPLETA = ("coletor_interno", "perfil", "externo", "decisor", "crivo", "redator")
 
 

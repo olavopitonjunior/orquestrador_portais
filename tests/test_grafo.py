@@ -6,10 +6,15 @@ aborto. `estado_final` tem testes unitários à parte.
 """
 
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 
 from langgraph.graph import END
 
+from dados.coletor_externo import (
+    ColetaExterna,
+    DesempenhoAnuncio,
+    ParametrosExterno,
+)
 from dominio.alocacao import Alocacao, PosicaoAlocada
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade
@@ -115,6 +120,75 @@ def test_rodada_com_externo_stub_fica_degradada():
     assert final["prontos"]["externo"] is False
     # a ausência do externo está declarada nas degradações
     assert any("Coletor Externo" in d for d in final["degradacoes"])
+
+
+# --- G4: com raspagem fresca e amarrada → COMPLETA ---------------------------
+
+PARAMS_EXT = ParametrosExterno(
+    limiar_amarracao=0.5, idade_maxima_dias=8, compor_desempenho=lambda a: a.visualizacoes
+)
+
+
+def _anuncio(imovel_id, views):
+    return DesempenhoAnuncio(
+        imovel_id=imovel_id,
+        id_portal=f"90{imovel_id}",
+        nota=8000.0,
+        visualizacoes=views,
+        cliques={},
+        url=None,
+    )
+
+
+def _coleta_ok(views_por_id):
+    return ColetaExterna(
+        estado="ok",
+        coletado_em=datetime(2026, 9, 1, 9, 0),  # mesmo dia de HOJE → fresca
+        por_imovel={i: _anuncio(i, v) for i, v in views_por_id.items()},
+        total_linhas=len(views_por_id),
+        sem_amarracao=0,
+    )
+
+
+def _fontes_com_externo(candidatos, views_por_id):
+    fontes = _fontes(candidatos)
+    return replace(fontes, coletar_externo=lambda: _coleta_ok(views_por_id))
+
+
+def test_rodada_com_raspagem_fresca_fica_completa():
+    fontes = _fontes_com_externo([_candidato(1), _candidato(2)], {1: 300, 2: 50})
+    grafo = construir_grafo(fontes, PARAMS, parametros_externo=PARAMS_EXT)
+    final = grafo.invoke(_estado_inicial())
+    assert final["estado"] == Estado.COMPLETA  # todas as etapas prontas, externo incluso
+    assert final["prontos"]["externo"] is True
+    assert final["externo_presente"] is True
+    # o desempenho de portal (F3) entrou no cálculo: min-max, o de mais views = 1.0
+    assert final["resultado"].detalhes[1].fatores.desempenho_proprio == 1.0
+    assert final["resultado"].detalhes[2].fatores.desempenho_proprio == 0.0
+
+
+def test_coletor_externo_meio_fiado_falha():
+    # fornecer parametros_externo SEM coletar_externo (ou vice-versa) é erro de
+    # fiação — falha alto em vez de degradar em silêncio (achado do revisor).
+    import pytest
+
+    fontes_sem_externo = _fontes([_candidato(1)])  # coletar_externo=None
+    with pytest.raises(ValueError, match="meio-fiado"):
+        construir_grafo(fontes_sem_externo, PARAMS, parametros_externo=PARAMS_EXT)
+
+
+def test_raspagem_com_amarracao_baixa_degrada():
+    # só 1 dos 2 candidatos amarrado = 50%... abaixo do limiar exige < 50%: uso 1 de 3
+    fontes = _fontes_com_externo(
+        [_candidato(1), _candidato(2), _candidato(3)], {1: 300}
+    )  # 1 de 3 = 33% < 50%
+    grafo = construir_grafo(fontes, PARAMS, parametros_externo=PARAMS_EXT)
+    final = grafo.invoke(_estado_inicial())
+    assert final["estado"] == Estado.DEGRADADA  # performance externa não entra
+    assert final["prontos"]["externo"] is False
+    assert any("amarração" in d for d in final["degradacoes"])
+    # sem F3: desempenho zerado (degradado)
+    assert final["resultado"].detalhes[1].fatores.desempenho_proprio == 0.0
 
 
 def test_decisao_dentro_das_cotas():
