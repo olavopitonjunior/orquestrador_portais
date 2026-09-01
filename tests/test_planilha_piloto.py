@@ -11,6 +11,7 @@ from datetime import date
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, Penalidade
 from dominio.perfil import Dimensao, PerfilConversao
+from dominio.ranking import PesosNivel
 from entrega.planilha_piloto import (
     escrever_planilha,
     linhas_destaque,
@@ -23,11 +24,17 @@ from piloto.semelhanca import ParametrosSemelhanca
 
 HOJE = date(2026, 8, 31)
 PARAMS = ParametrosDecisao(
-    semelhanca=ParametrosSemelhanca(desconto_fragil=0.5),
+    semelhanca=ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0),
     intensidades=IntensidadesPenalidade(
         janela_sem_resultado=0.15, sem_avaliacao_por_categoria=0.10, sem_lead_180d=0.10
     ),
     decaimento_janela=lambda _c: 1.0,
+    pesos_super=PesosNivel(
+        semelhanca_perfil=60, leads_positivo=0, desempenho_proprio=25, produtividade_gestor=15
+    ),
+    pesos_destaque=PesosNivel(
+        semelhanca_perfil=80, leads_positivo=0, desempenho_proprio=10, produtividade_gestor=10
+    ),
 )
 PERFIS = (PerfilConversao(dimensoes=(Dimensao.REGIAO,), valores=("Centro",), num_vendas=10),)
 
@@ -74,6 +81,7 @@ def test_super_destaque_serializa_a_nota_e_a_justificativa():
     # a nota do CSV é a mesma do ResultadoDecisao (serializa, não recomputa)
     assert ln["nota"] == r.alocacao.super_destaque[0].nota
     assert ln["semelhanca_perfil"] == r.detalhes[10].fatores.semelhanca_perfil
+    assert ln["leads"] == r.detalhes[10].fatores.leads  # F2 na composição (D-017)
     assert ln["perfil_que_puxou"] == "regiao=Centro"
     assert ln["perfil_num_vendas"] == 10
     # paridade de colunas com destaque (Spec §3.2): super tem origem/degrau vazios

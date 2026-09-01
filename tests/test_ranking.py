@@ -15,12 +15,20 @@ from dominio.penalidades import (
     desconto_total,
 )
 from dominio.ranking import (
-    PESOS_DESTAQUE,
-    PESOS_SUPER_DESTAQUE,
     FatoresNormalizados,
     PesosNivel,
     nota_bruta,
     nota_final,
+)
+
+# Pesos de teste (fixtures LOCAIS): o esquema pré-D-017 com leads dormente (0).
+# Não vivem em src/dominio — a D-017 exige pesos INJETADOS, nunca constantes
+# adotadas no domínio; aqui servem só de fixture para a aritmética da nota.
+PESOS_SUPER_DESTAQUE = PesosNivel(
+    semelhanca_perfil=60, leads_positivo=0, desempenho_proprio=25, produtividade_gestor=15
+)
+PESOS_DESTAQUE = PesosNivel(
+    semelhanca_perfil=80, leads_positivo=0, desempenho_proprio=10, produtividade_gestor=10
 )
 
 
@@ -32,27 +40,7 @@ def fatores(**kwargs) -> FatoresNormalizados:
     return FatoresNormalizados(**base)
 
 
-# --- pesos: default-ponte PROVISÓRIO (D-017 tornou os pesos parâmetro nulo) ---
-
-
-def test_pesos_super_destaque_default_provisorio_com_leads_dormente():
-    # D-017: os pesos deixaram de ser adotados (nulos). A constante é
-    # default-ponte PROVISÓRIO — valores pré-D-017 da §6.3 com leads dormente (0).
-    assert (
-        PESOS_SUPER_DESTAQUE.semelhanca_perfil,
-        PESOS_SUPER_DESTAQUE.leads_positivo,
-        PESOS_SUPER_DESTAQUE.desempenho_proprio,
-        PESOS_SUPER_DESTAQUE.produtividade_gestor,
-    ) == (60, 0, 25, 15)
-
-
-def test_pesos_destaque_default_provisorio_com_leads_dormente():
-    assert (
-        PESOS_DESTAQUE.semelhanca_perfil,
-        PESOS_DESTAQUE.leads_positivo,
-        PESOS_DESTAQUE.desempenho_proprio,
-        PESOS_DESTAQUE.produtividade_gestor,
-    ) == (80, 0, 10, 10)
+# --- pesos: validação de PesosNivel (D-017: valores são injetados, não adotados) ---
 
 
 @pytest.mark.parametrize("pesos", [(60, 0, 25, 16), (100, 0, 0, 1), (0, 0, 0, 0)])  # soma != 100

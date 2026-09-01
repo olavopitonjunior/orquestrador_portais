@@ -74,18 +74,10 @@ class PesosNivel:
             raise ValueError(f"pesos devem somar 100, somam {soma}")
 
 
-# PROVISÓRIOS run-local — NÃO adotados (D-017 tornou os pesos parâmetro nulo).
-# Valores-ponte herdados do esquema pré-D-017 da Spec §6.3, com LEADS DORMENTE
-# (peso 0) para manter o CI e a costura já mergeada compilando/verdes até a
-# fatia da costura injetar os pesos do novo esquema de 4 fatores. NÃO são a
-# decisão do dono — são o default provisório do piloto. Mudança aqui (ou adoção
-# de qualquer valor) exige CHANGELOG e registro em alteracao_parametro.
-PESOS_SUPER_DESTAQUE = PesosNivel(
-    semelhanca_perfil=60, leads_positivo=0, desempenho_proprio=25, produtividade_gestor=15
-)
-PESOS_DESTAQUE = PesosNivel(
-    semelhanca_perfil=80, leads_positivo=0, desempenho_proprio=10, produtividade_gestor=10
-)
+# NENHUM peso adotado vive aqui (D-017: pesos são parâmetro nulo, injetados
+# run-local via ParametrosDecisao — nunca hardcode em src/dominio, nunca em
+# src/config). Este módulo só define a ESTRUTURA (PesosNivel, os quatro fatores,
+# a soma ponderada); os VALORES chegam por injeção de quem roda a decisão.
 
 
 @dataclass(frozen=True)

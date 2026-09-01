@@ -13,17 +13,28 @@ import pytest
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, Penalidade
 from dominio.perfil import Dimensao, PerfilConversao
+from dominio.ranking import PesosNivel
 from piloto.decisao import ParametrosDecisao, decidir
 from piloto.semelhanca import ParametrosSemelhanca
 
 HOJE = date(2026, 8, 31)
 
+# Pesos-ponte DORMENTES (leads_positivo=0) + decaimento=1.0 (ponderação por
+# dimensão = identidade): mantêm estes testes de fiação equivalentes ao esquema
+# pré-D-017, então as asserções de nota seguem válidas. O comportamento vivo
+# (leads positivo, de-saturação) tem testes próprios.
 PARAMS = ParametrosDecisao(
-    semelhanca=ParametrosSemelhanca(desconto_fragil=0.5),
+    semelhanca=ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0),
     intensidades=IntensidadesPenalidade(
         janela_sem_resultado=0.15, sem_avaliacao_por_categoria=0.10, sem_lead_180d=0.10
     ),
     decaimento_janela=lambda ciclos: 1.0,
+    pesos_super=PesosNivel(
+        semelhanca_perfil=60, leads_positivo=0, desempenho_proprio=25, produtividade_gestor=15
+    ),
+    pesos_destaque=PesosNivel(
+        semelhanca_perfil=80, leads_positivo=0, desempenho_proprio=10, produtividade_gestor=10
+    ),
 )
 
 
@@ -173,3 +184,40 @@ def test_imovel_id_duplicado_no_lote_e_erro():
     cands = [_candidato(1), _candidato(1, elegivel=False)]
     with pytest.raises(ValueError, match="imovel_id duplicado"):
         _rodar(cands, {1: _dims()})
+
+
+def test_leads_e_fator_positivo_vivo():
+    # F2 (D-017): dois elegíveis idênticos exceto Leads180D; com peso de leads > 0,
+    # quem tem mais leads recebe fator de leads maior (min-max sobre os elegíveis)
+    # e nota maior. Prova que lead virou sinal POSITIVO, não só penalidade.
+    params = ParametrosDecisao(
+        semelhanca=ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0),
+        intensidades=IntensidadesPenalidade(
+            janela_sem_resultado=0.0, sem_avaliacao_por_categoria=0.0, sem_lead_180d=0.0
+        ),
+        decaimento_janela=lambda _c: 1.0,
+        pesos_super=PesosNivel(
+            semelhanca_perfil=50, leads_positivo=30, desempenho_proprio=10, produtividade_gestor=10
+        ),
+        pesos_destaque=PesosNivel(
+            semelhanca_perfil=40, leads_positivo=40, desempenho_proprio=10, produtividade_gestor=10
+        ),
+    )
+    cands = [_candidato(1), _candidato(2)]
+    dims = {1: _dims(), 2: _dims()}
+    penalizaveis = {1: _penalizavel(1, leads=100), 2: _penalizavel(2, leads=0)}
+    r = decidir(cands, penalizaveis, dims, PERFIS, params, HOJE)
+    # min-max sobre os dois elegíveis: mais leads → 1.0, menos → 0.0.
+    assert r.detalhes[1].fatores.leads == 1.0
+    assert r.detalhes[2].fatores.leads == 0.0
+    # semelhança/produtividade são iguais nos dois (min-max degenera em 0.0);
+    # só o fator de leads difere, então a nota do de mais leads é maior.
+    assert r.detalhes[1].nota_destaque > r.detalhes[2].nota_destaque
+
+
+def test_penalizavel_ausente_falha_alto():
+    # _leads_do falha alto se um elegível não tem ImovelPenalizavel — protege
+    # contra coleta desalinhada (mesmo contrato de _descontos), agora disparado
+    # ao montar o fator de leads.
+    with pytest.raises(ValueError, match="coleta desalinhada"):
+        decidir([_candidato(1)], {}, {1: _dims()}, PERFIS, PARAMS, HOJE)
