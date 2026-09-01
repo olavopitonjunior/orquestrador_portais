@@ -336,3 +336,48 @@ Mantém a fidelidade à Spec §4.3 (as colunas existem) sem fabricar dado.
 `FT_Leads.DIstributedAt` (grafia com "I" maiúsculo) vem de `facs.LastDistributedAt`: é a **última** distribuição. `facs.Redistributed = 1` em **25,78%** dos leads de 90 dias. Em um quarto dos casos a coluna da §4.2 mede o tempo desde a REdistribuição, não desde a primeira entrega ao corretor. Reconstruir a original exigiria `facstatushistory`. Fica declarado; se o dono quiser a primeira distribuição, é fatia própria.
 
 **Precondição da fatia seguinte (M3, ligar a segunda ao grafo) — achado do auditor-de-invariantes em 2026-09-01:** `ResultadoAcompanhamento` carrega PII (`leads_sem_tratamento`), e o checkpointer do LangGraph **serializa o estado do grafo no Postgres**. Colocar o objeto inteiro no `EstadoRodada` reintroduziria no banco exatamente a PII que `gravar_acompanhamento` deliberadamente NÃO grava — anulando a redução de exposição desta fatia, e em silêncio. O estado do grafo deve carregar o `PayloadModelo` (agregados) e a lista nominal deve ir direto ao Redator/planilha, sem atravessar o checkpointer. Não é violação hoje (M2 não toca o grafo); é requisito da M3, com teste próprio.
+
+## Ponto de entrada da sexta (2026-09-01) — o que foi resolvido e o que aguarda o dono
+
+A fatia do runner da sexta (`src/executar/sexta.py`) obrigou a decidir **como uma rodada roda se doze dos treze parâmetros são nulos**, e os três portões levantaram divergências que ficam registradas aqui.
+
+### Resolvido no código: os parâmetros entram por arquivo do dono, e a rodada recusa rodar sem eles
+
+`--parametros ARQUIVO.toml` é obrigatório e **não tem default**. Embutir um valor "razoável" seria o valor inventado que o CLAUDE.md proíbe, com o agravante de ficar invisível numa planilha aprovada. O carregador (`src/config/parametros.py`) recusa chave ausente (nomeando o pendente), chave desconhecida e valor fora de faixa. `src/config` segue **sem valor nenhum**: ganhou o carregador, não os números. Tudo que entra sai rotulado PROVISÓRIO com a origem, e o TOML declarado vai verbatim para o Registro — adotar continua exigindo decisão aqui e entrada no CHANGELOG.
+
+O **modelo** `docs/parametros-da-rodada.exemplo.toml` é recusado como entrada real: ele carrega com sucesso, e sem a recusa sairia dele uma planilha de aparência normal construída sobre números que o próprio arquivo declara ilustrativos.
+
+### Divergência aberta (aguarda o dono) — a ordem Registro → Redator
+
+Os documentos põem o Redator **antes** do Registro: PRD (fluxo de sexta, passo 6 = planilha, passo 7 = Registro, "saídas dos passos 5 e 6") e Spec §5 ("Registro | Consome: saídas do Decisor, **do Redator** e do Monitor"). O código faz o inverso: o grafo grava no Registro no último nó e o runner escreve a planilha depois.
+
+O argumento do código é que uma planilha sem rodada no Registro é uma decisão sem trilha. O **contra-argumento do revisor-de-regra é mais forte e fica registrado**: sob a D-001, com o Registro como fonte da verdade, uma rodada gravada sem planilha pode ser aprovada por decurso de prazo e virar a "carga vigente" contra a qual a segunda mede — uma lista que ninguém recebeu nem aplicou. O modo de falha inverso (artefato sem trilha) é detectável na aprovação.
+
+**Pergunta ao dono:** inverter para Redator → Registro (e o Registro passar a guardar o caminho do artefato, que hoje ele não guarda), ou manter a ordem atual e declarar a divergência com a §5? Até a resposta, a ordem atual permanece **com a divergência declarada aqui** — não em silêncio.
+
+### Lacuna operacional declarada — a cadeia sexta → carimbo → segunda não fecha
+
+O runner da sexta informa o `rodada_id` e **não abre** o fluxo de aprovação: o que dispara a tácita sozinha é o prazo, parâmetro pendente nº 10, **nulo**, e abrir uma thread sem prazo afirmaria um prazo que ninguém definiu. Isso está correto quanto ao documento — a D-001 pede um carimbo (`aprovada_em`), não um estado formal "pendente", e `aprovada_em IS NULL` já É a pendência.
+
+O buraco é operacional: `ultima_carga_aprovada` exige `aprovada_em` não nulo, e **hoje nenhum componente existente carimba isso** (console e agendador não existem). Como está, toda segunda-feira declararia ausência de carga. Fica registrado para não ser descoberto na primeira segunda real.
+
+### Limitações que passaram a ser DECLARADAS na planilha (antes invisíveis)
+
+Levantadas pelos portões nesta fatia e agora emitidas na aba de parâmetros e limitações:
+
+1. **A penalidade por janela anterior sem resultado não incide sobre ninguém.** O Coletor Interno devolve `janelas_anteriores=()` para todo imóvel e nada no caminho da sexta lê `registro.janela_destaque` — o produtor não existe. Uma das três penalidades da §6.4 fica inerte e a coluna sai 0,0 para todos, indistinguível de "imóvel sem histórico", que o PRD manda identificar como tal. A limitação é **derivada do resultado**: quando o produtor chegar, ela some sozinha.
+2. **Razão 1.0 no decaimento não decai**, divergindo da §6.4 — declarada quando escolhida, em vez de o código fingir que não há divergência.
+3. **A definição de gestor ativo do distrito** (D-015) cobre 45,9%, como a D-016 já mandava declarar e não estava sendo declarado.
+4. **Variação do estoque elegível** (§3.1, obrigatória): sem produtor — exige a rodada anterior no Registro. Declarada como NÃO APURADA.
+
+Corrigido junto: a limitação "desempenho de portal ausente" era emitida **incondicionalmente**, então uma rodada COMPLETA com raspagem viva declarava, duas linhas abaixo do próprio estado, que o portal estava ausente. Limitação falsa na planilha que sustenta a aprovação.
+
+E a **aba de relaxamento** passou a ser gerada: a Spec §6.6 é literal — "sem esse registro a etapa de decisão não é considerada pronta" — e a §3.1 a lista como obrigatória. O Registro já guardava o agregado por regra; ele só não chegava ao artefato que as pessoas leem, e a rodada saía COMPLETA assim mesmo.
+
+### Pergunta aberta ao dono — limitação de FIAÇÃO deve mudar o ESTADO da rodada?
+
+As três limitações de fiação (histórico de janelas ausente, razão 1.0 sem decaimento, distrito a 45,9%) são declaradas na planilha **e** gravadas no `motivo_degradacao` do Registro — planilha e fonte da verdade dizem a mesma coisa. Mas elas **não** entram em `estado["degradacoes"]`, então não mudam o estado da rodada.
+
+A escolha é discutível nos dois sentidos. A §7.2 define degradada como "alguma fonte falhou e a decisão prosseguiu com dado parcial", e o histórico de janelas **é** uma fonte ausente produzindo dado parcial — o que argumenta por DEGRADADA. Por outro lado, marcá-las como degradação tornaria **toda** rodada degradada até o produtor de `registro.janela_destaque` existir, e um estado que nunca varia deixa de informar: o dono passaria a aprovar "degradada" toda semana sem que a palavra distinguisse nada.
+
+Mantive o estado intocado e a limitação declarada, porque é a opção que preserva o poder de sinalização do estado. **Mas é decisão de regra, não de código**, e fica aqui para o dono. Achado do `revisor-de-codigo`.

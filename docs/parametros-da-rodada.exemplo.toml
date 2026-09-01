@@ -1,0 +1,103 @@
+# MODELO — os NÚMEROS aqui são ILUSTRATIVOS e NÃO SÃO ADOTADOS.
+#
+# Doze dos treze parâmetros da decisão são NULOS (tabela do CLAUDE.md; D-004, D-017).
+# Este arquivo mostra a FORMA do que o dono da decisão precisa declarar; nenhuma
+# evidência sustenta os valores. Substitua todos.
+#
+# Uma primeira versão deste modelo usava valores uniformes (pesos iguais nos dois
+# níveis, decaimento 1.0, penalidade sem decaimento) na esperança de que ninguém os
+# confundisse com calibração. Era pior: uniformidade não é neutra. Pesos iguais nos
+# dois níveis fazem os dois perseguirem o MESMO objetivo, contra a tabela de
+# objetivos por nível da Spec §6.3 que a D-017 preserva; decaimento 1.0 anula a
+# ordem de dimensões que a D-017 ADOTOU; e não decair contradiz a §6.4. O modelo
+# passou a ilustrar a forma CERTA com números claramente redondos.
+#
+# Como usar:
+#   1. copie para fora do repositório (ex.: ~/parametros-2026-09-05.toml);
+#   2. substitua CADA número por uma escolha sua;
+#   3. rode:  uv run python -m executar.sexta --parametros ~/parametros-2026-09-05.toml \
+#               --externo /caminho/da/saida/do/raspador
+#      (sem --externo o F3 não entra, e o peso que você deu a `desempenho_proprio`
+#       fica morto — a rodada sai degradada nesse fator, com a limitação declarada.)
+#
+# O carregador RECUSA a rodada se faltar qualquer chave — não existe default. E
+# recusa chave desconhecida: um nome digitado errado vira erro, nunca um valor
+# descartado em silêncio.
+#
+# Tudo que passa por aqui é rotulado PROVISÓRIO na planilha, com a origem do arquivo.
+# Adotar um valor é outra coisa: exige decisão registrada em `docs/decisoes.md` e
+# entrada no CHANGELOG.
+
+# --- Semelhança com o perfil de conversão (fator F1) --------------------------
+[semelhanca]
+# Peso reduzido de um perfil FRÁGIL (Spec §6.2: "não recebe peso pleno").
+# Fator em [0, 1] que multiplica o num_vendas do perfil frágil.
+desconto_fragil = 0.5
+
+# Parâmetro pendente nº 13: decaimento do peso por DIMENSÃO. A ORDEM é adotada
+# (preço > localização > metragem > dormitórios > vagas); só a MAGNITUDE é nula.
+# Precisa ficar em (0, 1] — e abaixo de 1.0 para que a ordem adotada produza
+# efeito: foi a saturação por uma única dimensão (443 dos 475 super destaques
+# puxados pelo mesmo perfil de dormitórios) que motivou a D-017.
+decaimento = 0.7
+
+# --- Intensidade das três penalidades (parâmetro pendente nº 3) ---------------
+# Quanto cada penalidade desconta da nota.
+[intensidades]
+janela_sem_resultado = 0.20
+sem_avaliacao_por_categoria = 0.10
+sem_lead_180d = 0.10
+
+# --- Decaimento da penalidade por janela (parâmetro pendente nº 3) ------------
+# A Spec §6.4 diz que a penalidade "decai ao longo dos ciclos". O fator multiplica
+# a intensidade: fator = razao ** ciclos, com `ciclos` contados desde a janela sem
+# resultado mais recente.
+#
+# Uma forma só, `geometrica`, com `razao` em (0, 1]. Razão 1.0 é aceita e significa
+# NÃO decair — o que diverge da §6.4, e por isso a rodada declara essa divergência
+# como limitação na planilha em vez de o código fingir que não existe.
+[decaimento_janela]
+forma = "geometrica"
+razao = 0.5
+
+# --- Pesos dos quatro fatores do ranking (parâmetro pendente nº 12) -----------
+# Os pesos da Spec §6.3 DEIXARAM de ser adotados na D-017. Somam 100 por nível.
+#
+# Os dois níveis perseguem objetivos DIFERENTES e por isso os conjuntos divergem —
+# essa assimetria é a parte do modelo que você deve preservar; os números, não.
+# Super destaque: disputa real (mais de dez candidatos por vaga), o objetivo é
+# valor esperado. Destaque: sobra de posição, o objetivo é probabilidade de lead.
+[pesos.super_destaque]
+semelhanca_perfil = 40
+leads_positivo = 20
+desempenho_proprio = 30
+produtividade_gestor = 10
+
+[pesos.destaque]
+semelhanca_perfil = 20
+leads_positivo = 50
+desempenho_proprio = 20
+produtividade_gestor = 10
+
+# --- Coleta externa (Canal Pro) ----------------------------------------------
+[externo]
+# Parâmetro pendente nº 7: taxa mínima de amarração para a coleta ENTRAR no
+# ranking. Abaixo dela o desempenho de portal não entra e a rodada sai DEGRADADA
+# nesse fator, com o motivo declarado.
+limiar_amarracao = 0.5
+
+# Parâmetro pendente nº 5: idade máxima aceitável da coleta externa, em dias.
+idade_maxima_dias = 8
+
+# Como o sinal F3 é composto a partir do que a raspagem traz por anúncio.
+# Formas aceitas (lista fechada):
+#   forma = "visualizacoes"
+#   forma = "nota"            + quando_ausente (a nota é opcional na coleta; o
+#                               valor do anúncio SEM nota é escolha declarada, para
+#                               que um zero implícito não puna a ausência do dado)
+#   forma = "cliques_do_tipo" + tipo, um de: cliqueContato, cliqueTelefone,
+#                               cliqueProposta, cliqueWhatsapp, cliqueAgendamento.
+#                               Os cliques NUNCA são somados entre tipos: tipos
+#                               diferentes medem intenções diferentes.
+[externo.desempenho]
+forma = "visualizacoes"

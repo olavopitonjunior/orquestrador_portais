@@ -36,6 +36,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from dados.acompanhamento import coletar_leads
 from dados.registro.acompanhamento import (
@@ -46,7 +47,7 @@ from dados.registro.acompanhamento import (
 )
 from dados.registro.conexao import conectar
 from dados.registro.leitura import ler_rodada
-from dominio.acompanhamento import ResultadoAcompanhamento
+from dominio.acompanhamento import PosicaoPaga, ResultadoAcompanhamento
 from entrega.relatorio_segunda import escrever_relatorio
 from grafo.estado import Estado
 from grafo.segunda import FontesSegunda, SinksSegunda, construir_grafo_segunda
@@ -109,7 +110,7 @@ def _fontes() -> FontesSegunda:
                 lido.append(ultima_carga_aprovada(conn))
         return lido[0]
 
-    def posicoes(rodada_id: int):
+    def posicoes(rodada_id: int) -> Sequence[PosicaoPaga]:
         with conectar() as conn:
             return posicoes_da_carga(conn, rodada_id)
 
@@ -219,7 +220,7 @@ def _sinks(destino: Path, agora: datetime, *, dry_run: bool) -> SinksSegunda:
     )
 
 
-def executar(destino: Path, *, hoje: date | None = None, dry_run: bool = False) -> dict:
+def executar(destino: Path, *, hoje: date | None = None, dry_run: bool = False) -> dict[str, Any]:
     """Roda a segunda de ponta a ponta e devolve o estado final do fluxo."""
     hoje = hoje or date.today()
     agora = datetime.now()
@@ -258,7 +259,7 @@ def executar(destino: Path, *, hoje: date | None = None, dry_run: bool = False) 
     # por gente e o que a §7.2 quer auditável) guardaria só a última.
     destino_da_rodada = destino / f"{hoje:%Y-%m-%d}"
     grafo = construir_grafo_segunda(fontes, _sinks(destino_da_rodada, agora, dry_run=dry_run))
-    return grafo.invoke(
+    final: dict[str, Any] = grafo.invoke(
         {
             "inicio_periodo": inicio,
             "fim_periodo": fim,
@@ -267,6 +268,7 @@ def executar(destino: Path, *, hoje: date | None = None, dry_run: bool = False) 
             "degradacoes": degradacoes,
         }
     )
+    return final
 
 
 def main(argv: Sequence[str] | None = None) -> int:
