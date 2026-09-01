@@ -8,13 +8,15 @@ aborto. `estado_final` tem testes unitários à parte.
 from dataclasses import replace
 from datetime import date
 
+from langgraph.graph import END
+
 from dominio.alocacao import Alocacao, PosicaoAlocada
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade
 from dominio.perfil import Dimensao, ImovelVendido, perfis_de_conversao
 from dominio.ranking import PesosNivel
 from grafo.estado import Estado, Fontes, estado_final
-from grafo.fluxo import _rota_pos_crivo, construir_grafo, no_crivo
+from grafo.fluxo import _rota_pos_crivo, _rota_pos_finalizar, construir_grafo, no_crivo
 from piloto.decisao import ParametrosDecisao, decidir
 from piloto.semelhanca import ParametrosSemelhanca
 
@@ -257,3 +259,35 @@ def test_no_crivo_veto_aborta_sem_entregar():
 def test_rota_pos_crivo_desvia_do_redator_no_veto():
     assert _rota_pos_crivo({"estado": Estado.ABORTADA}) == "finalizar"
     assert _rota_pos_crivo({"estado": Estado.EM_ANDAMENTO}) == "redator"
+
+
+# --- G2a-wire: sink de persistência injetado -----------------------------------
+
+
+def test_sink_de_persistencia_chamado_em_rodada_valida():
+    chamadas = []
+    grafo = construir_grafo(
+        _fontes([_candidato(1), _candidato(2)]), PARAMS, registrar=chamadas.append
+    )
+    final = grafo.invoke(_estado_inicial())
+    assert final["estado"] == Estado.DEGRADADA
+    assert len(chamadas) == 1  # o sink foi chamado uma vez
+    assert chamadas[0]["resultado"] is not None  # recebeu o estado com o resultado a gravar
+
+
+def test_sink_nao_chamado_em_rodada_abortada():
+    chamadas = []
+    grafo = construir_grafo(
+        _fontes([]), PARAMS, registrar=chamadas.append
+    )  # estoque vazio → aborta
+    final = grafo.invoke(_estado_inicial())
+    assert final["estado"] == Estado.ABORTADA
+    assert chamadas == []  # rodada abortada não persiste (sem resultado válido)
+
+
+def test_rota_pos_finalizar_nao_persiste_no_aborto():
+    # Roteamento isolado (cobre os dois abortos — estoque vazio e veto do crivo,
+    # ambos ABORTADA — sem montar o grafo inteiro): abortada → END, senão → registrar.
+    assert _rota_pos_finalizar({"estado": Estado.ABORTADA}) == END
+    assert _rota_pos_finalizar({"estado": Estado.DEGRADADA}) == "registrar"
+    assert _rota_pos_finalizar({"estado": Estado.COMPLETA}) == "registrar"

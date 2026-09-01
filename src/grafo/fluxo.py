@@ -1,9 +1,10 @@
-"""Fluxo da rodada de decisão (sexta) como grafo LangGraph — esqueleto G1.
+"""Fluxo da rodada de decisão (sexta) como grafo LangGraph.
 
 Liga o caminho DETERMINÍSTICO já pronto como nós (Spec §5, ordem da sexta):
 
   Coletor Interno → (Analista de Perfil ∥ Coletor Externo) → Decisor
   → crivo (gate de "pronto" da decisão, D-017) → Redator → finalizar
+  → registrar (persiste no Registro; só rodada não-abortada, sink injetado — G2a-wire)
 
 Cada nó chama um módulo já testado e escreve seu produto e seu "pronto" no
 estado; nenhuma regra de decisão vive aqui (invariante 4 — o domínio é puro e
@@ -22,6 +23,7 @@ Limitações declaradas da G1 (honestas quanto ao estado, Spec §7.2):
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 
 from langgraph.graph import END, START, StateGraph
@@ -151,6 +153,32 @@ def no_finalizar(estado: EstadoRodada) -> dict:
     return {"estado": estado_final(estado)}
 
 
+def no_registrar(estado: EstadoRodada, *, registrar: Callable[[EstadoRodada], object]) -> dict:
+    """Persiste a rodada no Registro chamando o SINK injetado (G2a-wire). Só roda
+    em rodada não-abortada (pelo roteamento) — que tem `resultado` válido; não se
+    registra seleção abortada por veto nem rodada sem estoque.
+
+    O sink é injetado como as `Fontes`: em produção grava no Postgres (carimba os
+    timestamps e serializa os parâmetros — I/O, fora do estado determinístico, e
+    controla a transação); no teste, um fake que só registra a chamada. Assim o
+    grafo segue testável sem banco e o domínio permanece puro. O contrato do sink:
+    o `estado` recebido NÃO carrega parâmetros nem timestamps — o closure de
+    produção fecha sobre os provisórios e carimba inicio/fim (é o que mantém isso
+    fora do caminho determinístico). O retorno do sink (o `rodada.id`) é
+    descartado aqui; se um nó futuro precisar dele, exporá no estado.
+
+    CONSEQUÊNCIA DECLARADA do corte (não em silêncio, ligada à divergência aberta
+    de 2026-09-01 em docs/decisoes.md): uma rodada ABORTADA NÃO deixa NENHUMA linha
+    no Registro — nem o cabeçalho `rodada`. Logo o valor `estado='abortada'` da
+    Spec §2.1 e os campos `motivo`/`tentativas_por_etapa` nunca são populados para
+    abortos, e o Monitor de segunda / a auditoria não enxergam a execução que
+    abortou. Registrar o cabeçalho da rodada abortada (sem `decisao_imovel`) é
+    fatia futura candidata.
+    """
+    registrar(estado)
+    return {}
+
+
 def _rota_pos_coleta(estado: EstadoRodada) -> list[str] | str:
     """Após a coleta interna: aborta (vai direto finalizar) ou segue para o
     fan-out perfil ∥ externo."""
@@ -167,14 +195,30 @@ def _rota_pos_crivo(estado: EstadoRodada) -> str:
     return "redator"
 
 
-def construir_grafo(fontes: Fontes, parametros: ParametrosDecisao, checkpointer=None):
-    """Monta e compila o grafo da rodada de sexta (esqueleto G1).
+def _rota_pos_finalizar(estado: EstadoRodada) -> str:
+    """Após finalizar: rodada ABORTADA não persiste (sem resultado válido) — vai
+    a END; senão passa pelo nó de registro."""
+    if estado.get("estado") == Estado.ABORTADA:
+        return END
+    return "registrar"
 
-    `fontes` e `parametros` são INJETADOS (run-local, provisórios — nunca
-    adotados). `checkpointer` default = None (sem persistência na G1): o estado
-    carrega objetos de domínio que não são serializáveis pelo checkpointer sem
-    uma estratégia própria — isso, o Postgres e a interrupção de aprovação são a
-    G2/G3.
+
+def construir_grafo(
+    fontes: Fontes,
+    parametros: ParametrosDecisao,
+    *,
+    registrar: Callable[[EstadoRodada], object] | None = None,
+    checkpointer=None,
+):
+    """Monta e compila o grafo da rodada de sexta.
+
+    `fontes`, `parametros` e `registrar` são INJETADOS (run-local; provisórios,
+    nunca adotados). `registrar` é o SINK de persistência (G2a-wire): se
+    fornecido, a rodada NÃO-abortada passa por um nó que grava no Registro; se
+    None, o grafo termina sem persistir (usado nos testes e no marco F sem banco).
+    `checkpointer` default = None (sem persistência de ESTADO do grafo): o estado
+    carrega objetos de domínio não-serializáveis; o checkpointer Postgres e a
+    interrupção de aprovação são a G2b/G3.
     """
     g = StateGraph(EstadoRodada)
     g.add_node("coletor_interno", partial(no_coletor_interno, fontes=fontes))
@@ -194,6 +238,12 @@ def construir_grafo(fontes: Fontes, parametros: ParametrosDecisao, checkpointer=
     g.add_edge("decisor", "crivo")
     g.add_conditional_edges("crivo", _rota_pos_crivo, ["redator", "finalizar"])
     g.add_edge("redator", "finalizar")
-    g.add_edge("finalizar", END)
+
+    if registrar is not None:
+        g.add_node("registrar", partial(no_registrar, registrar=registrar))
+        g.add_conditional_edges("finalizar", _rota_pos_finalizar, ["registrar", END])
+        g.add_edge("registrar", END)
+    else:
+        g.add_edge("finalizar", END)
 
     return g.compile(checkpointer=checkpointer)
