@@ -213,9 +213,16 @@ def _descontos(
     return descontos_por_penalidade(pen, p.intensidades, p.decaimento_janela)
 
 
+# Declarada SÓ quando o F3 de fato não entrou. Era incondicional, e desde que o
+# ponto de entrada da sexta passou a poder alimentar F3 com raspagem viva, uma
+# rodada COMPLETA saía declarando "desempenho de portal ausente" duas linhas abaixo
+# do próprio estado — limitação falsa na planilha que sustenta a aprovação (§7.2).
+DEGRADACAO_SEM_PORTAL = (
+    "desempenho próprio observado (portal) ausente (rodada sem raspagem): "
+    "rodada DEGRADADA nesse fator, que roda zerado (D-017: é reforço, não bloqueia)."
+)
+
 DEGRADACOES = (
-    "desempenho próprio observado (portal) ausente (a piloto não raspa o portal): "
-    "rodada DEGRADADA nesse fator, que roda zerado (D-017: é reforço, não bloqueia).",
     "F2 leads = min-max de Leads180D (fator POSITIVO vivo, do banco — D-017).",
     "F4 produtividade do gestor agora CONTÍNUA (D-017): taxa semanal de captação "
     "+ flag de venda recente em 30d, normalizada. Limitação: a base não expõe "
@@ -341,5 +348,6 @@ def decidir(
         reprovados_regras={c.imovel_id: rr for c, rr in reprovados},
         n_elegiveis=len(elegiveis),
         n_reprovados=len(reprovados),
-        degradacoes=DEGRADACOES,
+        # A limitação do portal só é declarada se o portal REALMENTE não entrou.
+        degradacoes=DEGRADACOES if desempenho_por_imovel else (DEGRADACAO_SEM_PORTAL, *DEGRADACOES),
     )

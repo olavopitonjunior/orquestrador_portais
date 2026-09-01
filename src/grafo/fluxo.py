@@ -102,10 +102,17 @@ def no_coletor_externo(
         return {
             "externo_presente": True,
             "desempenho_por_imovel": dict(r.desempenho_por_imovel),
+            # Sobem MESMO no sucesso: a Spec §3.1 exige os dois na aba de resumo, e
+            # antes eles só existiam embutidos no motivo da rejeição — a rodada
+            # completa era justamente a que não tinha os números obrigatórios.
+            "externo_taxa_amarracao": r.taxa_amarracao,
+            "externo_idade_dias": r.idade_dias,
             "prontos": {"externo": True},
         }
     return {
         "externo_presente": False,
+        "externo_taxa_amarracao": r.taxa_amarracao,
+        "externo_idade_dias": r.idade_dias,
         "prontos": {"externo": False},
         "degradacoes": [f"Coletor Externo: {r.motivo}"],
     }

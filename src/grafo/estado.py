@@ -60,6 +60,12 @@ class EstadoRodada(TypedDict, total=False):
     perfis: tuple[PerfilConversao, ...]
     externo_presente: bool
     desempenho_por_imovel: dict[int, float]  # sinal de portal (F3) do Coletor Externo
+    # Spec §3.1: a aba de resumo carrega OBRIGATORIAMENTE a idade do dado do portal e
+    # a taxa de amarração. Os dois vinham no `ResultadoExterno` e eram descartados
+    # justamente no caso de sucesso — só apareciam embutidos no motivo da REJEIÇÃO.
+    # Ou seja: na rodada completa, os dois números exigidos não existiam.
+    externo_taxa_amarracao: float
+    externo_idade_dias: int | None  # None se a coleta não tem timestamp
     resultado: ResultadoDecisao | None
     veredito: ResultadoAuditoria | None
     # controle
