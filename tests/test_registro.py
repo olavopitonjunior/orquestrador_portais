@@ -69,6 +69,24 @@ def _candidato(imovel_id):
     )
 
 
+def _reprovado(imovel_id):
+    """Reprovado recuperável: falha só em FOTOS (relaxável), preço de destaque."""
+    from dominio.elegibilidade import ImovelCandidato
+
+    return ImovelCandidato(
+        imovel_id=imovel_id,
+        publicacao_ativa=True,
+        categoria="Apartamento",
+        preco=400_000,
+        qtd_fotos=3,  # < 10 → reprova em FOTOS (relaxável)
+        atualizado_em=date(2026, 8, 20),
+        notas_por_categoria={"Descrição do imóvel": 10},
+        gestor_captou_ou_vendeu_30d=True,
+        produtividade_gestor_30d=3,
+        corretores_ativos_no_distrito=5,
+    )
+
+
 def _penalizavel(imovel_id):
     from dominio.penalidades import ImovelPenalizavel
 
@@ -117,8 +135,9 @@ def test_round_trip_grava_e_le(conn):
     assert resumo["estado"] == "degradada"
     assert resumo["etapas"]["crivo"] is True
     assert resumo["aprovada_em"] is None
-    # dois elegíveis ≥700k → dois super destaque
+    # dois elegíveis ≥700k → dois super destaque; destaque vazio → déficit total 6495
     assert contagem_por_nivel(conn, rodada_id) == {"super_destaque": 2}
+    assert resumo["posicoes_vazias_destaque"] == 6495  # Spec §2.1: não perde o déficit
 
 
 def test_decisao_persiste_os_quatro_fatores(conn):
@@ -162,3 +181,62 @@ def test_cota_excedida_e_rejeitada_pelo_ddl(conn):
     with pytest.raises(psycopg.errors.CheckViolation):
         _gravar(conn, ruim)
     conn.rollback()  # limpa o estado abortado da transação
+
+
+def test_relaxamento_persiste_regra_e_deficit(conn):
+    # 1 elegível (super) + 1 reprovado recuperável (fotos) → relaxamento preenche
+    # 1 posição de destaque por cedência; o resto do destaque fica vazio.
+    resultado = _resultado([_candidato(1), _reprovado(2)])
+    assert len(resultado.relaxamento.recuperados) == 1  # o reprovado foi recuperado
+    rodada_id = _gravar(conn, resultado)
+
+    assert contagem_por_nivel(conn, rodada_id) == {"super_destaque": 1, "destaque": 1}
+    with conn.cursor() as cur:
+        # a posição de destaque carrega a regra que cedeu (fotos)
+        cur.execute(
+            "SELECT regra_relaxada FROM registro.decisao_imovel "
+            "WHERE rodada_id = %s AND nivel = 'destaque'",
+            (rodada_id,),
+        )
+        assert cur.fetchone()[0] == "fotos"
+        # a tabela relaxamento tem a linha da cessão
+        cur.execute(
+            "SELECT regra_cedida, posicoes_dependentes FROM registro.relaxamento "
+            "WHERE rodada_id = %s",
+            (rodada_id,),
+        )
+        assert cur.fetchone() == ("fotos", 1)
+    # déficit residual = 6495 - 1 recuperado, persistido na rodada (não perdido)
+    assert ler_rodada(conn, rodada_id)["posicoes_vazias_destaque"] == 6494
+
+
+def test_super_com_relaxamento_rejeitado_pelo_ddl(conn):
+    # Invariante 7 reforçado no banco: um super destaque com regra_relaxada é
+    # rejeitado pelo CHECK super_destaque_nunca_relaxa (simetria com o de cota).
+    import psycopg
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO registro.rodada (tipo, inicio) VALUES ('decisao', now()) RETURNING id"
+        )
+        rid = cur.fetchone()[0]
+        with pytest.raises(psycopg.errors.CheckViolation):
+            cur.execute(
+                "INSERT INTO registro.decisao_imovel "
+                "(rodada_id, imovel_id, nivel, posicao_ranking, nota_perfil, nota_leads, "
+                "nota_desempenho, nota_gestor, nota_final, regra_relaxada) "
+                "VALUES (%s, 1, 'super_destaque', 1, 0, 0, 0, 0, 0, 'fotos')",
+                (rid,),
+            )
+    conn.rollback()
+
+
+def test_parametros_da_rodada_round_trip(conn):
+    rodada_id = _gravar(conn, _resultado([_candidato(1)]))
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT parametros FROM registro.parametros_da_rodada WHERE rodada_id = %s",
+            (rodada_id,),
+        )
+        assert cur.fetchone()[0] == PARAMS_SERIAL  # jsonb volta igual ao provisório gravado
+    assert ler_rodada(conn, rodada_id)["motivo_degradacao"] == "sem raspagem"

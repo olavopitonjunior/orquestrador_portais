@@ -14,6 +14,20 @@ Idempotência: cada chamada cria UMA rodada (uma execução). Como a `rodada.id`
 IDENTITY, não há chave natural para deduplicar duas execuções da mesma rodada
 lógica — o chamador controla (grava uma vez por rodada). Registrado como ponto
 para os portões/G2b, não resolvido inventando chave.
+
+Cortes de escopo declarados da G2a (não silenciosos — CLAUDE.md exige apontar):
+- **`perfil_id` fica NULL e `perfil_da_rodada` não é escrita.** O "perfil que
+  casou" (Spec §2.1) persiste só como `perfil_evidencia` (a contagem de vendas),
+  sem o identificador/dimensões. Escrever `perfil_da_rodada` e ligar `perfil_id`
+  é fatia própria (com o Analista de produção).
+- **`posicoes_vazias` por regra fica 0.** O domínio não computa vaga por regra
+  cedida; o TOTAL de posições vazias vai para `rodada.posicoes_vazias_destaque`
+  (`ResultadoRelaxamento.deficit_restante`, Spec §2.1). O per-regra 0 é
+  placeholder até haver a decomposição.
+- **`tentativas_por_etapa` fica '{}'** — só ganha valor com o retry do
+  Orquestrador (parâmetro nº 4, nulo).
+- **Sem controle de versão de schema** (tabela de migrations / aplicador em
+  ordem): as `NNN_*.sql` são aplicadas à mão hoje; pendência para antes da G2b.
 """
 
 from __future__ import annotations
@@ -124,12 +138,25 @@ def gravar_rodada_decisao(
     `etapas` é o `prontos` por etapa. Não commita: o chamador controla a transação
     (use `with conn.transaction(): ...` ou o context manager da conexão).
     """
+    if conn.autocommit:
+        raise ValueError(
+            "conexão em autocommit: a atomicidade da rodada exige autocommit=False "
+            "(rodada + decisões + relaxamento num único commit)"
+        )
+    n_cols = len(_COLS_DECISAO.split(","))
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO registro.rodada "
-            "(tipo, inicio, fim, estado, etapas, motivo_degradacao) "
-            "VALUES ('decisao', %s, %s, %s, %s, %s) RETURNING id",
-            (inicio, fim, estado, Json(dict(etapas)), motivo_degradacao),
+            "(tipo, inicio, fim, estado, etapas, motivo_degradacao, posicoes_vazias_destaque) "
+            "VALUES ('decisao', %s, %s, %s, %s, %s, %s) RETURNING id",
+            (
+                inicio,
+                fim,
+                estado,
+                Json(dict(etapas)),
+                motivo_degradacao,
+                resultado.relaxamento.deficit_restante,  # Spec §2.1: posições ainda vazias
+            ),
         )
         rodada_id = cur.fetchone()[0]
 
@@ -142,7 +169,7 @@ def gravar_rodada_decisao(
         if linhas:
             cur.executemany(
                 f"INSERT INTO registro.decisao_imovel ({_COLS_DECISAO}) "
-                f"VALUES ({', '.join(['%s'] * 14)})",
+                f"VALUES ({', '.join(['%s'] * n_cols)})",
                 linhas,
             )
 

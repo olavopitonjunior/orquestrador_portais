@@ -15,20 +15,21 @@ def ler_rodada(conn: psycopg.Connection, rodada_id: int) -> dict | None:
     """Resumo da rodada: tipo, estado, etapas, aprovação. None se não existe."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT tipo, estado, etapas, motivo_degradacao, aprovada_em "
+            "SELECT tipo, estado, etapas, motivo_degradacao, aprovada_em, posicoes_vazias_destaque "
             "FROM registro.rodada WHERE id = %s",
             (rodada_id,),
         )
         linha = cur.fetchone()
     if linha is None:
         return None
-    tipo, estado, etapas, motivo, aprovada_em = linha
+    tipo, estado, etapas, motivo, aprovada_em, vazias = linha
     return {
         "tipo": tipo,
         "estado": estado,
         "etapas": etapas,
         "motivo_degradacao": motivo,
         "aprovada_em": aprovada_em,
+        "posicoes_vazias_destaque": vazias,
     }
 
 
@@ -52,3 +53,8 @@ def marcar_aprovada(conn: psycopg.Connection, rodada_id: int, aprovada_em) -> No
             "UPDATE registro.rodada SET aprovada_em = %s WHERE id = %s AND tipo = 'decisao'",
             (aprovada_em, rodada_id),
         )
+        if cur.rowcount != 1:
+            raise ValueError(
+                f"marcar_aprovada: nenhuma rodada de decisão com id={rodada_id} "
+                f"(afetou {cur.rowcount} linhas) — aprovação é estado sensível (D-001)"
+            )
