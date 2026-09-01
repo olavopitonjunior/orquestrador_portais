@@ -14,6 +14,10 @@ dependencies = [
     "pymysql>=1.1",
     "cryptography>=42",
     "langgraph>=0.2",
+    # src/dados/registro: escrita e leitura do PostgreSQL PRÓPRIO (o Registro,
+    # Spec §2 — a única escrita do sistema, invariante 2). Um Postgres, uma
+    # POSTGRES_URL, dois esquemas (registro + o checkpointer do grafo).
+    "psycopg[binary]>=3.2",
 ]
 
 [dependency-groups]
