@@ -239,3 +239,11 @@ Novo componente (resposta do dono, Q4: "híbrido"), em duas camadas com natureza
 - **Distrito continua ≥ 2** (Spec §6.1 + D-015): reafirmado nesta sessão, sem mudança.
 
 **Emenda 2026-09-01 (D-017) — ratificação da camada 2 do crivo:** o dono ratificou o default desta decisão — a **camada 2 consultiva (parecer por modelo) mora dentro do Redator** (D-006, só agregados), **sem ampliar o "três agentes usam modelo"**: NÃO há um quarto agente-modelo de auditoria. É confirmação da cláusula já registrada acima (a camada 2 mora no Redator, e um agente/superfície de auditoria separado exigiria decisão do dono) — não decisão nova, por isso emenda, não um D-018. Consequência para a implementação: a fatia do crivo entrega a **camada 1 determinística** (código, pode vetar) e **declara o contrato da camada 2** como pendência da fatia do Redator-com-modelo (o provedor de modelo ainda não foi escolhido; o Redator hoje é template) — nenhuma chamada de modelo é instanciada agora.
+
+## Divergência aberta (aguarda o dono) — estado terminal de um veto do crivo (G1, 2026-09-01)
+
+**Contexto:** o esqueleto do grafo (marco F, G1) liga o crivo de auditoria camada 1 (D-017) como gate de "pronto" da decisão. Quando o crivo VETA (a seleção viola cota, piso ou relaxamento em super), a rodada não pode entregar — "etapa que não cumpre pronto não entrega para a seguinte" (glossário).
+
+**Divergência declarada (não resolvida em silêncio — regra do CLAUDE.md):** a Spec §7.2 só prevê o estado **ABORTADA** para o caso de **coleta interna vazia** (sem estoque). Um veto do crivo é falha de **integridade da decisão**, não de fonte — a §7.2 não oferece estado terminal para isso. A G1 **reusa ABORTADA pela CONSEQUÊNCIA** (sem entrega), com o `motivo_aborto` distinguindo veto-de-integridade de estoque-vazio, e o `_rota_pos_crivo` desviando do Redator.
+
+**Pendência do dono:** decidir se um veto do crivo merece **estado terminal próprio** na Spec §7.2 (ex.: "reprovada"/"bloqueada") em vez de reusar ABORTADA. Até a decisão, vale o reuso declarado acima. Na prática o veto não dispara em rodada válida (a piloto/grafo dão PRONTA); é um gate de segurança contra bug upstream.
