@@ -78,12 +78,15 @@ def linha_para_vendido(row: dict[str, Any]) -> ImovelVendido:
 def _vendas_ancoraveis(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
     """Separa as ofertas ANCORÁVEIS (com Realty_Id) das descartadas (sem imóvel).
 
-    Uma venda sem `Realty_Id` é estruturalmente inutilizável para o perfil: sem
-    imóvel não há preço/vagas (vêm do JOIN em realties), não há dimensões para
-    casar, não há `imovel_id` para ancorar. Descartá-la é correto — mas NUNCA em
-    silêncio: devolve o número descartado para a rodada declarar (D-013 continua
-    a métrica de 177; o perfil roda sobre as ancoráveis). Medido no dado real:
-    ofertas assinadas em 180d com `Realty_Id` nulo (o investigador sinalizou).
+    Uma venda sem `Realty_Id` não pode ser montada como ImovelVendido: falta a
+    ÂNCORA (`imovel_id`) e o preço/vagas que vêm do JOIN em realties. As três
+    dimensões nativas da oferta (região, faixa de metragem, dormitórios) até
+    existiriam, mas sem âncora nem preço/vagas a oferta não vira um ImovelVendido
+    completo — então é descartada. É um encolhimento marginal da base do perfil
+    (≈2 de 177, dentro da deriva que a D-013 admite), NUNCA em silêncio: devolve
+    o número descartado para a rodada declarar (D-013 continua a métrica de 177;
+    o perfil roda sobre as ancoráveis). Medido no dado real: ofertas assinadas em
+    180d com `Realty_Id` nulo (o investigador sinalizou).
     """
     ancoraveis = [r for r in rows if r["imovel_id"] is not None]
     return ancoraveis, len(rows) - len(ancoraveis)
