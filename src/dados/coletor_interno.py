@@ -55,6 +55,11 @@ SELECT
   r.UpdatedAt                                   AS atualizado_em,
   (COALESCE(p.Captations_per_week_last_30d, 0) > 0
      OR p.LastSell >= NOW() - INTERVAL 30 DAY)  AS gestor_ativo_30d,
+  -- FATOR F4 (D-017): intensidade CONTÍNUA em 30d = taxa semanal de captação
+  -- (0..15) + flag de venda recente. A base não tem contagem de vendas em 30d
+  -- (Sells é 365d), então venda entra só como flag — limitação declarada.
+  (COALESCE(p.Captations_per_week_last_30d, 0)
+     + COALESCE(p.LastSell >= NOW() - INTERVAL 30 DAY, 0))  AS produtividade_gestor_30d,
   COALESCE(d.{coluna_ativo}, 0)                 AS ativos_no_distrito,
   (sc.realtyId IS NOT NULL)                     AS alguma_categoria_avaliada,
   f.Leads180D                                   AS leads_180d
@@ -115,6 +120,7 @@ def linha_para_candidato(row: dict[str, Any], notas: dict[str, int] | None) -> I
         atualizado_em=_para_date(row["atualizado_em"]),
         notas_por_categoria=MappingProxyType(dict(notas)) if notas is not None else None,
         gestor_captou_ou_vendeu_30d=bool(row["gestor_ativo_30d"]),
+        produtividade_gestor_30d=int(row["produtividade_gestor_30d"] or 0),
         corretores_ativos_no_distrito=int(row["ativos_no_distrito"]),
     )
 

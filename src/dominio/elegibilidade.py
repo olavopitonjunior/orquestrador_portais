@@ -77,7 +77,17 @@ class ImovelCandidato:
     # recebe penalidade no ranking (Spec §6.1) — cada vez mais comum, porque o
     # pipeline está morto desde 16/10/2025 (defeito 4 do mapa de dados).
     notas_por_categoria: Mapping[str, int] | None
+    # REGRA de elegibilidade "gestor produtivo" (Spec §6.1): captou OU vendeu em
+    # 30d. NÃO confundir com o fator de ranking abaixo — este binário decide a
+    # elegibilidade e não muda com o redesenho D-017.
     gestor_captou_ou_vendeu_30d: bool
+    # FATOR de ranking F4 (D-017): intensidade CONTÍNUA da produtividade do
+    # gestor em 30d = taxa semanal de captação (Captations_per_week_last_30d,
+    # 0..15) + flag de venda recente (LastSell em 30d). A base NÃO expõe
+    # contagem de vendas em 30d (Sells é de 365d), então a dimensão de venda
+    # entra só como flag — limitação declarada, montada pela coleta. Substitui,
+    # no ranking, o uso do binário acima (que era redundante com a elegibilidade).
+    produtividade_gestor_30d: int
     corretores_ativos_no_distrito: int
 
     # Instâncias não são hasháveis (o mapping impede hash estável); deduplique

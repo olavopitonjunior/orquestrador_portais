@@ -170,3 +170,14 @@ Para casar o imóvel candidato com os perfis de conversão, as cinco dimensões 
 **Armadilha (crítica): NÃO usar `FT_RealtyRelation.Price_Range` como faixa de preço.** Ele tem vocabulário PRÓPRIO e incompatível com `faixa_de_preco()` das vendas (rótulos `300 - 400mil`, `1 - 1.5M`, `acima 3.5M`); casar por ele com a venda daria zero. A faixa de preço vem SEMPRE de `realties.Price` + `faixa_de_preco()`, nos dois lados. A assimetria entre as duas colunas "_Range" é a pegadinha: `PrivateArea_Range` é compatível e nativo, `Price_Range` não.
 
 `FT_RealtyRelation` também carrega `Price`, `PrivateArea`, `Bairro`, `ValueZone` (redundância com `realties`); a referência de preço/vagas continua sendo `realties` por JOIN, como no lado venda. O `coletor_interno.py` (elegibilidade/penalidade) NÃO lê essas 3 colunas de perfil — a leitura do candidato para o match vive em `dados/candidatos_perfil.py`.
+
+## Fonte do fator F4 produtividade contínua (D-017 — medição 01/09/2026)
+
+O fator de ranking F4 (produtividade do gestor, D-017) passou de binário para intensidade contínua em 30 dias, lido de `newcore_bi.productivityrating` (JOIN por `User_Id = f.BrokerID`, 1:1, não infla). Achados que limitam o "contínuo":
+
+- **`Captations_per_week_last_30d`** é a ÚNICA métrica genuinamente de 30 dias: uma **taxa semanal** (int 0–15), 99,5% preenchida, 12,8% > 0. É a dimensão contínua do F4.
+- **`Sells` é contagem de 365 DIAS, não de 30d nem vitalícia.** Prova (01/09): `SUM(Sells>0)` = 189 = `SUM(LastSell >= NOW()-365d)` = 189, idênticos; 238 corretores têm `LastSell` com `Sells=0` (venda anterior à janela). max 11, média 0,19.
+- **Não existe contagem de captações nem de vendas em 30d.** `Captations` (sem sufixo, max 880) é acumulado de longo prazo, escala incompatível com a taxa semanal.
+- O único sinal de venda em 30d é derivar de **`LastSell`** (só 20% preenchida; 22 gestores com venda em 30d).
+
+**Consequência declarada (D-017):** o F4 usa `Captations_per_week_last_30d` (captação, contínua) + flag `LastSell >= NOW()-30d` (venda recente, binário, pois não há contagem de vendas de 30d). A dimensão de venda entra só como flag — limitação assumida, rotulada nas degradações da rodada. A regra de elegibilidade "gestor produtivo" (captou OU vendeu em 30d) segue usando o binário, intocada.

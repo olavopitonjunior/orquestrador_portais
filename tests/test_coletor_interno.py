@@ -30,6 +30,7 @@ LINHA = {
     "qtd_fotos": 28,
     "atualizado_em": datetime(2026, 8, 30, 12, 0, 0),
     "gestor_ativo_30d": 1,
+    "produtividade_gestor_30d": 4,
     "ativos_no_distrito": 5,
     "alguma_categoria_avaliada": 1,
     "leads_180d": 7,
@@ -46,12 +47,20 @@ def test_linha_para_candidato_monta_o_contrato_do_dominio():
     assert c.qtd_fotos == 28
     assert c.atualizado_em == date(2026, 8, 30)  # datetime → date
     assert c.gestor_captou_ou_vendeu_30d is True
+    assert c.produtividade_gestor_30d == 4  # F4 contínuo (D-017), separado do binário
     assert c.corretores_ativos_no_distrito == 5
     assert c.notas_por_categoria == {"Quantidade de fotos": 8, "Descrição do imóvel": 10}
 
 
 def test_preco_decimal_com_centavos_vira_int_reais():
     assert linha_para_candidato({**LINHA, "preco": Decimal("299999.99")}, None).preco == 299999
+
+
+def test_produtividade_nula_vira_zero():
+    # LEFT JOIN sem linha em productivityrating → coluna None; o mapeamento
+    # (int(... or 0)) e o COALESCE do SQL degeneram para 0, sem quebrar.
+    c = linha_para_candidato({**LINHA, "produtividade_gestor_30d": None}, None)
+    assert c.produtividade_gestor_30d == 0
 
 
 def test_sem_avaliacao_notas_e_None_nao_dict_vazio():

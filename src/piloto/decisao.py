@@ -26,10 +26,13 @@ Leituras estruturais desta rodada (D-016/D-017), declaradas — não inventadas:
 4. desempenho_proprio = 0 para todos: a piloto não raspa o portal, então o
    fator roda DEGRADADO (D-017: é reforço, não bloqueia). Zerar uniformemente é
    order-preserving — declarado na saída.
-5. produtividade_gestor = sinal BINÁRIO `gestor_captou_ou_vendeu_30d` (1/0),
-   min-max. A versão contínua (F4, D-017) depende do sinal rico de
-   productivityrating, que o candidato não traz hoje — fica para fatia com o
-   coletor. NÃO tocada aqui.
+5. produtividade_gestor = intensidade CONTÍNUA em 30d (F4, D-017):
+   `produtividade_gestor_30d` (taxa semanal de captação + flag de venda recente),
+   normalizada min-max. Substitui o binário morto (redundante com a
+   elegibilidade). Limitação declarada: a base não expõe CONTAGEM de vendas em
+   30d (Sells é de 365d), então a venda entra só como flag; a captação é a
+   dimensão genuinamente contínua. O binário `gestor_captou_ou_vendeu_30d` segue
+   como REGRA de elegibilidade, intocado.
 
 Os pesos dos quatro fatores (nº 12) e o decaimento por dimensão (nº 13) são
 INJETADOS run-local via `ParametrosDecisao`/`ParametrosSemelhanca` — fecha o
@@ -169,14 +172,15 @@ def _fatores(
     imóveis passados — sobre os elegíveis no ranking primário, entre os
     reprovados no relaxamento (D-016); desempenho_proprio é 0 (degradado, sem
     raspagem). F2 leads = min-max de `Leads180D` (fator POSITIVO vivo, do banco).
-    F4 produtividade segue BINÁRIO (captou/vendeu em 30d) — a versão contínua
-    depende de campo novo do coletor e fica para fatia própria.
+    F4 produtividade = min-max de `produtividade_gestor_30d` (intensidade
+    CONTÍNUA em 30d — captação como taxa + venda como flag, D-017), NÃO mais o
+    binário (que é a regra de elegibilidade, à parte).
     Passe os elegíveis para o ranking primário e os reprovados para o relaxamento.
     """
     dims_pop = {im.imovel_id: dims_por_imovel.get(im.imovel_id, {}) for im in imoveis}
     semelhanca = semelhanca_por_imovel(dims_pop, perfis, params_sem)
     produtividade = _normalizar_minmax(
-        {im.imovel_id: (1.0 if im.gestor_captou_ou_vendeu_30d else 0.0) for im in imoveis}
+        {im.imovel_id: float(im.produtividade_gestor_30d) for im in imoveis}
     )
     leads = _normalizar_minmax(
         {im.imovel_id: float(_leads_do(im.imovel_id, penalizaveis)) for im in imoveis}
@@ -207,8 +211,9 @@ DEGRADACOES = (
     "desempenho próprio observado (portal) ausente (a piloto não raspa o portal): "
     "rodada DEGRADADA nesse fator, que roda zerado (D-017: é reforço, não bloqueia).",
     "F2 leads = min-max de Leads180D (fator POSITIVO vivo, do banco — D-017).",
-    "F4 produtividade do gestor ainda BINÁRIA (captou/vendeu em 30d: sim/não); a "
-    "versão contínua (D-017) depende de campo novo do coletor e fica para fatia própria.",
+    "F4 produtividade do gestor agora CONTÍNUA (D-017): taxa semanal de captação "
+    "+ flag de venda recente em 30d, normalizada. Limitação: a base não expõe "
+    "contagem de vendas em 30d (Sells é de 365d), então a venda entra só como flag.",
     "pesos dos quatro fatores por nível (parâmetro nº 12) e decaimento por dimensão "
     "do F1 (parâmetro nº 13): PROVISÓRIOS desta rodada, injetados run-local, NÃO adotados (D-017).",
     "forma de normalização (parâmetro nº 2) = min-max: PROVISÓRIA, não adotada "

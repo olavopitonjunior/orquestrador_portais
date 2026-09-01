@@ -1,9 +1,9 @@
 """Testes da costura da decisão (piloto) — o encadeamento das seis etapas.
 
 Módulo puro — roda no CI. Verifica a separação elegível/reprovado, a montagem
-dos fatores (desempenho zerado, produtividade binária), a alocação nas cotas, o
-disparo do relaxamento sobre reprovados e o determinismo. Os módulos do domínio
-já são testados isoladamente; aqui prova-se a FIAÇÃO.
+dos fatores (desempenho zerado; leads e produtividade contínua vivos, D-017), a
+alocação nas cotas, o disparo do relaxamento sobre reprovados e o determinismo.
+Os módulos do domínio já são testados isoladamente; aqui prova-se a FIAÇÃO.
 """
 
 from datetime import date
@@ -38,7 +38,7 @@ PARAMS = ParametrosDecisao(
 )
 
 
-def _candidato(imovel_id, *, elegivel=True, preco=850_000, gestor=True):
+def _candidato(imovel_id, *, elegivel=True, preco=850_000, gestor=True, produtividade=1):
     """Um ImovelCandidato elegível por padrão; `elegivel=False` reprova em fotos."""
     return ImovelCandidato(
         imovel_id=imovel_id,
@@ -49,6 +49,7 @@ def _candidato(imovel_id, *, elegivel=True, preco=850_000, gestor=True):
         atualizado_em=date(2026, 8, 30),
         notas_por_categoria={"Descrição do imóvel": 10},
         gestor_captou_ou_vendeu_30d=gestor,
+        produtividade_gestor_30d=produtividade,
         corretores_ativos_no_distrito=5,
     )
 
@@ -221,3 +222,30 @@ def test_penalizavel_ausente_falha_alto():
     # ao montar o fator de leads.
     with pytest.raises(ValueError, match="coleta desalinhada"):
         decidir([_candidato(1)], {}, {1: _dims()}, PERFIS, PARAMS, HOJE)
+
+
+def test_produtividade_e_fator_continuo():
+    # F4 (D-017): dois elegíveis idênticos exceto produtividade_gestor_30d; com
+    # peso de produtividade > 0, o mais produtivo recebe fator maior (min-max) e
+    # nota maior. Prova que F4 deixou de ser binário morto e passou a discriminar.
+    params = ParametrosDecisao(
+        semelhanca=ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0),
+        intensidades=IntensidadesPenalidade(
+            janela_sem_resultado=0.0, sem_avaliacao_por_categoria=0.0, sem_lead_180d=0.0
+        ),
+        decaimento_janela=lambda _c: 1.0,
+        pesos_super=PesosNivel(
+            semelhanca_perfil=50, leads_positivo=10, desempenho_proprio=10, produtividade_gestor=30
+        ),
+        pesos_destaque=PesosNivel(
+            semelhanca_perfil=50, leads_positivo=10, desempenho_proprio=10, produtividade_gestor=30
+        ),
+    )
+    cands = [_candidato(1, produtividade=12), _candidato(2, produtividade=0)]
+    dims = {1: _dims(), 2: _dims()}
+    penalizaveis = {1: _penalizavel(1), 2: _penalizavel(2)}
+    r = decidir(cands, penalizaveis, dims, PERFIS, params, HOJE)
+    # min-max sobre os dois elegíveis: mais produtivo → 1.0, menos → 0.0.
+    assert r.detalhes[1].fatores.produtividade_gestor == 1.0
+    assert r.detalhes[2].fatores.produtividade_gestor == 0.0
+    assert r.detalhes[1].nota_destaque > r.detalhes[2].nota_destaque
