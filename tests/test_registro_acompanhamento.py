@@ -60,11 +60,13 @@ def _rodada_decisao(conn, *, aprovada: bool, imoveis=((1, "super_destaque"), (2,
 
 
 def test_rodada_nao_aprovada_nao_e_carga_vigente(conn):
-    _rodada_decisao(conn, aprovada=False)
-    # pode haver aprovadas antigas no banco; o que importa é que a NÃO aprovada
-    # recém-criada não seja escolhida
-    nao_aprovada = _rodada_decisao(conn, aprovada=False)
-    assert ultima_carga_aprovada(conn) != nao_aprovada
+    """Uma NÃO aprovada criada DEPOIS da aprovada não pode ser escolhida — senão a
+    segunda mediria contra uma seleção que ninguém autorizou a aplicar (D-001)."""
+    aprovada = _rodada_decisao(conn, aprovada=True)
+    nao_aprovada = _rodada_decisao(conn, aprovada=False)  # mais recente, sem aprovação
+    escolhida = ultima_carga_aprovada(conn)
+    assert escolhida == aprovada
+    assert escolhida != nao_aprovada
 
 
 def test_escolhe_a_aprovada_mais_recente(conn):
@@ -102,6 +104,8 @@ def test_ausencia_de_carga_fica_registrada(conn):
 
 def _resultado(rodada_decisao_id):
     pos = [PosicaoPaga(1, Nivel.SUPER_DESTAQUE), PosicaoPaga(2, Nivel.DESTAQUE)]
+    # Com responsável nomeado: é o caminho "pronto" do PRD (96,4% dos leads reais
+    # têm gestor), e sem ele a gravação como 'completa' seria — corretamente — recusada.
     leads = [
         LeadDoPeriodo(
             lead_id=100,
@@ -109,6 +113,7 @@ def _resultado(rodada_decisao_id):
             entrada=date(2026, 8, 29),
             atendimento_registrado=False,
             contato_registrado=False,
+            corretor_gestor="Corretor X",
         ),
         LeadDoPeriodo(
             lead_id=101,
@@ -116,6 +121,7 @@ def _resultado(rodada_decisao_id):
             entrada=date(2026, 8, 30),
             atendimento_registrado=True,
             contato_registrado=False,
+            corretor_gestor="Corretor X",
         ),
     ]
     return apurar(
@@ -134,6 +140,57 @@ def test_grava_e_le_resultado_carga(conn):
     lido = ler_resultado_carga(conn, rid)
     # TODAS as posições entram, inclusive a de zero lead (Spec §4.3)
     assert lido == {1: (2, 1), 2: (0, 0)}
+
+
+def test_pronto_do_monitor_e_derivado_nao_afirmado(conn):
+    """PRD: o pronto exige responsável nomeado. Lead sem corretor gestor ⇒ o
+    Registro NÃO pode gravar monitor=True."""
+    decisao_id = _rodada_decisao(conn, aprovada=True)
+    sem_resp = apurar(
+        rodada_decisao_id=decisao_id,
+        posicoes=[PosicaoPaga(1, Nivel.DESTAQUE)],
+        leads=[
+            LeadDoPeriodo(
+                lead_id=200,
+                imovel_id=1,
+                entrada=date(2026, 8, 29),
+                atendimento_registrado=False,
+                contato_registrado=False,
+                corretor_gestor=None,  # sem responsável nomeado
+            )
+        ],
+        inicio_periodo=date(2026, 8, 28),
+        fim_periodo=date(2026, 8, 31),
+    )
+    # "completa" com etapa não-pronta é linha que se contradiz: o glossário define
+    # completa como TODAS as etapas prontas. A gravação recusa.
+    with pytest.raises(ValueError, match="todas as etapas prontas"):
+        gravar_acompanhamento(conn, resultado=sem_resp, inicio=INICIO, fim=FIM)
+
+    # Declarando o estado honesto, grava — e o Registro diz que o pronto não saiu.
+    rid = gravar_acompanhamento(
+        conn,
+        resultado=sem_resp,
+        inicio=INICIO,
+        fim=FIM,
+        estado="degradada",
+        motivo_degradacao="lead sem responsável nomeado (PRD: pronto não cumprido)",
+    )
+    with conn.cursor() as cur:
+        cur.execute("SELECT etapas FROM registro.rodada WHERE id = %s", (rid,))
+        etapas = cur.fetchone()[0]
+    assert etapas["monitor"] is False  # pronto não cumprido, e o Registro diz isso
+    assert "redator" not in etapas  # não se afirma etapa de quem não rodou
+
+
+def test_autocommit_e_recusado(conn):
+    """A gravação é tudo-ou-nada: com autocommit, recusa (raise, não assert)."""
+    conn.autocommit = True
+    try:
+        with pytest.raises(ValueError, match="autocommit"):
+            gravar_acompanhamento(conn, resultado=_resultado(1), inicio=INICIO, fim=FIM)
+    finally:
+        conn.autocommit = False
 
 
 def test_rodada_de_acompanhamento_referencia_a_carga(conn):

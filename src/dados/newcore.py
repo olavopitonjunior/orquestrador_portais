@@ -17,7 +17,7 @@ o 1045 volta.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
 
@@ -57,6 +57,11 @@ def conectar(database: str | None = None) -> Iterator[pymysql.connections.Connec
 
     `database` seleciona o schema (`newcore` ou `newcore_bi`); None deixa sem
     schema padrão (as queries qualificam a tabela). Cursor devolve dicts.
+
+    NÃO passe `client_flag` aqui. A guarda de prefixo de `consultar()` só barra
+    `SELECT 1; DELETE ...` porque o pymysql NÃO habilita `MULTI_STATEMENTS` por
+    padrão; ligar essa flag derrubaria a suspensória e deixaria só o cinto (a
+    credencial read-only) segurando o invariante 1.
     """
     cfg = _config()
     conn = pymysql.connect(
@@ -78,7 +83,12 @@ def conectar(database: str | None = None) -> Iterator[pymysql.connections.Connec
 
 
 def consultar(
-    sql: str, params: Sequence[Any] | None = None, *, database: str | None = None
+    sql: str,
+    # `Mapping` também: o pymysql aceita dict para placeholders NOMEADOS
+    # (`%(nome)s`), que é como a consulta da rodada de segunda parametriza.
+    params: Sequence[Any] | Mapping[str, Any] | None = None,
+    *,
+    database: str | None = None,
 ) -> list[dict[str, Any]]:
     """Executa um SELECT e devolve as linhas como lista de dicts.
 

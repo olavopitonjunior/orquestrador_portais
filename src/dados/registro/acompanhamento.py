@@ -1,7 +1,8 @@
 """Registro na rodada de SEGUNDA: lê a carga APROVADA vigente e grava o apurado.
 
-Fecha as duas metades que o domínio puro (`src/dominio/acompanhamento.py`) declarou
-faltar (Spec §7.3):
+Entrega o MECANISMO das duas metades que o domínio puro
+(`src/dominio/acompanhamento.py`) declarou faltar (Spec §7.3) — quem as LIGA é o nó
+da rodada de segunda (fatia seguinte); mecanismo pronto ainda não é §7.3 cumprida:
 
 1. **Qual carga medir**: não é "a última rodada de decisão", é a última rodada de
    decisão **APROVADA** (D-001: a planilha aprovada vigente). Rodada sem
@@ -13,6 +14,15 @@ faltar (Spec §7.3):
    §7.3 tem duas metades, e a segunda é esta.
 
 Escrita SÓ no Postgres próprio (invariante 2); nada aqui toca o Newcore.
+
+CORTE DE ESCOPO DECLARADO (não em silêncio): a D-020 decidiu que as duas colunas da
+Spec §4.3 sem fonte no Newcore ("semanas consecutivas em destaque" e "leads
+acumulados na janela atual") ficam vazias e **acumulam** pelo Registro próprio. Esta
+fatia NÃO acumula: ninguém escreve `registro.janela_destaque` (a tabela existe no
+DDL e não tem produtor), e `apurar(historico=...)` não recebe nada. Consequência: as
+duas colunas ficam `None` INDEFINIDAMENTE, não "nas primeiras semanas" — e a
+penalidade §6.4 "janela anterior sem resultado" segue sem insumo. Fechar/estender a
+janela na rodada de segunda é a fatia que falta para a D-020 valer de fato.
 """
 
 from __future__ import annotations
@@ -25,8 +35,15 @@ from psycopg.types.json import Json
 from dominio.acompanhamento import Nivel, PosicaoPaga, ResultadoAcompanhamento
 
 
-class SemCargaAprovadaVigente(Exception):
-    """Não há rodada de decisão aprovada para servir de carga de referência."""
+def _exigir_transacao(conn: psycopg.Connection) -> None:
+    """A gravação é tudo-ou-nada; com autocommit a rodada poderia ficar
+    meio-gravada (cabeçalho sem `resultado_carga`). `raise`, não `assert`:
+    `assert` evapora sob `python -O` justamente onde a garantia importa."""
+    if conn.autocommit:
+        raise ValueError(
+            "conexão em autocommit: a gravação da rodada precisa ser atômica "
+            "(o chamador controla a transação)"
+        )
 
 
 def ultima_carga_aprovada(conn: psycopg.Connection) -> int | None:
@@ -70,7 +87,8 @@ def _abrir_rodada(
             (inicio, fim, estado, Json(etapas), motivo),
         )
         linha = cur.fetchone()
-        assert linha is not None
+        if linha is None:
+            raise RuntimeError("INSERT ... RETURNING id não devolveu linha")
         return int(linha[0])
 
 
@@ -110,8 +128,22 @@ def gravar_acompanhamento(
     §2.1 pede em `resultado_carga` — menos dado pessoal parado no banco, mesma
     capacidade de auditoria.
     """
-    assert not conn.autocommit, "o chamador controla a transação"
-    etapas = {"monitor": True, "redator": True}
+    _exigir_transacao(conn)
+    # O "pronto" do Monitor é DERIVADO, nunca afirmado: o PRD exige as listas "com
+    # responsável nomeado", e o próprio domínio diz que `sem_tratamento_sem_
+    # responsavel > 0` significa pronto NÃO cumprido. Gravar True incondicionalmente
+    # faria o Registro afirmar pronto onde o PRD diz que não está — e `Gestor` está
+    # 96,4% preenchido, então rodada real TEM lead sem responsável.
+    # `redator` não é afirmado aqui: quem sabe se a entrega saiu é a fatia do Redator.
+    etapas = {"monitor": resultado.resumo.sem_tratamento_sem_responsavel == 0}
+    # "Completa" é definida no glossário como TODAS as etapas prontas. Com `monitor`
+    # agora derivado, gravar `completa` sobre etapa não-pronta escreveria uma linha
+    # que se contradiz — e o Registro é a fonte da verdade da auditoria.
+    if estado == "completa" and not all(etapas.values()):
+        raise ValueError(
+            "rodada 'completa' exige todas as etapas prontas (monitor não está); "
+            "use estado='degradada' e declare o motivo"
+        )
     rodada_id = _abrir_rodada(
         conn,
         inicio=inicio,
