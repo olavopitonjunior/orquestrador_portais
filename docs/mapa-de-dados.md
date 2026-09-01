@@ -37,15 +37,15 @@ Vagas: **não está nesta tabela**, mas existe em `newcore.realties.QtyVacancies
 
 | Tabela | Registros | Papel |
 |---|---|---|
-| `newcore_bi.FT_Leads` | 942.368 | Leads por imóvel, canal, distrito, características e funil |
+| `newcore_bi.FT_Leads` | ~~942.368~~ → **1.128.909** (COUNT(*), 01/09/2026) | Leads por imóvel, canal, distrito, características e funil. **Grão = `FacId` (par lead↔imóvel), NÃO `LeadID`**: 17.741 linhas em 90d são 17.741 `FacId` para só 14.331 `LeadID` — a mesma pessoa aparece em várias linhas. Fonte de TODOS os campos da rodada de segunda (ver seção própria abaixo) |
 | `newcore_bi.FT_LeadsVisits` | 84.823 | Visitas com feedback de imóvel e de preço |
 | `newcore_bi.FT_LeadsOffers` | 17.332 | Propostas com assinatura, valor, ciclo e características |
-| `newcore_bi.FT_LeadsAttendance` | 19.007 | Atendimento de leads |
+| `newcore_bi.FT_LeadsAttendance` | 19.007 | ~~Atendimento de leads~~ **NÃO é por lead** (medição 01/09/2026): o grão é `BrokerID` × `Periodo` (2.361 corretores × 8 períodos = 18.888). Não tem `LeadID` nem `FacId`. **Não serve** para o sinal de atendimento por lead — esse vem de `FT_Leads.AttendedAt` (com a ressalva da seção da rodada de segunda) |
 | `newcore_bi.FT_Districts` | 1.583 | Indicadores consolidados por distrito |
 | `newcore_bi.FT_Broker` | 16.691 | Perfil e desempenho de corretor |
 | `newcore_bi.productivityrating` | 2.094 corretores | Produtivo (193), Não Produtivo (1.146), Ocioso Passível de Bloqueio (746); captações/semana, vendas, data da última venda, conversão, visitas/semana |
 | `newcore.realty_score` | 376.856 imóveis | Nota interna de 0 a 100, média 68. Pesos: descrição (2), fotos (2), atualização (2), ano de construção (1), atributos (1), IPTU (1), condomínio (1) |
-| `adsrealtyextra_historic` | 59.653 janelas | Histórico das janelas de destaque: `HighlightedAt`, `RemovedAt`, `QtyFacsGenerated`. 88% das janelas com zero lead; média 0,21 lead/janela; duração média 33 dias |
+| `adsrealtyextra_historic` | 59.653 janelas | Histórico das janelas de destaque: `HighlightedAt`, `RemovedAt`, `QtyFacsGenerated`. 88% das janelas com zero lead; média 0,21 lead/janela; duração média 33 dias. **⚠️ TABELA MORTA desde 27/06/2023** (medição 01/09/2026): `MAX(HighlightedAt)` = `MAX(RemovedAt)` = 2023-06-27 13:29 e **zero janelas abertas** (`RemovedAt IS NULL` = 0). Os números acima descrevem um histórico congelado há 3 anos, não o estoque vivo — ver consequência na seção da rodada de segunda |
 | `newcore.webscraping_processing_grupo_zap` | ~~105 exec. em 28/08; viva: execuções diárias, última em 27/08/2026 (Id 351), 22.597 anúncios, ~62% com erro no histórico até 28/08~~ (medições de 28–29/08) → **parada desde 28/08/2026** (diagnóstico de 31/08: última ingestão `ScrapedAt` 27/08 06:00; cadência histórica era diária de verdade, fins de semana incluídos, cobertura perfeita por 42 dias) | Agregados por execução da raspagem. **Armadilhas (31/08)**: `Id` NÃO é monotônico com `ReportDateTime` (Id 351 tem data anterior ao 350) — ordenar/datar sempre por `ScrapedAt`; ingestão em lote é normal (backfill de 13 LINHAS cobrindo 19–25/08 ingeridas de uma vez em 25/08 — ~2 relatórios/dia): a fonte-espelho do Canal Pro pode ficar **até ~6 dias defasada** e sempre recuperou por backfill — conversa direto com o parâmetro pendente nº 5 (idade máxima da coleta de reserva) |
 | `newcore.webscraping_report_grupo_zap` | 43 registros | **Abandonada**: 100% com erro (erros de publicação devolvidos pelo Grupo ZAP: CEP inválido, campo fora de faixa, anúncio bloqueado), criados entre 01 e 17/12/2025, `ProcessedAt` nulo em todos, nenhuma FK ou view aponta para ela. Era a "tabela de relatórios da raspagem" das investigações abertas — resolvida em 29/08/2026 |
 | `newcore.realty_score_category_score` | 1.654.058 linhas, 352.944 imóveis (média 4,7 das 7 categorias) | Avaliação por categoria da nota interna; chave `realtyId`+`categoryId`; categorias em `realty_score_category`. **Tabela zumbi: sem escrita desde 16/10/2025** (ver defeito 4) |
@@ -181,3 +181,73 @@ O fator de ranking F4 (produtividade do gestor, D-017) passou de binário para i
 - O único sinal de venda em 30d é derivar de **`LastSell`** (só 20% preenchida; 22 gestores com venda em 30d).
 
 **Consequência declarada (D-017):** o F4 usa `Captations_per_week_last_30d` (captação, contínua) + flag `LastSell >= NOW()-30d` (venda recente, binário, pois não há contagem de vendas de 30d). A dimensão de venda entra só como flag — limitação assumida, rotulada nas degradações da rodada. A regra de elegibilidade "gestor produtivo" (captou OU vendeu em 30d) segue usando o binário, intocada.
+
+## Fonte dos campos da RODADA DE SEGUNDA (Monitor Operacional, M2 — medição 01/09/2026)
+
+Investigação read-only sobre `newcore_bi.FT_Leads` (janela de 90 dias: 17.741 linhas /
+14.331 `LeadID` distintos, 2026-06-03 → 2026-09-01). Sustenta `src/dominio/acompanhamento.py`.
+
+### Mapa campo do domínio → coluna (com preenchimento medido em 90d)
+
+| Campo do domínio | Coluna real | Preenchimento |
+|---|---|---|
+| `lead_id` | **`FT_Leads.FacId`** (NÃO `LeadID` — ver grão abaixo) | 100%, 0 órfãos contra `newcore.facs.Id` |
+| `imovel_id` | **`FT_Leads.IdImovel`** (NÃO `Realty_Id`, que é o nome no transacional e em `FT_RealtyRelation`) | 96,60%; 0 órfãos contra `realties.Id` |
+| `entrada` | `FT_Leads.CreatedAt` | 100% (é o único caminho INDEXADO — `IDX_FT_Leads_CreatedAt`; filtre por ele) |
+| `distribuicao` | **`FT_Leads.DIstributedAt`** — atenção à grafia, **"I" maiúsculo** | 93,63% |
+| `atendimento_registrado` | `FT_Leads.AttendedAt IS NOT NULL` — **mas ver a armadilha crítica abaixo** | 49,94% |
+| `contato_registrado` | `FT_Leads.QtdeContatos > 0` (idêntico a `UltimoContato IS NOT NULL`) | 51,99% |
+| `corretor_gestor` | **`FT_Leads.Gestor`** (NÃO `BrokerName`, que é quem RECEBEU o lead: coincide com o gestor em só 11,92%) | 96,42% |
+| `distrito` | `FT_Leads.District` | 94,79% |
+| `gestor_distrito` | **não existe com esse nome** — candidato é `FT_Leads.embaixador` (23 pessoas) | 94,78% |
+
+### Armadilha crítica: `AttendedAt` é ESTADO ATUAL, não evento histórico
+
+`AttendedAt` só é não-nulo enquanto `Status = 'Atendimento'`; nos 6.371 leads `Removido` é
+nulo em **100%**, inclusive nos 4.560 que têm contato registrado. O carimbo é APAGADO quando
+o lead sai do atendimento. Contra o histórico (`newcore.facstatushistory`, `StatusAfter = 12`):
+
+- passaram por atendimento algum dia: **86,54%**; mantêm `AttendedAt`: **49,94%**;
+- dos 4.211 "sem tratamento" pela regra ingênua, **1.956 (46,45%) foram atendidos**;
+- a regra ingênua **superestima o abandono em ~1,87×** em 90 dias e em **+21,6%** na janela
+  real de 3 dias (197 ingênuo vs 162 corrigido, 28→31/08).
+
+Como a aba "leads sem tratamento" é instrumento de COBRANÇA de pessoas, a escolha da
+definição muda quem é acusado de abandono. **Decisão do dono, registrada em `docs/decisoes.md`
+— não resolver no código.**
+
+### Consequência para a Spec §4.3: duas colunas sem fonte
+
+"Semanas consecutivas em destaque" e "leads acumulados na janela atual" viriam de
+`adsrealtyextra_historic`, **morta desde 27/06/2023**. Não há fonte no Newcore. Só o Registro
+próprio (histórico das cargas aprovadas) pode supri-las, e **nas primeiras rodadas ficam
+`None`** — que o domínio já trata como ausência declarada, nunca como zero.
+
+### Outras armadilhas medidas
+
+- **`DIstributedAt` é a ÚLTIMA distribuição** (origem: `facs.LastDistributedAt`), não a
+  primeira. `facs.Redistributed = 1` em **25,78%** dos leads de 90d (`QtyRedists` até 4): em
+  um quarto dos casos "tempo desde a distribuição" é *desde a redistribuição*. Reconstruir a
+  original exigiria `facstatushistory`.
+- **`entrada` e `distribuicao` são genuinamente distintas** (diferem em 96,41% dos casos), mas
+  o atraso mediano é de **49 s** — o sinal está na cauda: p75 = 16,2 h, p90 = 6,4 dias.
+- **`districts.Ambassador_Id` está degenerado**: 1 único valor distinto para 1.616 distritos.
+  Não usar; a referência viva é `FT_Districts.Ambassador_Name` / `FT_Leads.embaixador`.
+  `districts.AmbassadorManager_Id` tem só 2 pessoas para 1.616 distritos (camada acima).
+- **`facs.QtyRedists` mudou de comportamento por volta de 25/08/2026** (de ~0,3% para 70–80%
+  ao dia): não usar série histórica sem checar a quebra.
+- **`fac_followups` e `brokertriedcontacts` não servem**: o primeiro cobre 4,43% dos leads; o
+  segundo não tem `Fac_Id`.
+- `TABLE_ROWS` **subestimou** `FT_Leads` em 13% (978.890 vs 1.128.909 real) — a armadilha já
+  registrada só citava superestimação; o certo é sempre `COUNT(*)`.
+
+### Volume da janela (dimensionamento)
+
+Sexta 00:00 → segunda 00:00, últimas 12 semanas: **381 a 582 leads, mediana ≈ 511**; a janela
+de 28–31/08 teve 701 leads / 625 imóveis. A consulta de segunda lê centenas de linhas — custo
+desprezível. `FT_Leads` é atualizada praticamente em tempo real (não é snapshot diário).
+
+### Corroboração da Spec §4.4
+
+Latência distribuição → 1º atendimento (30d, n = 4.398): **82,2% em até 1 hora** (a Spec diz
+85%), 98,5% em 24 h, mediana 74 s. Mesma ordem de grandeza — a afirmação da Spec se sustenta.

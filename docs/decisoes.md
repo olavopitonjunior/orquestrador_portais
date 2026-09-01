@@ -276,3 +276,63 @@ Novo componente (resposta do dono, Q4: "híbrido"), em duas camadas com natureza
 - **Reserva não reusada (Spec §7.3):** a Spec manda "usar a última coleta válida dentro da janela aceitável" quando a sessão falha; hoje uma coleta fora da janela (idade > nº 5) apenas DEGRADA — não há reuso de uma coleta anterior de reserva. Fatia futura candidata (guarda o "dado de reserva ~semana anterior" da Spec §7.3).
 - **Formato da amarração:** assume-se `codigoImovel` (externalId) = id NUMÉRICO do Newcore (`realties.Id`, papel do externalId no RECIPE). Linha sem `codigoImovel` ou de formato não-numérico não amarra e conta como `sem_amarracao`; `_imovel_id_de` é a única costura desse formato, se a produção divergir.
 - **URL sempre nula:** a listagem do Canal Pro não traz a URL pública do anúncio (lacuna do RECIPE); o F3 usa performance, não a URL. A URL da planilha (Spec §3) fica como lacuna do portal, não desta fatia.
+
+## D-018 a D-020 — rodada de segunda: definições RESOLVIDAS pelo dono (2026-09-01)
+
+A investigação read-only do banco (registrada em `docs/mapa-de-dados.md`, seção "Fonte dos campos da RODADA DE SEGUNDA") confirmou que a maioria dos campos exigidos pela Spec §4.2/§4.3 existe — mas levantou **duas definições que mudam o número entregue e que não podiam ser escolhidas no código**, além de duas colunas sem fonte. As três foram levadas ao dono e **resolvidas em 2026-09-01**; a quarta (D-D) é limitação declarada, sem decisão pendente.
+
+## D-018 — "atendimento registrado" inclui o HISTÓRICO, não só o estado atual
+
+**Data**: 2026-09-01 · **Resolve**: a definição do sinal de atendimento da Spec §4.2
+
+**Decisão do dono: incluir o histórico.** A regra é:
+
+```sql
+AttendedAt IS NOT NULL
+  OR EXISTS (SELECT 1 FROM newcore.facstatushistory h
+             WHERE h.Fac_Id = FacId AND h.StatusAfter = 12)   -- 12 = 'Atendimento'
+```
+
+Fundamento (medição 01/09/2026) — o problema que a decisão evita:
+
+`FT_Leads.AttendedAt` é **campo de estado atual, não evento histórico**: só é não-nulo enquanto o lead está em `Status = 'Atendimento'`, e é APAGADO quando o lead sai (nos 6.371 leads `Removido` da janela de 90 dias é nulo em 100%, inclusive nos 4.560 que têm contato registrado).
+
+Medido contra o histórico (`newcore.facstatushistory`, `StatusAfter = 12`):
+- passaram por atendimento algum dia: **86,54%**; ainda mantêm o carimbo: **49,94%**;
+- dos 4.211 leads "sem tratamento" pela regra ingênua, **1.956 (46,45%) foram atendidos**;
+- a regra ingênua **superestima o abandono em ~1,87×** em 90 dias e em **+21,6%** na janela real de 3 dias (197 vs 162, 28→31/08).
+
+**Por que é do dono e não do código:** a aba "leads sem tratamento" é o instrumento de COBRANÇA de pessoas (Spec §4.4: "mede o padrão de comportamento e sustenta a cobrança"). A escolha da definição muda **quem é nomeado como tendo abandonado lead**. Entregar a regra ingênua significaria acusar de abandono ~1 em cada 2 corretores da lista que de fato atenderam.
+
+**Efeito da decisão:** a lista de abandono cai de 197 para **162 leads** na janela real (28→31/08) e de 4.211 para 2.255 em 90 dias. Custa um JOIN a mais. É a leitura que casa com o próprio texto da §4.2 ("critério mais conservador dos disponíveis... aponta apenas o abandono indiscutível") — a regra ingênua acusaria de abandono quem de fato atendeu.
+
+**Consequência de implementação:** a consulta da rodada de segunda lê `newcore.facstatushistory` além de `FT_Leads`. Somente leitura (invariante 1), via `src/dados/newcore.py`.
+
+## D-019 — "gestor de distrito" é o EMBAIXADOR
+
+**Data**: 2026-09-01 · **Resolve**: a coluna "gestor de distrito" da Spec §4.2, que não existe com esse nome no banco
+
+Não existe coluna com esse nome. Há duas camadas medidas:
+- **`FT_Leads.embaixador`** — 94,78% preenchido, **23 pessoas distintas**, idêntico a `FT_Districts.Ambassador_Name`. É o responsável de nível distrital.
+- **`newcore.districts.AmbassadorManager_Id`** — só **2 pessoas** para 1.616 distritos; é a camada acima (gestor dos embaixadores).
+- (`districts.Ambassador_Id` está degenerado: 1 único valor para 1.616 distritos. Inutilizável.)
+
+**Decisão do dono: o embaixador** — `FT_Leads.embaixador` (94,78% preenchido, 23 pessoas). É o responsável de nível distrital e casa com a definição do PRD ("responde pela cobertura e performance dos corretores"). O `AmbassadorManager` foi descartado: com 2 pessoas para 1.616 distritos, a coluna nomearia sempre as mesmas duas.
+
+**Divergência de nomenclatura declarada:** o banco chama de "embaixador" o que a Spec chama de "gestor de distrito". A planilha usa o rótulo da Spec; a origem é a coluna `embaixador`.
+
+## D-020 — as duas colunas da §4.3 sem fonte ficam VAZIAS e acumulam
+
+**Data**: 2026-09-01 · **Resolve**: "semanas consecutivas em destaque" e "leads acumulados na janela atual" (Spec §4.3) sem origem no Newcore
+
+As duas viriam de `newcore.adsrealtyextra_historic`, que está **MORTA desde 27/06/2023** (zero janelas abertas). **Não há fonte no Newcore.**
+
+**Decisão do dono: manter as colunas na planilha, vazias, e acumular.** Só o Registro próprio pode supri-las, somando o histórico das cargas aprovadas rodada a rodada; nas primeiras semanas ficam vazias e vão se preenchendo. O domínio já trata como ausência declarada (`None`), **nunca como zero inventado** — um imóvel sem histórico não é um imóvel com zero semanas.
+
+Mantém a fidelidade à Spec §4.3 (as colunas existem) sem fabricar dado.
+
+## D-D (limitação declarada, sem decisão pendente) — "tempo desde a distribuição" é desde a ÚLTIMA
+
+`FT_Leads.DIstributedAt` (grafia com "I" maiúsculo) vem de `facs.LastDistributedAt`: é a **última** distribuição. `facs.Redistributed = 1` em **25,78%** dos leads de 90 dias. Em um quarto dos casos a coluna da §4.2 mede o tempo desde a REdistribuição, não desde a primeira entrega ao corretor. Reconstruir a original exigiria `facstatushistory`. Fica declarado; se o dono quiser a primeira distribuição, é fatia própria.
+
+**Precondição da fatia seguinte (M3, ligar a segunda ao grafo) — achado do auditor-de-invariantes em 2026-09-01:** `ResultadoAcompanhamento` carrega PII (`leads_sem_tratamento`), e o checkpointer do LangGraph **serializa o estado do grafo no Postgres**. Colocar o objeto inteiro no `EstadoRodada` reintroduziria no banco exatamente a PII que `gravar_acompanhamento` deliberadamente NÃO grava — anulando a redução de exposição desta fatia, e em silêncio. O estado do grafo deve carregar o `PayloadModelo` (agregados) e a lista nominal deve ir direto ao Redator/planilha, sem atravessar o checkpointer. Não é violação hoje (M2 não toca o grafo); é requisito da M3, com teste próprio.
