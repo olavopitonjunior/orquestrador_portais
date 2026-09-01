@@ -1,9 +1,10 @@
-"""Fluxo da rodada de decisão (sexta) como grafo LangGraph — esqueleto G1.
+"""Fluxo da rodada de decisão (sexta) como grafo LangGraph.
 
 Liga o caminho DETERMINÍSTICO já pronto como nós (Spec §5, ordem da sexta):
 
   Coletor Interno → (Analista de Perfil ∥ Coletor Externo) → Decisor
   → crivo (gate de "pronto" da decisão, D-017) → Redator → finalizar
+  → registrar (persiste no Registro; só rodada não-abortada, sink injetado — G2a-wire)
 
 Cada nó chama um módulo já testado e escreve seu produto e seu "pronto" no
 estado; nenhuma regra de decisão vive aqui (invariante 4 — o domínio é puro e
@@ -151,6 +152,20 @@ def no_finalizar(estado: EstadoRodada) -> dict:
     return {"estado": estado_final(estado)}
 
 
+def no_registrar(estado: EstadoRodada, *, registrar) -> dict:
+    """Persiste a rodada no Registro chamando o SINK injetado (G2a-wire). Só roda
+    em rodada não-abortada (pelo roteamento) — que tem `resultado` válido; não se
+    registra seleção abortada por veto nem rodada sem estoque.
+
+    O sink é injetado como as `Fontes`: em produção grava no Postgres (carimba os
+    timestamps e serializa os parâmetros — I/O, fora do estado determinístico, e
+    controla a transação); no teste, um fake que só registra a chamada. Assim o
+    grafo segue testável sem banco e o domínio permanece puro.
+    """
+    registrar(estado)
+    return {}
+
+
 def _rota_pos_coleta(estado: EstadoRodada) -> list[str] | str:
     """Após a coleta interna: aborta (vai direto finalizar) ou segue para o
     fan-out perfil ∥ externo."""
@@ -167,14 +182,26 @@ def _rota_pos_crivo(estado: EstadoRodada) -> str:
     return "redator"
 
 
-def construir_grafo(fontes: Fontes, parametros: ParametrosDecisao, checkpointer=None):
-    """Monta e compila o grafo da rodada de sexta (esqueleto G1).
+def _rota_pos_finalizar(estado: EstadoRodada) -> str:
+    """Após finalizar: rodada ABORTADA não persiste (sem resultado válido) — vai
+    a END; senão passa pelo nó de registro."""
+    if estado.get("estado") == Estado.ABORTADA:
+        return END
+    return "registrar"
 
-    `fontes` e `parametros` são INJETADOS (run-local, provisórios — nunca
-    adotados). `checkpointer` default = None (sem persistência na G1): o estado
-    carrega objetos de domínio que não são serializáveis pelo checkpointer sem
-    uma estratégia própria — isso, o Postgres e a interrupção de aprovação são a
-    G2/G3.
+
+def construir_grafo(
+    fontes: Fontes, parametros: ParametrosDecisao, registrar=None, checkpointer=None
+):
+    """Monta e compila o grafo da rodada de sexta.
+
+    `fontes`, `parametros` e `registrar` são INJETADOS (run-local; provisórios,
+    nunca adotados). `registrar` é o SINK de persistência (G2a-wire): se
+    fornecido, a rodada NÃO-abortada passa por um nó que grava no Registro; se
+    None, o grafo termina sem persistir (usado nos testes e no marco F sem banco).
+    `checkpointer` default = None (sem persistência de ESTADO do grafo): o estado
+    carrega objetos de domínio não-serializáveis; o checkpointer Postgres e a
+    interrupção de aprovação são a G2b/G3.
     """
     g = StateGraph(EstadoRodada)
     g.add_node("coletor_interno", partial(no_coletor_interno, fontes=fontes))
@@ -194,6 +221,12 @@ def construir_grafo(fontes: Fontes, parametros: ParametrosDecisao, checkpointer=
     g.add_edge("decisor", "crivo")
     g.add_conditional_edges("crivo", _rota_pos_crivo, ["redator", "finalizar"])
     g.add_edge("redator", "finalizar")
-    g.add_edge("finalizar", END)
+
+    if registrar is not None:
+        g.add_node("registrar", partial(no_registrar, registrar=registrar))
+        g.add_conditional_edges("finalizar", _rota_pos_finalizar, ["registrar", END])
+        g.add_edge("registrar", END)
+    else:
+        g.add_edge("finalizar", END)
 
     return g.compile(checkpointer=checkpointer)
