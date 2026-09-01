@@ -27,6 +27,7 @@ janela na rodada de segunda é a fatia que falta para a D-020 valer de fato.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 
 import psycopg
@@ -93,7 +94,12 @@ def _abrir_rodada(
 
 
 def declarar_ausencia_de_carga(
-    conn: psycopg.Connection, *, inicio: datetime, fim: datetime, motivo: str
+    conn: psycopg.Connection,
+    *,
+    inicio: datetime,
+    fim: datetime,
+    motivo: str,
+    etapas: Mapping[str, bool] | None = None,
 ) -> int:
     """Segunda metade da §7.3: sem carga aprovada, o relatório não é emitido — mas a
     rodada FICA REGISTRADA (estado 'abortada', com o motivo), para que a ausência
@@ -103,7 +109,7 @@ def declarar_ausencia_de_carga(
         inicio=inicio,
         fim=fim,
         estado="abortada",
-        etapas={"monitor": False},
+        etapas=dict(etapas if etapas is not None else {"monitor": False}),
         motivo=motivo,
     )
 
@@ -116,6 +122,7 @@ def gravar_acompanhamento(
     fim: datetime,
     estado: str = "completa",
     motivo_degradacao: str | None = None,
+    etapas: Mapping[str, bool] | None = None,
 ) -> int:
     """Grava a rodada de acompanhamento e o `resultado_carga` por imóvel (Spec §2.1).
 
@@ -135,7 +142,15 @@ def gravar_acompanhamento(
     # faria o Registro afirmar pronto onde o PRD diz que não está — e `Gestor` está
     # 96,4% preenchido, então rodada real TEM lead sem responsável.
     # `redator` não é afirmado aqui: quem sabe se a entrega saiu é a fatia do Redator.
-    etapas = {"monitor": resultado.resumo.sem_tratamento_sem_responsavel == 0}
+    #
+    # O chamador PODE passar `etapas` (é o que o nó do grafo faz, com o pronto que
+    # ele já derivou): assim existe UMA derivação da regra, não duas que coincidem
+    # por coincidência de fórmula. Sem ele, deriva-se aqui — mesmo resultado.
+    etapas = dict(
+        etapas
+        if etapas is not None
+        else {"monitor": resultado.resumo.sem_tratamento_sem_responsavel == 0}
+    )
     # "Completa" é definida no glossário como TODAS as etapas prontas. Com `monitor`
     # agora derivado, gravar `completa` sobre etapa não-pronta escreveria uma linha
     # que se contradiz — e o Registro é a fonte da verdade da auditoria.
