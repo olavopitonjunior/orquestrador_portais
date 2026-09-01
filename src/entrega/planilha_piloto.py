@@ -130,6 +130,41 @@ def linhas_excluidos_por_regra(resultado: ResultadoDecisao) -> list[dict[str, ob
     return linhas
 
 
+def linhas_relaxamento(resultado: ResultadoDecisao) -> list[dict[str, object]]:
+    """O relatório de relaxamento da Spec §6.6, na ordem de cedência.
+
+    Existe porque a §6.6 é literal: "Cada cedência gera linha no relatório de
+    relaxamento com a quantidade de posições que dependeram dela. **Sem esse
+    registro a etapa de decisão não é considerada pronta**". A §3.1 lista a aba
+    como obrigatória e o PRD repete que o relatório é *na planilha*. O Registro já
+    guardava o agregado por regra; ele só não chegava ao artefato que as pessoas
+    leem — e a rodada saía COMPLETA assim mesmo.
+
+    A coluna `degrau_cedido` por imóvel, que já existia na aba de destaque, não
+    substitui isto: falta nela o agregado por regra e as posições ainda vazias.
+
+    A última linha é o DÉFICIT — as posições que os cinco graus não cobriram. É
+    grandeza da rodada, não de uma cedência, e vem declarada mesmo quando é zero:
+    ausência de linha seria indistinguível de "ninguém calculou".
+    """
+    linhas: list[dict[str, object]] = [
+        {
+            "ordem": i,
+            "regra_cedida": linha.regra.value,
+            "posicoes_dependentes": linha.posicoes_dependentes,
+        }
+        for i, linha in enumerate(resultado.relaxamento.relatorio, 1)
+    ]
+    linhas.append(
+        {
+            "ordem": "",
+            "regra_cedida": "POSIÇÕES AINDA VAZIAS (nenhum grau cobriu)",
+            "posicoes_dependentes": resultado.relaxamento.deficit_restante,
+        }
+    )
+    return linhas
+
+
 def _texto_pesos(pesos: PesosNivel) -> str:
     """Os quatro pesos do nível como texto, na ordem semelhança/leads/desempenho/
     produtividade (mesma ordem do rótulo da linha)."""
@@ -209,6 +244,7 @@ _ABAS = {
     "super_destaque": linhas_super_destaque,
     "destaque": linhas_destaque,
     "excluidos_por_regra": linhas_excluidos_por_regra,
+    "relaxamento": linhas_relaxamento,  # Spec §3.1/§6.6: obrigatória
 }
 
 
@@ -218,7 +254,7 @@ def escrever_planilha(
     destino: Path,
     notas_coleta: Sequence[str] = (),
 ) -> list[Path]:
-    """Escreve os quatro CSVs em `destino` e devolve os caminhos gerados.
+    """Escreve os cinco CSVs em `destino` e devolve os caminhos gerados.
 
     I/O de ARQUIVO LOCAL (entregável, não estado — invariante 2 é sobre o
     Registro, preservado). Vai para `saida/piloto/` (ignorada pelo .gitignore):

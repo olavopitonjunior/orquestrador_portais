@@ -20,16 +20,40 @@ jobs:
       # Tipos do domínio PURO em modo estrito: é o que sustenta a fronteira de PII
       # do invariante 3 (só `PayloadModelo` chega a modelo). Sem este passo, a
       # fronteira seria honorária — ver comentário em pyproject.toml.
-      - name: Tipos (domínio, estrito)
-        run: uv run mypy --strict src/dominio
+      # `src/config` e `src/executar` entraram junto com o ponto de entrada da sexta:
+      # os dois já passavam limpos, e deixar de fora o módulo que decide se a rodada
+      # roda seria escolher não olhar justamente onde o erro é caro.
+      - name: Tipos (domínio, config e pontos de entrada — estrito)
+        run: uv run mypy --strict src/dominio src/config src/executar
       - name: Testes
         run: uv run pytest -q
       # Fumaça do ponto de entrada: prova que o comando DOCUMENTADO roda de fato.
       # Sem isto, `python -m executar.segunda` voltaria a só funcionar com
       # PYTHONPATH=src — a falha que a fatia do runner existiu para consertar, e que
       # nenhum outro passo do CI toca (ruff/mypy/pytest não executam o __main__).
-      - name: Fumaça do ponto de entrada
-        run: uv run python -m executar.segunda --help
+      - name: Fumaça dos pontos de entrada
+        run: |
+          uv run python -m executar.segunda --help
+          uv run python -m executar.sexta --help
+      # A sexta precisa RECUSAR a rodada quando falta um parâmetro do dono. O alvo é
+      # um arquivo que EXISTE e a que falta uma chave: a primeira versão deste passo
+      # apontava para um caminho inexistente, que sai 5 pelo ramo de arquivo ilegível
+      # sem nunca chegar à validação — passo verde que não guardava nada.
+      - name: A sexta recusa rodar com parâmetro faltando
+        run: |
+          grep -v '^razao = ' docs/parametros-da-rodada.exemplo.toml > /tmp/incompleto.toml
+          codigo=0
+          uv run python -m executar.sexta --parametros /tmp/incompleto.toml || codigo=$?
+          test "$codigo" -eq 5 || { echo "esperado 5 (parâmetro faltando), veio $codigo"; exit 1; }
+      # E precisa recusar o MODELO como entrada real: ele carrega com sucesso, então
+      # sem esta recusa sairia dele uma planilha de aparência normal, construída sobre
+      # números que o próprio arquivo declara ilustrativos.
+      - name: A sexta recusa o modelo ilustrativo
+        run: |
+          codigo=0
+          uv run python -m executar.sexta --parametros docs/parametros-da-rodada.exemplo.toml \
+            || codigo=$?
+          test "$codigo" -eq 5 || { echo "esperado 5 (modelo recusado), veio $codigo"; exit 1; }
       - name: Parse do DDL do Registro (dialeto postgres)
         run: >
           uv run --with 'sqlglot==30.17.0' python -c

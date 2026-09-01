@@ -162,6 +162,14 @@ def test_rodada_com_raspagem_fresca_fica_completa():
     assert final["estado"] == Estado.COMPLETA  # todas as etapas prontas, externo incluso
     assert final["prontos"]["externo"] is True
     assert final["externo_presente"] is True
+    # A §3.1 exige idade do dado e taxa de amarração na aba de resumo, e os dois eram
+    # descartados justamente no caso de SUCESSO — só existiam embutidos no motivo da
+    # rejeição, então a rodada COMPLETA era a única sem os números obrigatórios.
+    # Estas duas linhas são o que faz uma renomeação da chave doer: sem elas, trocar o
+    # nome só no produtor deixa a suíte verde e a planilha passa a declarar "coleta
+    # AUSENTE" numa rodada que teve coleta.
+    assert final["externo_taxa_amarracao"] == 1.0  # 2 de 2 candidatos amarrados
+    assert final["externo_idade_dias"] == 0  # coletada no mesmo dia de HOJE
     # o desempenho de portal (F3) entrou no cálculo: min-max, o de mais views = 1.0
     assert final["resultado"].detalhes[1].fatores.desempenho_proprio == 1.0
     assert final["resultado"].detalhes[2].fatores.desempenho_proprio == 0.0

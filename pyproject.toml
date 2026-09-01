@@ -27,6 +27,7 @@ dependencies = [
 # exatamente o que a fatia do runner existe para consertar.
 [project.scripts]
 rodada-segunda = "executar.segunda:main"
+rodada-sexta = "executar.sexta:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -38,10 +39,11 @@ build-backend = "hatchling.build"
 # editable install, cujo .pth põe `src/` inteiro no path: o wheel sai quebrado só
 # para quem instala de verdade. `test_empacotamento.py` trava esta lista contra o
 # disco justamente para o sétimo pacote não repetir o erro.
-# `src/config` fica de FORA enquanto for só README: declarar um pacote que não
-# embarca módulo nenhum é ruído. Quando os parâmetros pendentes ganharem código,
-# `test_todo_pacote_de_src_vai_para_o_wheel` cobra a inclusão — é esse o gatilho.
+# `src/config` entrou quando ganhou o CARREGADOR dos parâmetros (nenhum valor mora
+# lá; ver o módulo). O gatilho previsto funcionou: o teste acusou o pacote fora do
+# wheel no mesmo commit em que o primeiro .py nasceu.
 packages = [
+    "src/config",
     "src/dados",
     "src/dominio",
     "src/entrega",

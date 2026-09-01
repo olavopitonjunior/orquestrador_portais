@@ -17,6 +17,7 @@ from entrega.planilha_piloto import (
     linhas_destaque,
     linhas_excluidos_por_regra,
     linhas_parametros_e_limitacoes,
+    linhas_relaxamento,
     linhas_super_destaque,
 )
 from piloto.decisao import ParametrosDecisao, decidir
@@ -153,7 +154,7 @@ def test_penalidade_serializada_bate_com_o_detalhe():
     assert ln["desconto_total"] == det.desconto_total
 
 
-def test_escrever_planilha_gera_os_quatro_csvs(tmp_path):
+def test_escrever_planilha_gera_os_cinco_csvs(tmp_path):
     r = _resultado()
     caminhos = escrever_planilha(r, PARAMS, tmp_path / "piloto")
     nomes = sorted(p.name for p in caminhos)
@@ -161,6 +162,7 @@ def test_escrever_planilha_gera_os_quatro_csvs(tmp_path):
         "destaque.csv",
         "excluidos_por_regra.csv",
         "parametros_e_limitacoes.csv",
+        "relaxamento.csv",  # Spec §3.1/§6.6: obrigatória
         "super_destaque.csv",
     ]
     # o super_destaque.csv tem cabeçalho + a linha do imóvel 10
@@ -176,3 +178,28 @@ def test_escrever_planilha_inclui_nota_de_coleta_no_csv(tmp_path):
     with (tmp_path / "piloto" / "parametros_e_limitacoes.csv").open(encoding="utf-8") as f:
         itens = [ln["item"] for ln in csv.DictReader(f)]
     assert nota in itens
+
+
+def test_aba_de_relaxamento_traz_a_regra_e_as_posicoes_dependentes():
+    """Spec §6.6, literal: "Cada cedência gera linha no relatório de relaxamento com
+    a quantidade de posições que dependeram dela. Sem esse registro a etapa de
+    decisão não é considerada pronta". O Registro já guardava o agregado; ele só não
+    chegava à planilha, e a rodada saía COMPLETA assim mesmo."""
+    r = _resultado()
+    linhas = linhas_relaxamento(r)
+    cedencias = [ln for ln in linhas if ln["ordem"] != ""]
+    assert [ln["regra_cedida"] for ln in cedencias] == [
+        linha.regra.value for linha in r.relaxamento.relatorio
+    ]
+    assert [ln["posicoes_dependentes"] for ln in cedencias] == [
+        linha.posicoes_dependentes for linha in r.relaxamento.relatorio
+    ]
+
+
+def test_deficit_e_declarado_mesmo_sendo_zero():
+    """As posições ainda vazias são grandeza da RODADA, não de uma cedência, e a §2.1
+    as exige. Sem linha, zero seria indistinguível de "ninguém calculou"."""
+    linhas = linhas_relaxamento(_resultado())
+    ultima = linhas[-1]
+    assert "VAZIAS" in str(ultima["regra_cedida"])
+    assert ultima["posicoes_dependentes"] == _resultado().relaxamento.deficit_restante
