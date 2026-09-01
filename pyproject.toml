@@ -23,9 +23,22 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=1.13",
     "pytest>=8",
     "ruff>=0.6",
 ]
+
+# Checagem de tipos. O CI roda `mypy --strict` sobre `src/dominio` — o domínio PURO,
+# onde vivem as regras de decisão e a fronteira de PII do invariante 3
+# (`PayloadModelo` só passa se o tipo bater). Sem isso, essa fronteira seria uma
+# promessa de docstring: o `payload_para_modelo` existe justamente para o type
+# checker barrar o objeto com identidade de pessoa, e alguém precisa rodar o
+# checker. As demais camadas (grafo/dados/entrega) ainda não passam no --strict —
+# em boa parte por ruído de tipos do LangGraph — e ficam fora por ora; ampliar a
+# cobertura é fatia futura, não um "não se aplica".
+[tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

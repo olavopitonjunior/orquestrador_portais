@@ -17,6 +17,11 @@ jobs:
         run: uv run ruff check src tests
       - name: Formatação
         run: uv run ruff format --check src tests
+      # Tipos do domínio PURO em modo estrito: é o que sustenta a fronteira de PII
+      # do invariante 3 (só `PayloadModelo` chega a modelo). Sem este passo, a
+      # fronteira seria honorária — ver comentário em pyproject.toml.
+      - name: Tipos (domínio, estrito)
+        run: uv run mypy --strict src/dominio
       - name: Testes
         run: uv run pytest -q
       - name: Parse do DDL do Registro (dialeto postgres)
