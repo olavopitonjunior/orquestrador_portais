@@ -276,3 +276,40 @@ Novo componente (resposta do dono, Q4: "híbrido"), em duas camadas com natureza
 - **Reserva não reusada (Spec §7.3):** a Spec manda "usar a última coleta válida dentro da janela aceitável" quando a sessão falha; hoje uma coleta fora da janela (idade > nº 5) apenas DEGRADA — não há reuso de uma coleta anterior de reserva. Fatia futura candidata (guarda o "dado de reserva ~semana anterior" da Spec §7.3).
 - **Formato da amarração:** assume-se `codigoImovel` (externalId) = id NUMÉRICO do Newcore (`realties.Id`, papel do externalId no RECIPE). Linha sem `codigoImovel` ou de formato não-numérico não amarra e conta como `sem_amarracao`; `_imovel_id_de` é a única costura desse formato, se a produção divergir.
 - **URL sempre nula:** a listagem do Canal Pro não traz a URL pública do anúncio (lacuna do RECIPE); o F3 usa performance, não a URL. A URL da planilha (Spec §3) fica como lacuna do portal, não desta fatia.
+
+## Divergências abertas (aguardam o dono) — rodada de segunda (M2, 2026-09-01)
+
+A investigação read-only do banco (registrada em `docs/mapa-de-dados.md`, seção "Fonte dos campos da RODADA DE SEGUNDA") confirmou que a maioria dos campos exigidos pela Spec §4.2/§4.3 existe — mas levantou **duas definições que mudam o número entregue e que não podem ser escolhidas no código**, além de duas colunas sem fonte. A camada de leitura (`src/dados/acompanhamento.py`) está PARADA aguardando as duas primeiras.
+
+### D-A (bloqueia) — o que conta como "atendimento registrado"?
+
+`FT_Leads.AttendedAt` é **campo de estado atual, não evento histórico**: só é não-nulo enquanto o lead está em `Status = 'Atendimento'`, e é APAGADO quando o lead sai (nos 6.371 leads `Removido` da janela de 90 dias é nulo em 100%, inclusive nos 4.560 que têm contato registrado).
+
+Medido contra o histórico (`newcore.facstatushistory`, `StatusAfter = 12`):
+- passaram por atendimento algum dia: **86,54%**; ainda mantêm o carimbo: **49,94%**;
+- dos 4.211 leads "sem tratamento" pela regra ingênua, **1.956 (46,45%) foram atendidos**;
+- a regra ingênua **superestima o abandono em ~1,87×** em 90 dias e em **+21,6%** na janela real de 3 dias (197 vs 162, 28→31/08).
+
+**Por que é do dono e não do código:** a aba "leads sem tratamento" é o instrumento de COBRANÇA de pessoas (Spec §4.4: "mede o padrão de comportamento e sustenta a cobrança"). A escolha da definição muda **quem é nomeado como tendo abandonado lead**. Entregar a regra ingênua significaria acusar de abandono ~1 em cada 2 corretores da lista que de fato atenderam.
+
+- **Opção 1 (estado atual):** `AttendedAt IS NOT NULL`. Fiel à letra "não possui atendimento registrado" se "registrado" = registrado AGORA. Simples, uma tabela. Infla a lista.
+- **Opção 2 (histórico):** `AttendedAt IS NOT NULL OR EXISTS(facstatushistory WHERE Fac_Id = ? AND StatusAfter = 12)`. Fiel ao "abandono indiscutível" que a §4.2 diz perseguir (o critério mais conservador). Custa um JOIN a mais.
+
+Recomendação técnica (não é decisão): a **Opção 2** é a que casa com o próprio texto da §4.2 ("critério mais conservador dos disponíveis... aponta apenas o abandono indiscutível").
+
+### D-B (bloqueia) — quem é o "gestor de distrito" da Spec §4.2?
+
+Não existe coluna com esse nome. Há duas camadas medidas:
+- **`FT_Leads.embaixador`** — 94,78% preenchido, **23 pessoas distintas**, idêntico a `FT_Districts.Ambassador_Name`. É o responsável de nível distrital.
+- **`newcore.districts.AmbassadorManager_Id`** — só **2 pessoas** para 1.616 distritos; é a camada acima (gestor dos embaixadores).
+- (`districts.Ambassador_Id` está degenerado: 1 único valor para 1.616 distritos. Inutilizável.)
+
+O PRD define gestor de distrito como quem "responde pela cobertura e performance dos corretores", o que mapeia ao **embaixador** — mas a nomenclatura diverge do banco e a escolha nomeia pessoas na planilha. Recomendação técnica: `embaixador`.
+
+### D-C (não bloqueia, mas muda o que a planilha promete) — duas colunas da §4.3 sem fonte
+
+"Semanas consecutivas em destaque" e "leads acumulados na janela atual" viriam de `newcore.adsrealtyextra_historic`, que está **MORTA desde 27/06/2023** (zero janelas abertas). **Não há fonte no Newcore.** Só o Registro próprio pode supri-las, acumulando o histórico das cargas aprovadas — e **nas primeiras rodadas ficam vazias**. O domínio já trata como ausência declarada (`None`), nunca como zero. Decisão do dono: aceitar as colunas vazias no início, ou retirá-las da planilha até haver histórico.
+
+### D-D (declarado, não bloqueia) — "tempo desde a distribuição" é desde a ÚLTIMA
+
+`FT_Leads.DIstributedAt` (grafia com "I" maiúsculo) vem de `facs.LastDistributedAt`: é a **última** distribuição. `facs.Redistributed = 1` em **25,78%** dos leads de 90 dias. Em um quarto dos casos a coluna da §4.2 mede o tempo desde a REdistribuição, não desde a primeira entrega ao corretor. Reconstruir a original exigiria `facstatushistory`. Fica declarado; se o dono quiser a primeira distribuição, é fatia própria.
