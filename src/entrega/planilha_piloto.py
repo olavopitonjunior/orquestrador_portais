@@ -22,6 +22,7 @@ comprador ou lead. A saída vai para `saida/piloto/` (ignorada pelo .gitignore):
 from __future__ import annotations
 
 import csv
+from collections.abc import Sequence
 from pathlib import Path
 
 from dominio.penalidades import Penalidade
@@ -128,11 +129,15 @@ def linhas_excluidos_por_regra(resultado: ResultadoDecisao) -> list[dict[str, ob
 
 
 def linhas_parametros_e_limitacoes(
-    resultado: ResultadoDecisao, parametros: ParametrosDecisao
+    resultado: ResultadoDecisao,
+    parametros: ParametrosDecisao,
+    notas_coleta: Sequence[str] = (),
 ) -> list[dict[str, object]]:
     """Os provisórios da rodada (rotulados PROVISÓRIO) e as limitações declaradas.
 
     O que faz o dono ler a piloto como TESTE DE CRITÉRIO, não lista final.
+    `notas_coleta` são limitações vindas da COLETA (ex.: vendas descartadas por
+    Realty_Id nulo) — contadas na rodada, declaradas aqui, nunca silenciosas.
     """
     linhas: list[dict[str, object]] = [
         {
@@ -158,6 +163,8 @@ def linhas_parametros_e_limitacoes(
     ]
     for limitacao in resultado.degradacoes:
         linhas.append({"tipo": "LIMITAÇÃO", "item": limitacao, "valor": ""})
+    for nota in notas_coleta:
+        linhas.append({"tipo": "LIMITAÇÃO", "item": nota, "valor": ""})
     linhas.append(
         {
             "tipo": "NOTA",
@@ -180,13 +187,17 @@ _ABAS = {
 
 
 def escrever_planilha(
-    resultado: ResultadoDecisao, parametros: ParametrosDecisao, destino: Path
+    resultado: ResultadoDecisao,
+    parametros: ParametrosDecisao,
+    destino: Path,
+    notas_coleta: Sequence[str] = (),
 ) -> list[Path]:
     """Escreve os quatro CSVs em `destino` e devolve os caminhos gerados.
 
     I/O de ARQUIVO LOCAL (entregável, não estado — invariante 2 é sobre o
     Registro, preservado). Vai para `saida/piloto/` (ignorada pelo .gitignore):
-    dado de rodada, nunca commitado.
+    dado de rodada, nunca commitado. `notas_coleta` são limitações da coleta
+    (ex.: vendas descartadas) declaradas na aba de parâmetros.
     """
     destino.mkdir(parents=True, exist_ok=True)
     escritos: list[Path] = []
@@ -196,7 +207,7 @@ def escrever_planilha(
     escritos.append(
         _escrever_csv(
             destino / "parametros_e_limitacoes.csv",
-            linhas_parametros_e_limitacoes(resultado, parametros),
+            linhas_parametros_e_limitacoes(resultado, parametros, notas_coleta),
         )
     )
     return escritos

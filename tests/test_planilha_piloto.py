@@ -124,6 +124,15 @@ def test_parametros_e_limitacoes_rotula_provisorios_e_limitacoes():
     assert len(limitacoes) == len(r.degradacoes)
 
 
+def test_notas_de_coleta_entram_como_limitacao():
+    # A contagem de vendas descartadas (Realty_Id nulo) chega à aba de limitações.
+    r = _resultado()
+    nota = "2 vendas descartadas (Realty_Id nulo) — perfil sobre 175 ancoráveis de 177"
+    linhas = linhas_parametros_e_limitacoes(r, PARAMS, notas_coleta=(nota,))
+    itens_limitacao = [ln["item"] for ln in linhas if ln["tipo"] == "LIMITAÇÃO"]
+    assert nota in itens_limitacao
+
+
 def test_penalidade_serializada_bate_com_o_detalhe():
     # c1 tem 7 leads → sem penalidade SEM_LEAD; a coluna reflete o detalhe.
     r = _resultado()

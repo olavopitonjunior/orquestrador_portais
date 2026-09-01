@@ -152,6 +152,8 @@ Medição (investigador de dados, 31/08): `FT_LeadsOffers.SignedAt` não nulo no
 
 **Decisão do dono: venda = 177 (assinada em 180 dias), inclui as posteriormente canceladas.** A alternativa "líquida de cancelamento" (171) fica registrada como não escolhida. Consequência: o perfil de conversão (D-014) e qualquer contagem de vendas contam sobre 177. Se o dono um dia quiser a leitura líquida, esta decisão deve ser revista — muda a base de todo o perfil.
 
+**Nota de robustez (não altera esta decisão):** 177 é a MÉTRICA. Algumas ofertas assinadas em 180d têm `Realty_Id` nulo (medido pela primeira rodada real) — sem imóvel, não ancoram um perfil (sem preço/vagas do JOIN, sem dimensões para casar). O perfil é descoberto sobre as vendas **ancoráveis** (177 menos os nulos), e o número descartado é **contado e declarado** na aba de limitações da rodada (`src/dados/vendas.py`, `_vendas_ancoraveis`). É robustez de leitura, não regra: 177 segue a métrica de "venda assinada".
+
 ## D-014 — Evidência mínima por perfil (parâmetro pendente nº 1) = N ≥ 3
 
 **Data**: 2026-08-31 · **Resolve**: parâmetro pendente nº 1 da D-004 ("evidência mínima por combinação de perfil")

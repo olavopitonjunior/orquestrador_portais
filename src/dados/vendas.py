@@ -58,8 +58,13 @@ def linha_para_vendido(row: dict[str, Any]) -> ImovelVendido:
     `faixa_metragem` (`PrivateArea_Range`) já vem como faixa nativa da base;
     `regiao` (`District`) vem como texto; `dormitorios`/`vagas` colapsam o topo;
     `faixa_preco` deriva do preço em reais pelas faixas ancoradas na Spec §6.1.
-    Strings vazias viram None (ausência, não bucket próprio).
+    Strings vazias viram None (ausência, não bucket próprio). `imovel_id` nulo
+    é ERRO (fail-loud): uma oferta sem `Realty_Id` não ancora um imóvel — deve
+    ter sido descartada por `_vendas_ancoraveis` antes de chegar aqui; se chegou,
+    é estado inesperado (regressão), não um valor a mascarar.
     """
+    if row["imovel_id"] is None:
+        raise ValueError("venda com imovel_id (Realty_Id) nulo chegou a linha_para_vendido")
     return ImovelVendido(
         imovel_id=int(row["imovel_id"]),
         regiao=texto_ou_none(row["regiao"]),
@@ -70,11 +75,28 @@ def linha_para_vendido(row: dict[str, Any]) -> ImovelVendido:
     )
 
 
-def coletar_vendas() -> list[ImovelVendido]:
+def _vendas_ancoraveis(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Separa as ofertas ANCORÁVEIS (com Realty_Id) das descartadas (sem imóvel).
+
+    Uma venda sem `Realty_Id` é estruturalmente inutilizável para o perfil: sem
+    imóvel não há preço/vagas (vêm do JOIN em realties), não há dimensões para
+    casar, não há `imovel_id` para ancorar. Descartá-la é correto — mas NUNCA em
+    silêncio: devolve o número descartado para a rodada declarar (D-013 continua
+    a métrica de 177; o perfil roda sobre as ancoráveis). Medido no dado real:
+    ofertas assinadas em 180d com `Realty_Id` nulo (o investigador sinalizou).
+    """
+    ancoraveis = [r for r in rows if r["imovel_id"] is not None]
+    return ancoraveis, len(rows) - len(ancoraveis)
+
+
+def coletar_vendas() -> tuple[list[ImovelVendido], int]:
     """Lê as vendas assinadas em 180 dias (D-013) e as monta como ImovelVendido.
 
+    Devolve (vendas ancoráveis, nº descartado por Realty_Id nulo) — o descarte é
+    contado, nunca silencioso, para a rodada declarar na aba de limitações.
     I/O: não roda no CI (precisa do banco). Uma venda por linha de oferta
     assinada; um mesmo imóvel pode ter mais de uma venda no período e cada uma
     conta como um caso no perfil (a evidência é por venda, não por imóvel).
     """
-    return [linha_para_vendido(row) for row in consultar(_SQL_VENDAS)]
+    ancoraveis, descartadas = _vendas_ancoraveis(consultar(_SQL_VENDAS))
+    return [linha_para_vendido(row) for row in ancoraveis], descartadas

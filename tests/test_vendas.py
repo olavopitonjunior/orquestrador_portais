@@ -7,7 +7,9 @@ A I/O (conexão real ao Newcore) não roda no CI. O que se testa aqui é
 
 from decimal import Decimal
 
-from dados.vendas import linha_para_vendido
+import pytest
+
+from dados.vendas import _vendas_ancoraveis, linha_para_vendido
 
 LINHA = {
     "imovel_id": 501,
@@ -51,3 +53,34 @@ def test_string_so_espaco_vira_none_e_bordas_sao_aparadas():
 def test_preco_decimal_vira_faixa():
     v = linha_para_vendido({**LINHA, "preco": Decimal("1250000.50")})
     assert v.faixa_preco == "1M–1,5M"
+
+
+# --- Realty_Id nulo: descarte contado, nunca silencioso (fix da rodada real) ---
+
+
+def test_vendas_ancoraveis_separa_e_conta_os_sem_imovel():
+    # Duas ofertas assinadas têm Realty_Id nulo (patologia real, ~2 de 177):
+    # ficam de fora e são CONTADAS.
+    rows = [
+        {**LINHA, "imovel_id": 1},
+        {**LINHA, "imovel_id": None},
+        {**LINHA, "imovel_id": 2},
+        {**LINHA, "imovel_id": None},
+    ]
+    ancoraveis, descartadas = _vendas_ancoraveis(rows)
+    assert [r["imovel_id"] for r in ancoraveis] == [1, 2]
+    assert descartadas == 2
+
+
+def test_vendas_ancoraveis_sem_nulos_nao_descarta():
+    rows = [{**LINHA, "imovel_id": 1}, {**LINHA, "imovel_id": 2}]
+    ancoraveis, descartadas = _vendas_ancoraveis(rows)
+    assert len(ancoraveis) == 2
+    assert descartadas == 0
+
+
+def test_linha_para_vendido_falha_alto_com_imovel_id_nulo():
+    # Tripwire: após o filtro de _vendas_ancoraveis, um nulo aqui é regressão —
+    # falha alto em vez de mascarar (era o int(None) que quebrava a rodada real).
+    with pytest.raises(ValueError, match="Realty_Id.*nulo|imovel_id.*nulo"):
+        linha_para_vendido({**LINHA, "imovel_id": None})
