@@ -329,6 +329,19 @@ def test_registro_vem_antes_da_planilha():
     assert ordem == ["registrar", "entregar"]
 
 
+def test_limitacao_vinda_do_estado_inicial_chega_a_planilha():
+    """Uma limitação posta ANTES do grafo (ex.: janela truncada, que só o runner
+    sabe) tem de chegar à planilha e ao estado terminal — a §7.2 fala da rodada
+    inteira, não só do que o nó descobriu."""
+    s = _Sinks()
+    inicial = {**_inicial(), "degradacoes": ["janela TRUNCADA: 0 de 3 dias"]}
+    final = construir_grafo_segunda(_fontes(), s.como_sinks()).invoke(inicial)
+    _r, estado, degradacoes = s.entregues[0]
+    assert any("TRUNCADA" in d for d in degradacoes)  # chegou à planilha
+    assert estado == Estado.DEGRADADA  # e degradou a rodada
+    assert final["degradacoes"].count("janela TRUNCADA: 0 de 3 dias") == 1  # sem duplicar
+
+
 def test_planilha_recebe_a_limitacao_da_rodada():
     """Spec §7.2: a limitação da rodada degradada aparece NA PLANILHA, não só no
     Registro — quem lê a planilha precisa saber que a rodada foi degradada."""

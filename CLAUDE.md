@@ -50,6 +50,7 @@ src/grafo/       nós do LangGraph e definição do fluxo
 src/dominio/     regras de elegibilidade, ranking, penalidades, alocação, relaxamento
 src/dados/       leitura do Newcore (MySQL) e acesso ao Registro (Postgres)
 src/entrega/     geração da planilha e do relatório
+src/executar/    pontos de entrada das rodadas (`python -m executar.segunda`)
 src/config/      parâmetros de decisão
 tests/           testes (estratégia ainda não definida)
 .claude/agents/  subagentes de DESENVOLVIMENTO (nunca rodam em produção)

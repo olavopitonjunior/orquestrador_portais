@@ -24,3 +24,7 @@ coletor-externo/tmp/
 # O coletor produz CSV (contrato de saída); fixtures de teste são exceção ao *.csv global acima
 !coletor-externo/test/fixtures/
 !coletor-externo/test/fixtures/*.csv
+
+# Artefatos de build do wheel (o projeto virou instalável na fatia do runner).
+dist/
+*.egg-info/

@@ -21,6 +21,35 @@ dependencies = [
     "langgraph-checkpoint-postgres>=3.1",
 ]
 
+# O projeto é INSTALÁVEL para que os pontos de entrada de `src/executar/` rodem de
+# verdade: sem isto, `python -m executar.segunda` só funcionava com `PYTHONPATH=src`
+# — ou seja, o comando documentado falhava para quem não fosse o autor, que é
+# exatamente o que a fatia do runner existe para consertar.
+[project.scripts]
+rodada-segunda = "executar.segunda:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# TODOS os pacotes de `src/` — inclusive os que só são alcançados por import
+# transitivo (`piloto`, via `grafo.estado`). Esquecer um passa despercebido no
+# editable install, cujo .pth põe `src/` inteiro no path: o wheel sai quebrado só
+# para quem instala de verdade. `test_empacotamento.py` trava esta lista contra o
+# disco justamente para o sétimo pacote não repetir o erro.
+# `src/config` fica de FORA enquanto for só README: declarar um pacote que não
+# embarca módulo nenhum é ruído. Quando os parâmetros pendentes ganharem código,
+# `test_todo_pacote_de_src_vai_para_o_wheel` cobra a inclusão — é esse o gatilho.
+packages = [
+    "src/dados",
+    "src/dominio",
+    "src/entrega",
+    "src/executar",
+    "src/grafo",
+    "src/piloto",
+]
+
 [dependency-groups]
 dev = [
     "mypy>=1.13",
