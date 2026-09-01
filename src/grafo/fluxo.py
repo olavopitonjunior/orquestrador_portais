@@ -23,6 +23,7 @@ Limitações declaradas da G1 (honestas quanto ao estado, Spec §7.2):
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 
 from langgraph.graph import END, START, StateGraph
@@ -152,7 +153,7 @@ def no_finalizar(estado: EstadoRodada) -> dict:
     return {"estado": estado_final(estado)}
 
 
-def no_registrar(estado: EstadoRodada, *, registrar) -> dict:
+def no_registrar(estado: EstadoRodada, *, registrar: Callable[[EstadoRodada], object]) -> dict:
     """Persiste a rodada no Registro chamando o SINK injetado (G2a-wire). Só roda
     em rodada não-abortada (pelo roteamento) — que tem `resultado` válido; não se
     registra seleção abortada por veto nem rodada sem estoque.
@@ -160,7 +161,19 @@ def no_registrar(estado: EstadoRodada, *, registrar) -> dict:
     O sink é injetado como as `Fontes`: em produção grava no Postgres (carimba os
     timestamps e serializa os parâmetros — I/O, fora do estado determinístico, e
     controla a transação); no teste, um fake que só registra a chamada. Assim o
-    grafo segue testável sem banco e o domínio permanece puro.
+    grafo segue testável sem banco e o domínio permanece puro. O contrato do sink:
+    o `estado` recebido NÃO carrega parâmetros nem timestamps — o closure de
+    produção fecha sobre os provisórios e carimba inicio/fim (é o que mantém isso
+    fora do caminho determinístico). O retorno do sink (o `rodada.id`) é
+    descartado aqui; se um nó futuro precisar dele, exporá no estado.
+
+    CONSEQUÊNCIA DECLARADA do corte (não em silêncio, ligada à divergência aberta
+    de 2026-09-01 em docs/decisoes.md): uma rodada ABORTADA NÃO deixa NENHUMA linha
+    no Registro — nem o cabeçalho `rodada`. Logo o valor `estado='abortada'` da
+    Spec §2.1 e os campos `motivo`/`tentativas_por_etapa` nunca são populados para
+    abortos, e o Monitor de segunda / a auditoria não enxergam a execução que
+    abortou. Registrar o cabeçalho da rodada abortada (sem `decisao_imovel`) é
+    fatia futura candidata.
     """
     registrar(estado)
     return {}
@@ -191,7 +204,11 @@ def _rota_pos_finalizar(estado: EstadoRodada) -> str:
 
 
 def construir_grafo(
-    fontes: Fontes, parametros: ParametrosDecisao, registrar=None, checkpointer=None
+    fontes: Fontes,
+    parametros: ParametrosDecisao,
+    *,
+    registrar: Callable[[EstadoRodada], object] | None = None,
+    checkpointer=None,
 ):
     """Monta e compila o grafo da rodada de sexta.
 
