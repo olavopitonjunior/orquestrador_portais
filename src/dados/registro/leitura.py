@@ -15,20 +15,21 @@ def ler_rodada(conn: psycopg.Connection, rodada_id: int) -> dict | None:
     """Resumo da rodada: tipo, estado, etapas, aprovação. None se não existe."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT tipo, estado, etapas, motivo_degradacao, aprovada_em, posicoes_vazias_destaque "
-            "FROM registro.rodada WHERE id = %s",
+            "SELECT tipo, estado, etapas, motivo_degradacao, aprovada_em, aprovada_por, "
+            "posicoes_vazias_destaque FROM registro.rodada WHERE id = %s",
             (rodada_id,),
         )
         linha = cur.fetchone()
     if linha is None:
         return None
-    tipo, estado, etapas, motivo, aprovada_em, vazias = linha
+    tipo, estado, etapas, motivo, aprovada_em, aprovada_por, vazias = linha
     return {
         "tipo": tipo,
         "estado": estado,
         "etapas": etapas,
         "motivo_degradacao": motivo,
         "aprovada_em": aprovada_em,
+        "aprovada_por": aprovada_por,
         "posicoes_vazias_destaque": vazias,
     }
 
@@ -44,14 +45,19 @@ def contagem_por_nivel(conn: psycopg.Connection, rodada_id: int) -> dict[str, in
         return {nivel: n for nivel, n in cur.fetchall()}
 
 
-def marcar_aprovada(conn: psycopg.Connection, rodada_id: int, aprovada_em) -> None:
-    """Carimba a aprovação tácita por prazo na rodada (D-001) — sem verificação
-    de conteúdo, só o estado. O prazo (parâmetro nº 10) é do chamador; aqui só
-    se grava o instante que ele decidiu. Não commita."""
+def marcar_aprovada(
+    conn: psycopg.Connection, rodada_id: int, aprovada_em, aprovada_por: str | None = None
+) -> None:
+    """Carimba a aprovação na rodada (D-001) — sem verificação de conteúdo, só o
+    estado. O prazo (parâmetro nº 10) é do chamador; aqui só se grava o instante
+    que ele decidiu e `aprovada_por`, que distingue a aprovação tácita ("por
+    prazo") da explícita (identificação do dono) — o "por prazo" de D-001. Não
+    commita."""
     with conn.cursor() as cur:
         cur.execute(
-            "UPDATE registro.rodada SET aprovada_em = %s WHERE id = %s AND tipo = 'decisao'",
-            (aprovada_em, rodada_id),
+            "UPDATE registro.rodada SET aprovada_em = %s, aprovada_por = %s "
+            "WHERE id = %s AND tipo = 'decisao'",
+            (aprovada_em, aprovada_por, rodada_id),
         )
         if cur.rowcount != 1:
             raise ValueError(
