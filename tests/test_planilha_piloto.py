@@ -49,6 +49,7 @@ def _cand(imovel_id, *, preco=850_000, fotos=20, categoria="Apartamento"):
         atualizado_em=date(2026, 8, 30),
         notas_por_categoria={"Descrição do imóvel": 10},
         gestor_captou_ou_vendeu_30d=True,
+        produtividade_gestor_30d=3,
         corretores_ativos_no_distrito=5,
     )
 

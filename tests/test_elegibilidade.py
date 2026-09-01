@@ -29,6 +29,7 @@ APROVADO = ImovelCandidato(
     atualizado_em=date(2026, 8, 1),
     notas_por_categoria={"descricao": 2, "fotos": 2, "atualizacao": 1},
     gestor_captou_ou_vendeu_30d=True,
+    produtividade_gestor_30d=3,
     corretores_ativos_no_distrito=2,
 )
 
