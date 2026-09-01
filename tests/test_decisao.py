@@ -146,6 +146,45 @@ def test_detalhe_do_elegivel_carrega_fatores_e_notas():
     assert det.desconto_total == sum(det.descontos_por_penalidade.values())
 
 
+def test_f3_desempenho_zero_sem_raspagem():
+    # Sem `desempenho_por_imovel`, F3 é 0 para todos (rodada degradada nesse fator).
+    cands = [_candidato(1), _candidato(2)]
+    r = _rodar(cands, {1: _dims(), 2: _dims()})
+    assert r.detalhes[1].fatores.desempenho_proprio == 0.0
+    assert r.detalhes[2].fatores.desempenho_proprio == 0.0
+
+
+def test_f3_reflete_desempenho_do_portal():
+    # Com o sinal de portal, F3 = min-max entre os elegíveis: o de mais desempenho
+    # vai a 1.0, o de menos a 0.0 — e entra na nota (peso desempenho_proprio > 0).
+    cands = [_candidato(1), _candidato(2)]
+    pen = {c.imovel_id: _penalizavel(c.imovel_id) for c in cands}
+    r = decidir(
+        cands,
+        pen,
+        {1: _dims(), 2: _dims()},
+        PERFIS,
+        PARAMS,
+        HOJE,
+        desempenho_por_imovel={1: 900.0, 2: 100.0},
+    )
+    assert r.detalhes[1].fatores.desempenho_proprio == 1.0  # mais desempenho
+    assert r.detalhes[2].fatores.desempenho_proprio == 0.0  # menos desempenho
+    # imóvel sem entrada no mapa entra com 0 (o pior): repete com um terceiro
+    cands3 = [_candidato(1), _candidato(3)]
+    pen3 = {c.imovel_id: _penalizavel(c.imovel_id) for c in cands3}
+    r3 = decidir(
+        cands3,
+        pen3,
+        {1: _dims(), 3: _dims()},
+        PERFIS,
+        PARAMS,
+        HOJE,
+        desempenho_por_imovel={1: 900.0},  # 3 ausente
+    )
+    assert r3.detalhes[3].fatores.desempenho_proprio == 0.0
+
+
 def test_detalhe_carrega_o_perfil_que_puxou():
     # O imóvel casa o perfil (Centro): o detalhe carrega o perfil casado como
     # justificativa (Spec §2.1).

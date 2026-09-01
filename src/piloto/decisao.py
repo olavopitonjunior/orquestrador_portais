@@ -165,16 +165,19 @@ def _fatores(
     perfis: tuple[PerfilConversao, ...],
     params_sem: ParametrosSemelhanca,
     penalizaveis: Mapping[int, ImovelPenalizavel],
+    desempenho_por_imovel: Mapping[int, float],
 ) -> dict[int, FatoresNormalizados]:
     """Monta os QUATRO fatores normalizados SOBRE ESTA população (D-017).
 
-    semelhança, LEADS e produtividade são normalizados (min-max) ENTRE os
-    imóveis passados — sobre os elegíveis no ranking primário, entre os
-    reprovados no relaxamento (D-016); desempenho_proprio é 0 (degradado, sem
-    raspagem). F2 leads = min-max de `Leads180D` (fator POSITIVO vivo, do banco).
-    F4 produtividade = min-max de `produtividade_gestor_30d` (intensidade
-    CONTÍNUA em 30d — captação como taxa + venda como flag, D-017), NÃO mais o
-    binário (que é a regra de elegibilidade, à parte).
+    Os quatro são normalizados (min-max) ENTRE os imóveis passados — sobre os
+    elegíveis no ranking primário, entre os reprovados no relaxamento (D-016).
+    F1 semelhança; F2 leads = min-max de `Leads180D` (fator POSITIVO vivo, do
+    banco); F3 desempenho_proprio = min-max do sinal de portal `desempenho_por_
+    imovel` (composto pelo nó do Coletor Externo a partir da raspagem — nota/
+    visualizações/cliques; imóvel sem raspagem entra com 0, o pior); F4
+    produtividade = min-max de `produtividade_gestor_30d` (intensidade CONTÍNUA
+    em 30d — captação como taxa + venda como flag, D-017), NÃO mais o binário
+    (que é a regra de elegibilidade, à parte).
     Passe os elegíveis para o ranking primário e os reprovados para o relaxamento.
     """
     dims_pop = {im.imovel_id: dims_por_imovel.get(im.imovel_id, {}) for im in imoveis}
@@ -185,11 +188,14 @@ def _fatores(
     leads = _normalizar_minmax(
         {im.imovel_id: float(_leads_do(im.imovel_id, penalizaveis)) for im in imoveis}
     )
+    desempenho = _normalizar_minmax(
+        {im.imovel_id: float(desempenho_por_imovel.get(im.imovel_id, 0.0)) for im in imoveis}
+    )
     return {
         im.imovel_id: FatoresNormalizados(
             imovel_id=im.imovel_id,
             semelhanca_perfil=semelhanca.get(im.imovel_id, 0.0),
-            desempenho_proprio=0.0,  # D-016: degradado (sem raspagem de portal)
+            desempenho_proprio=desempenho[im.imovel_id],
             produtividade_gestor=produtividade[im.imovel_id],
             leads=leads[im.imovel_id],
         )
@@ -230,8 +236,13 @@ def decidir(
     perfis: tuple[PerfilConversao, ...],
     parametros: ParametrosDecisao,
     data_referencia: date,
+    desempenho_por_imovel: Mapping[int, float] | None = None,
 ) -> ResultadoDecisao:
     """Encadeia as seis etapas e devolve a alocação + o relaxamento (Spec §6).
+
+    `desempenho_por_imovel` é o sinal de portal por imóvel (F3), composto pelo nó
+    do Coletor Externo a partir da raspagem; None/omisso = sem raspagem, F3 = 0
+    para todos (rodada degradada nesse fator, como a piloto).
 
     Determinístico (invariante 5): mesma entrada e mesmos parâmetros ⇒ mesma
     saída. As cotas (invariante 6) e o relaxamento só-destaque (invariante 7)
@@ -245,6 +256,8 @@ def decidir(
     if dups:
         raise ValueError(f"imovel_id duplicado no lote de candidatos: {dups}")
 
+    desempenho = desempenho_por_imovel or {}  # sem raspagem → F3 = 0 para todos
+
     elegiveis: list[ImovelCandidato] = []
     reprovados: list[tuple[ImovelCandidato, frozenset[Regra]]] = []
     for c in candidatos:
@@ -255,7 +268,9 @@ def decidir(
             elegiveis.append(c)
 
     # Ranking primário: fatores normalizados SOBRE OS ELEGÍVEIS.
-    fatores_el = _fatores(elegiveis, dims_por_imovel, perfis, parametros.semelhanca, penalizaveis)
+    fatores_el = _fatores(
+        elegiveis, dims_por_imovel, perfis, parametros.semelhanca, penalizaveis, desempenho
+    )
     detalhes: dict[int, DetalheImovel] = {}
     aloc_entrada: list[CandidatoAlocacao] = []
     for c in elegiveis:
@@ -290,7 +305,7 @@ def decidir(
     if deficit > 0 and reprovados:
         so_reprovados = [c for c, _ in reprovados]
         fatores_rep = _fatores(
-            so_reprovados, dims_por_imovel, perfis, parametros.semelhanca, penalizaveis
+            so_reprovados, dims_por_imovel, perfis, parametros.semelhanca, penalizaveis, desempenho
         )
         pool: list[CandidatoRelaxamento] = []
         for c, rr in reprovados:
