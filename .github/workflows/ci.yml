@@ -59,5 +59,7 @@ jobs:
           node-version: '22.18.0'
       - name: Instala dependências (lockfile commitado)
         run: npm ci --no-audit --no-fund
+      - name: Testes (lógica pura + leitura de arquivos)
+        run: npm test
       - name: Build (compila, lint e typecheck do Next)
         run: npm run build

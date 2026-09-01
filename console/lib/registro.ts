@@ -75,3 +75,15 @@ export async function lerRodada(id: number): Promise<RodadaResumo | null> {
   );
   return rows.length ? mapRodada(rows[0]) : null;
 }
+
+/** Rodadas de decisão que ainda aguardam a aprovação do dono (D-001): sem
+ * `aprovada_em` e com estado entregável (completa/degradada; abortada não entrega). */
+export async function rodadasAguardandoAprovacao(): Promise<RodadaResumo[]> {
+  const { rows } = await db().query<LinhaRodada>(
+    `${SELECT_RODADA}
+     WHERE r.tipo = 'decisao' AND r.aprovada_em IS NULL
+       AND r.estado IN ('completa', 'degradada')
+     GROUP BY r.id ORDER BY r.id DESC`,
+  );
+  return rows.map(mapRodada);
+}

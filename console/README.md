@@ -19,9 +19,14 @@ futura é só no Postgres próprio (invariante 2).
 
 ## Fases
 
-- **Fase 1** (esta): fundação — leitura do Registro e **histórico de rodadas** (estado
-  completa/degradada/abortada, contagens por nível, aprovação). A seguir: caixa de
-  ações (login do portal / NEEDS_WARM, pendências), saúde das fontes e logs.
+- **Fase 1** (esta): o **painel do operador** —
+  - **Caixa de ações**: o que precisa de você agora (refazer o login no Canal Pro quando
+    a sessão cai, rodadas aguardando aprovação, parâmetros nulos pendentes).
+  - **Saúde das fontes**: estado e idade da coleta externa, lida dos artefatos do
+    raspador (`out/status.json`, `NEEDS_WARM.flag`) — nunca do Newcore.
+  - **Histórico de rodadas**: estado (completa/degradada/abortada), contagens por nível,
+    aprovação.
+  A seguir: detalhe por rodada, logs do coletor e embed da planilha.
 - **Fase 2**: painéis de agente/rodada ao vivo, painel da decisão + botão de aprovação,
   custos, editor de prompts — cresce com o grafo.
 
@@ -39,4 +44,8 @@ npm run dev                      # http://localhost:3000
 basta exportar a variável na mão. Sem ela, o console mostra o erro em vez de quebrar (e o
 detalhe fica no log do servidor).
 
-Scripts: `npm run dev`, `npm run build`, `npm run start`, `npm run typecheck`.
+Para a saúde da coleta externa, o console lê os artefatos do raspador. O diretório padrão
+é `../coletor-externo/out`; aponte outro com `COLETOR_OUT_DIR` se necessário. Sem esses
+arquivos, o painel mostra a coleta como "ausente" — não quebra.
+
+Scripts: `npm run dev`, `npm run build`, `npm run start`, `npm run typecheck`, `npm test`.
