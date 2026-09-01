@@ -267,9 +267,14 @@ def no_medir(estado: EstadoSegunda, *, fontes: FontesSegunda, sinks: SinksSegund
         return _aborto_declarado(f"falha ao apurar a carga {rodada_decisao_id}: {e}")
 
     pronto = monitor_pronto(resultado)
-    degradacoes = degradacoes_da_rodada(resultado, descartados)
-    estado_final = estado_terminal(degradacoes)
-    motivo = "; ".join(degradacoes) or None
+    novas = degradacoes_da_rodada(resultado, descartados)
+    # As limitações que já vieram no estado (ex.: janela truncada, posta pelo runner)
+    # contam TANTO para o estado terminal quanto para o que a planilha declara — a
+    # §7.2 fala da rodada inteira, não só do que este nó descobriu. Ao estado volta
+    # só `novas`, porque o reducer soma; aos sinks vai a lista COMPLETA.
+    todas = [*estado.get("degradacoes", []), *novas]
+    estado_final = estado_terminal(todas)
+    motivo = "; ".join(todas) or None
 
     # `prontos` é derivado UMA vez, aqui, e viaja para o Registro junto — para não
     # existirem duas derivações independentes da mesma regra (a do grafo e a da
@@ -286,7 +291,7 @@ def no_medir(estado: EstadoSegunda, *, fontes: FontesSegunda, sinks: SinksSegund
     # entrega). A planilha recebe estado e degradações porque a §7.2 exige a
     # limitação visível NELA, não só no Registro.
     rodada_id = sinks.registrar(resultado, str(estado_final), motivo, prontos)
-    sinks.entregar(resultado, str(estado_final), tuple(degradacoes))
+    sinks.entregar(resultado, str(estado_final), tuple(todas))
 
     return {
         "payload": payload_para_modelo(resultado),  # agregados: o que pode ir a modelo
@@ -295,7 +300,7 @@ def no_medir(estado: EstadoSegunda, *, fontes: FontesSegunda, sinks: SinksSegund
         "estado": estado_final,
         "motivo": motivo,
         "prontos": prontos,
-        "degradacoes": degradacoes,
+        "degradacoes": novas,  # só as novas: o reducer soma às que já estavam
     }
 
 

@@ -890,7 +890,7 @@ wheels = [
 [[package]]
 name = "orquestrador-portais"
 version = "0.0.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
     { name = "langgraph" },

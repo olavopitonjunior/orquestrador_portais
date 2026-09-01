@@ -24,6 +24,12 @@ jobs:
         run: uv run mypy --strict src/dominio
       - name: Testes
         run: uv run pytest -q
+      # Fumaça do ponto de entrada: prova que o comando DOCUMENTADO roda de fato.
+      # Sem isto, `python -m executar.segunda` voltaria a só funcionar com
+      # PYTHONPATH=src — a falha que a fatia do runner existiu para consertar, e que
+      # nenhum outro passo do CI toca (ruff/mypy/pytest não executam o __main__).
+      - name: Fumaça do ponto de entrada
+        run: uv run python -m executar.segunda --help
       - name: Parse do DDL do Registro (dialeto postgres)
         run: >
           uv run --with 'sqlglot==30.17.0' python -c
