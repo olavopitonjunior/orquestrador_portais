@@ -16,6 +16,12 @@ resultado, marcado, com seu número de casos (Spec §6.2: "não recebe peso
 pleno"). O que "peso pleno" significa numericamente é da costura (B3); aqui
 só se rotula frágil/robusto e se carrega o N.
 
+Além da descoberta, este módulo declara a ORDEM DE PRIORIDADE das dimensões no
+ranking (`PRIORIDADE_DIMENSOES`) e a forma do peso decrescente por dimensão
+(`pesos_por_prioridade`), ambos da D-017 — a ordem é regra adotada do dono, a
+magnitude do decaimento é parâmetro nulo injetado. A APLICAÇÃO desse peso ao
+match de um candidato é a montante do ranking (piloto.semelhanca), não aqui.
+
 Invariantes 4 e 5: cálculo puro — sem I/O, sem relógio, sem aleatoriedade,
 sem chamada a modelo. Mesma entrada ⇒ mesmos perfis, em ordem canônica.
 """
@@ -44,6 +50,23 @@ class Dimensao(StrEnum):
     FAIXA_METRAGEM = "faixa_metragem"
     DORMITORIOS = "dormitorios"
     VAGAS = "vagas"
+
+
+# Ordem de PRIORIDADE das dimensões no ranking (D-017, decisão do dono, palavras
+# dele: "preço, localização, metragem, quantidade de dormitórios e quantidade de
+# vagas de garagem, nessa ordem"). É a IMPORTÂNCIA de cada característica para o
+# valor esperado / probabilidade de lead — regra de decisão, mudar exige
+# CHANGELOG. NÃO confundir com a ordem canônica do enum acima (região primeiro),
+# que só serve à saída determinística (invariante 5): esta é importância, aquela
+# é ordenação. Os VALORES do peso decrescente (o decaimento) são parâmetro nulo,
+# injetados run-local — ver pesos_por_prioridade.
+PRIORIDADE_DIMENSOES: tuple[Dimensao, ...] = (
+    Dimensao.FAIXA_PRECO,
+    Dimensao.REGIAO,
+    Dimensao.FAIXA_METRAGEM,
+    Dimensao.DORMITORIOS,
+    Dimensao.VAGAS,
+)
 
 
 # Valor de uma dimensão já bucketizado pela coleta (região/faixas como texto,
@@ -154,3 +177,31 @@ def perfis_de_conversao(vendas: Iterable[ImovelVendido]) -> tuple[PerfilConversa
         for (dims, vals), n in contagem.items()
     ]
     return tuple(sorted(perfis, key=_chave_ordenacao))
+
+
+def pesos_por_prioridade(decaimento: float) -> dict[Dimensao, float]:
+    """Peso DECRESCENTE por dimensão a partir da ordem adotada (D-017).
+
+    A ORDEM (preço > localização > metragem > dormitórios > vagas) é regra de
+    decisão do dono; a MAGNITUDE do decaimento é parâmetro NULO (provisório
+    run-local, injetado — nunca fixado aqui). O peso da dimensão na posição r
+    da prioridade é `decaimento ** r` (r=0 para preço, r=4 para vagas):
+
+    - decaimento = 1.0  → todas as dimensões pesam igual (SEM de-saturação);
+    - decaimento < 1.0  → acentua a dominância do preço/localização e reduz o
+      peso de dormitórios/vagas, corrigindo a saturação (D-017) em que um perfil
+      amplo de dimensão pouco importante dominava o sinal.
+
+    Estritamente decrescente para decaimento em (0, 1); num decaimento
+    patologicamente pequeno (ordem de 1e-80) os expoentes altos fazem underflow
+    para 0.0 e a monotonia estrita deixa de valer — canto fora de qualquer valor
+    plausível do parâmetro nulo, sem efeito prático.
+
+    Puro (invariantes 4/5): não lê nada de fora, não fixa valor. Este módulo
+    define A ORDEM e A FORMA do decaimento; QUANTO decai vem por injeção, e
+    COMO os pesos de um perfil de duas dimensões se combinam é da camada que
+    aplica (piloto.semelhanca), declarado lá.
+    """
+    if not 0.0 < decaimento <= 1.0:
+        raise ValueError(f"decaimento fora de (0, 1]: {decaimento}")
+    return {dim: decaimento**r for r, dim in enumerate(PRIORIDADE_DIMENSOES)}

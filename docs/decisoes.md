@@ -49,6 +49,13 @@ A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais
 10. Prazo da aprovação tácita (só constava em Ferramentas §6)
 11. Prazo de atendimento de lead e limite de inatividade (só constava na tabela do PRD)
 
+**Emenda 2026-09-01 (D-017)**: a lista deixou de ser de onze e passou a **treze**. A D-017 (redesenho do ranking) tornou nulos dois parâmetros que a Spec §6.3 dava como **definidos** e que por isso ficavam fora desta lista — acrescentados agora como nº 12 e nº 13:
+
+12. Pesos dos quatro fatores do ranking por nível (semelhança, leads, desempenho, produtividade).
+13. Decaimento do peso por dimensão do F1 (a ORDEM preço > localização > metragem > dormitórios > vagas é adotada por decisão do dono; a MAGNITUDE do decaimento é que é nula).
+
+Doze seguem nulos (só o nº 1 resolvido). A tabela do CLAUDE.md foi atualizada na mesma fatia.
+
 ## D-005 — Ganhos de relaxamento são ordem de grandeza, não conferência
 
 **Data**: 2026-08-29 · **Resolve**: contradição C1 (PRD "Custo de cada regra" vs. Spec §6.6)
