@@ -5,12 +5,15 @@ description = "Curadoria automatizada da vitrine de destaques de imóveis da New
 requires-python = ">=3.12"
 # src/dominio segue stdlib puro por desenho (invariante 4 — cálculo
 # determinístico, sem I/O e sem modelo); o auditor verifica que ele não importa
-# nada daqui. As dependências abaixo são da camada de I/O (src/dados): o Coletor
-# Interno lê o MySQL do Newcore via pymysql. cryptography cobre o caminho
-# não-SSL do caching_sha2_password (ver docs/mapa-de-dados.md).
+# nada daqui. As dependências abaixo são das camadas de FORA do domínio: pymysql
+# (src/dados: o Coletor Interno lê o MySQL do Newcore; cryptography cobre o
+# caminho não-SSL do caching_sha2_password — ver docs/mapa-de-dados.md) e
+# langgraph (src/grafo: a orquestração da rodada; importado SÓ em src/grafo,
+# nunca no domínio).
 dependencies = [
     "pymysql>=1.1",
     "cryptography>=42",
+    "langgraph>=0.2",
 ]
 
 [dependency-groups]
