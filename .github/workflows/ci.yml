@@ -44,3 +44,20 @@ jobs:
         run: npm run typecheck
       - name: Testes (módulos puros)
         run: npm test
+
+  # Job do Console do Operador (Next.js). Separado e NÃO obrigatório na proteção de
+  # main até o dono o adicionar (ação administrativa), como o coletor-externo.
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+      - name: Instala dependências (lockfile commitado)
+        run: npm ci --no-audit --no-fund
+      - name: Build (compila, lint e typecheck do Next)
+        run: npm run build
