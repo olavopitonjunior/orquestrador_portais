@@ -158,3 +158,12 @@ def test_escrever_planilha_gera_os_quatro_csvs(tmp_path):
     with (tmp_path / "piloto" / "super_destaque.csv").open(encoding="utf-8") as f:
         linhas = list(csv.DictReader(f))
     assert [ln["imovel_id"] for ln in linhas] == ["10"]
+
+
+def test_escrever_planilha_inclui_nota_de_coleta_no_csv(tmp_path):
+    r = _resultado()
+    nota = "2 vendas descartadas (Realty_Id nulo)"
+    escrever_planilha(r, PARAMS, tmp_path / "piloto", notas_coleta=(nota,))
+    with (tmp_path / "piloto" / "parametros_e_limitacoes.csv").open(encoding="utf-8") as f:
+        itens = [ln["item"] for ln in csv.DictReader(f)]
+    assert nota in itens

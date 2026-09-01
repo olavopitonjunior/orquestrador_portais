@@ -79,6 +79,10 @@ def test_vendas_ancoraveis_sem_nulos_nao_descarta():
     assert descartadas == 0
 
 
+def test_vendas_ancoraveis_vazio():
+    assert _vendas_ancoraveis([]) == ([], 0)
+
+
 def test_linha_para_vendido_falha_alto_com_imovel_id_nulo():
     # Tripwire: após o filtro de _vendas_ancoraveis, um nulo aqui é regressão —
     # falha alto em vez de mascarar (era o int(None) que quebrava a rodada real).
