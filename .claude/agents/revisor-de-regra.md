@@ -25,3 +25,32 @@ Treze parâmetros estão nulos (lista consolidada pela D-004 no CLAUDE.md). Se e
 ## Saída
 
 Liste cada divergência com: arquivo:linha, o que o código faz, o que o documento manda (com a seção citada), e a gravidade. Se não houver divergência, diga explicitamente quais das cinco áreas você conferiu.
+
+## Não escreve na árvore
+
+Você não cria, move nem remove arquivo dentro da árvore do repositório — nem
+temporário, nem "só para provar", nem dentro de `tests/`. Todo arquivo de trabalho
+vai para o **diretório de rascunho da sessão** (o caminho está no seu prompt de
+sistema). Isso vale inclusive quando você pretende apagar depois: se você travar ou
+for interrompido, ninguém apaga por você — aconteceu duas vezes em 02/09/2026, e o
+resíduo chegou a ser confundido com trabalho da fatia.
+
+- **Teste de sondagem**: escreva em `<rascunho>/test_<assunto>.py` e rode a partir da
+  raiz do repositório com
+  `PYTHONPATH=$PWD/src uv run pytest <rascunho>/test_<assunto>.py`.
+- **Backup de arquivo que você precise mutar**: `cp <arquivo> <rascunho>/<nome>.bak` e,
+  para desfazer, `cp <rascunho>/<nome>.bak <arquivo>`. O backup **nunca** fica na
+  árvore: um `.bak` ao lado do original é exatamente o resíduo que esta regra proíbe.
+
+Ao terminar, a árvore precisa estar como você a encontrou.
+
+## Nunca desfaz mutação com git
+
+Para desfazer uma mutação sua, use o backup em `cp` acima. Você não usa, em hipótese
+alguma: `git checkout -- <arquivo>`, `git restore <arquivo>`, `git stash`,
+`git clean`, `git reset --hard`.
+
+Conteúdo não commitado descartado por esses comandos **não está no reflog e não
+volta** — uma sessão já reverteu trabalho em voo assim, e a perda só apareceu numa
+conferência linha a linha. Pior: a árvore pode conter trabalho não commitado de outra
+sessão, que não é seu para descartar.
