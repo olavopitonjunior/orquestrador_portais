@@ -570,3 +570,13 @@ Ao consolidar a fila do dono (`docs/perguntas-abertas.md`) apareceram itens que 
 `docs/vitrine-destaque-spec.md` §9 ("O que esta spec não cobre") lista literalmente: *"Mecanismo de envio por e-mail e de arquivamento no Drive."* A Ferramentas diz o **quê** (planilha do Google no Drive, link por e-mail) e nenhum documento diz o **como**.
 
 Isso **não é pendência do dono** e não entra na fila dele: é lacuna de especificação. Registro aqui porque ela tem consequência de engenharia imediata — o adaptador de publicação não tem critério de pronto contra o qual ser construído nem verificado, e este projeto não escreve peça que não possa provar. Some quando a spec for estendida, o que é trabalho meu, não decisão dele. Os itens [P-10] e [P-11] são o que resta do lado do dono.
+
+## Bloqueio de credencial encontrado ao medir as referências (2026-09-02)
+
+**[P-17] As credenciais do Newcore no 1Password são recusadas pelo servidor, e `POSTGRES_URL` não existe no item.** Ao construir a medição reprodutível dos números de referência, a conexão ao MySQL do Newcore falhou com `Access denied` usando exatamente os valores do item `op://Personal/orquestrador_portais`. Caracterizado: o TCP alcança a instância (porta 3306 aceita), então **é recusa de autenticação, não bloqueio de rede** — senha girada no servidor, ou concessão restrita por host de origem. No mesmo dia, mais cedo nesta sessão, a mesma leitura funcionou; o erro nomeia o host do cliente, o que aponta para o IP de origem ter mudado.
+
+Separadamente, o item do cofre **não tem `POSTGRES_URL`**, embora o `.env.tmpl` a declare — logo `op inject -i .env.tmpl -o .env` não produz um `.env` completo, e nada que dependa do Registro (aprovação, janelas, console) roda na máquina do gestor.
+
+**O que está bloqueado:** a medição contra a base, e portanto o passo 5 da skill `verificar-contra-spec`. A ferramenta existe e é testada, mas a execução real fica pendente. Também impede repetir a contagem noutro dia, que é a condição declarada para incorporar a deriva aos números de referência.
+
+**Ato que só o dono pratica.** Não é decisão nem defeito de código: é conserto de cofre e de acesso.
