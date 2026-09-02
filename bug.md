@@ -22,6 +22,24 @@ O campo **Afetou carga publicada?** é o mais importante da entrada: um defeito 
 
 <!-- Entradas abaixo desta linha, mais recente primeiro. -->
 
+## O espelho lido pela coleta interna está defasado — a sexta pode propor imóvel já removido
+
+**Data**: 2026-09-02 · **Severidade**: alta (gasta posição contratada) · **Onde**: Coletor Interno (`src/dados/coletor_interno.py:80`)
+
+- **Esperado**: o universo de candidatos da sexta contém apenas imóveis efetivamente anunciáveis no momento da rodada.
+- **Ocorrido**: contém imóveis já removidos ou já vendidos, por **duas causas medidas** em 2026-09-02.
+- **Afetou carga publicada?**: **em apuração.** O mecanismo está presente hoje e nada indica que tenha começado agora; não foi verificado contra as cargas já aplicadas. Responder isto exige cruzar as decisões gravadas em `registro.decisao_imovel` com o histórico de status — não feito nesta fatia.
+- **Estado da rodada no momento**: fora de rodada (medição direta no banco, somente leitura).
+- **Situação**: **aberto**.
+
+**Causa 1 — o espelho atrasa (defeito sob qualquer leitura).** A coleta lê `newcore_bi.FT_RealtyRelation`, mantido incrementalmente. Das 82 remoções (`Ativo → Removido`) das últimas 24 h, **70 ainda constavam `Ativo` no espelho — 85,4%**. Como sinal separado de defasagem corrente, `MAX(RealtyUpdate)` marcava 07:30 contra `MAX(realties.UpdatedAt)` às 18:38 do mesmo dia; são 11 h, e quem sustenta o "mais de 24 h" é o 70 de 82, não esse par.
+
+**Causa 2 — a venda não move o status (contingente à [P-20]).** `FT_RealtyRelation.RealtyStatus` é binário (`Ativo` 48.881 / `Removido` 356.172): não existe "Vendido" nem "Reservado". **24,69% (40 de 162) dos imóveis distintos com venda assinada em 180 dias seguem `Ativo`.** Esta causa **deixa de ser defeito** sob a leitura 3 da [P-20] ("a saída é tratada fora do sistema"); a causa 1 é defeito em qualquer leitura.
+
+**Por que não corrigi nesta fatia:** corrigir muda o universo de candidatos — cruzar com `newcore.realties`/`realtystatushistory_new` é **mudança em regra de decisão**, com CHANGELOG e revisão próprios. Registrado em `docs/decisoes.md` (seção da rotação) e aqui, porque é comportamento em execução e não divergência entre documentos.
+
+**Quando tratar**: antes da §6.7, e **antes** de qualquer resposta do dono — esta correção não depende de [P-20] nem do parâmetro nº 15. Achado do levantamento da fatia da rotação.
+
 ## Memoização das fontes não é thread-safe — amarrado ao parâmetro nº 4
 
 **Data**: 2026-09-01 · **Severidade**: latente (sem corrida alcançável hoje) · **Onde**: `src/executar/sexta.py` (`_fontes`) e `src/executar/segunda.py` (`_fontes`)

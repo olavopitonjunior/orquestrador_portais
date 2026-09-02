@@ -14,7 +14,7 @@ PRD > Spec > Ferramentas > código. Divergência entre código e documento é **
 1. **Localize a regra no documento.** Elegibilidade: Spec §6.1. Perfil: §6.2. Ranking e pesos: §6.3. Penalidades: §6.4. Alocação: §6.5. Relaxamento: §6.6. Rotação: §6.7. Estados e falhas: §7. Contratos entre agentes: §5.
 2. **Compare literal por literal**: limiares (R$ 300.000, R$ 700.000, 10 fotos, 90 dias, 30 dias, 2 corretores, 180 dias), as cinco categorias aceitas, os pesos (60/25/15 e 80/10/10), a ordem de relaxamento (fotos → cadastro → atualização → gestor → distrito).
 3. **Confira os invariantes** (CLAUDE.md): especialmente cotas como teto rígido e relaxamento restrito ao nível destaque.
-4. **Confira que nenhum parâmetro pendente ganhou valor.** Os treze nulos da tabela do CLAUDE.md (quatorze itens; só o nº 1 foi resolvido, D-014) permanecem nulos. Valor inventado é erro grave, mesmo "provisório".
+4. **Confira que nenhum parâmetro pendente ganhou valor.** Os catorze nulos da tabela do CLAUDE.md (quinze itens; só o nº 1 foi resolvido, D-014) permanecem nulos. Valor inventado é erro grave, mesmo "provisório".
 5. **Rode a implementação contra a base e compare com os números de referência**:
    `uv run python -m executar.referencias`. A ferramenta reaproveita o coletor e as
    regras do próprio sistema (nunca reimplementa o funil), lê os valores publicados do

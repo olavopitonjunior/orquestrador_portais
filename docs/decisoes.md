@@ -37,7 +37,7 @@ Onde os documentos disserem "nove regras", leia-se "oito regras gerais + piso de
 
 **Data**: 2026-08-29 · **Resolve**: contradição C2 (Spec §8 vs. Ferramentas §6 vs. tabela de parâmetros do PRD)
 
-A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais os dois que aparecem em apenas um documento. São **onze**, mantidos no CLAUDE.md. *(Onde este parágrafo disser "os outros dez", leia-se: dez DOS ONZE DE ENTÃO — a contagem vigente é treze de quatorze, ver a emenda abaixo.)* *(Emenda 2026-09-01, D-022: passaram a **quatorze** — a §6.4 exige um limiar de resultado POR NÍVEL que nenhum documento jamais quantificou, e ele entrou como nº 14. Treze seguem nulos. Mesmo procedimento da emenda da D-017 abaixo.)* O nº 1 foi resolvido em 2026-08-31 (D-014, `N ≥ 3`); os outros **dez seguem nulos** até definição:
+A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais os dois que aparecem em apenas um documento. São **onze**, mantidos no CLAUDE.md. *(Onde este parágrafo disser "os outros dez", leia-se: dez DOS ONZE DE ENTÃO — a contagem vigente é catorze de quinze, ver as emendas abaixo.)* *(Emenda 2026-09-01, D-022: passaram a **quatorze** — a §6.4 exige um limiar de resultado POR NÍVEL que nenhum documento jamais quantificou, e ele entrou como nº 14. Treze seguem nulos. Mesmo procedimento da emenda da D-017 abaixo.)* O nº 1 foi resolvido em 2026-08-31 (D-014, `N ≥ 3`); os outros **dez seguem nulos** até definição:
 
 1. ~~Evidência mínima por combinação de perfil~~ — **resolvido: N ≥ 3 (D-014)**
 2. Forma de normalização de cada fator do ranking
@@ -56,7 +56,9 @@ A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais
 12. Pesos dos quatro fatores do ranking por nível (semelhança, leads, desempenho, produtividade).
 13. Decaimento do peso por dimensão do F1 (a ORDEM preço > localização > metragem > dormitórios > vagas é adotada por decisão do dono; a MAGNITUDE do decaimento é que é nula).
 
-**Treze** seguem nulos (só o nº 1 resolvido). *(Correção 2026-09-02: esta linha dizia "Doze" e a de cima dizia "onze"/"quatorze"; a tabela do CLAUDE.md e o `console/` sempre disseram 13 nulos de 14. O texto corrido da D-004 não acompanhou as emendas D-017 e D-022.)* A tabela do CLAUDE.md foi atualizada na mesma fatia.
+**Emenda 2026-09-02 (D-025)**: a lista passou a **quinze** — a §6.7 exige um limiar para "alteração **relevante** de preço" e nenhum documento o quantifica. Ver a **D-025**, ao fim deste arquivo.
+
+**Catorze** seguem nulos (só o nº 1 resolvido). *(Correção 2026-09-02: esta linha dizia "Doze" e a de cima dizia "onze"/"quatorze"; a tabela do CLAUDE.md sempre disse 13 nulos de 14; o `console/` **não** — `parametros.ts` derivava os pendentes, mas `page.tsx` cravava o total à mão e exibia "13 de 13", escondendo que o nº 1 está resolvido. Corrigido na fatia da rotação, passando a derivar o total. O texto corrido da D-004 não acompanhou as emendas D-017 e D-022.)* A tabela do CLAUDE.md foi atualizada na mesma fatia.
 
 ## D-005 — Ganhos de relaxamento são ordem de grandeza, não conferência
 
@@ -171,7 +173,7 @@ Ancorado em medição (distribuição de vendas por perfil, investigador 31/08, 
 
 **Decisão do dono: piso único N ≥ 3 para a piloto.** É o menor limiar defensável — abaixo dele, um bucket sobre 177 vendas é coincidência e não padrão — e o único que mantém o sinal geográfico e os pares finos utilizáveis. O dono considerou o esquema diferenciado (N≥3 para dimensões finas, N≥5 para grosseiras) e optou pelo piso único, mais simples de auditar na piloto.
 
-**Isto resolve o nº 1 na lista da D-004.** Os outros dez parâmetros seguem nulos. *(Contagem de então: os onze da D-004. Depois das emendas D-017 e D-022 são treze nulos de quatorze — ver a tabela do CLAUDE.md.)* Os provisórios nº 2 (normalização) e nº 3 (intensidades das penalidades) usados na planilha-piloto são **run-local, rotulados PROVISÓRIO na própria planilha, e NÃO adotados** — continuam nulos na lista canônica e nunca entram em `src/config`.
+**Isto resolve o nº 1 na lista da D-004.** Os outros dez parâmetros seguem nulos. *(Contagem de então: os onze da D-004. Depois das emendas D-017, D-022 e D-025 (nº 15) são catorze nulos de quinze — ver a tabela do CLAUDE.md.)* Os provisórios nº 2 (normalização) e nº 3 (intensidades das penalidades) usados na planilha-piloto são **run-local, rotulados PROVISÓRIO na própria planilha, e NÃO adotados** — continuam nulos na lista canônica e nunca entram em `src/config`.
 
 ## D-015 — "Corretor ativo no distrito" = captou ou vendeu em 30 dias (produtivos), fiel à Spec §6.1
 
@@ -195,7 +197,7 @@ São leituras estruturais da rodada de teste, declaradas (não inventadas), cali
 
 **Provisórios da rodada, dois mecanismos distintos, ambos fora de `src/config` e não adotados** (D-014 mantém nº 2 e nº 3 nulos na lista canônica):
 
-- **Tunáveis injetados run-local** (`ParametrosDecisao` / `ParametrosSemelhanca`): as intensidades e o decaimento das penalidades (nº 3) e o **[P-16]** desconto de fragilidade (peso do perfil frágil, Spec §6.2 "não recebe peso pleno" — provisório, fora dos quatorze e sem valor adotado). Trocáveis por rodada sem editar código.
+- **Tunáveis injetados run-local** (`ParametrosDecisao` / `ParametrosSemelhanca`): as intensidades e o decaimento das penalidades (nº 3) e o **[P-16]** desconto de fragilidade (peso do perfil frágil, Spec §6.2 "não recebe peso pleno" — provisório, fora dos quinze e sem valor adotado). Trocáveis por rodada sem editar código.
 - **Forma da normalização (nº 2) fixa no código, provisória**: a piloto usa **min-max como forma PROVISÓRIA do parâmetro nº 2**. O nº 2 **não é adotado** por isso — permanece **pendente na lista canônica da D-004**. É uma única forma na v0, então vive como função no código (`_normalizar_minmax`), não como callable injetado (injetar uma forma sem segunda opção seria complexidade sem uso), exatamente como as faixas de preço em `bucketizacao.py`. **Trocar a forma, ou adotá-la de vez, exige decisão do dono + CHANGELOG** (afeta o ranking). A aba de limitações da planilha rotula min-max como PROVISÓRIO, ao lado do nº 3 e das faixas — para o dono saber, ao ler a piloto, que a forma de normalização não foi decidida por ele.
 
 **Acúmulo de limitações da piloto** (para o dono ler o resultado como teste de critério, não lista final): distrito = produtivos (D-015, cobertura 45,9%) + desempenho zerado + produtividade binária + normalização sobre elegíveis. As quatro na aba de limitações.
@@ -341,7 +343,7 @@ Mantém a fidelidade à Spec §4.3 (as colunas existem) sem fabricar dado.
 
 ## Ponto de entrada da sexta (2026-09-01) — o que foi resolvido e o que aguarda o dono
 
-A fatia do runner da sexta (`src/executar/sexta.py`) obrigou a decidir **como uma rodada roda se treze dos quatorze parâmetros são nulos**, e os três portões levantaram divergências que ficam registradas aqui.
+A fatia do runner da sexta (`src/executar/sexta.py`) obrigou a decidir **como uma rodada roda se treze dos quatorze parâmetros de então são nulos**, e os três portões levantaram divergências que ficam registradas aqui.
 
 ### Resolvido no código: os parâmetros entram por arquivo do dono, e a rodada recusa rodar sem eles
 
@@ -645,3 +647,84 @@ A coleta interna recorta `WHERE RealtyStatus = 'Ativo'`, então a regra de statu
 ### [P-19] Um critério de aceite sem dono, sem prazo e sem contrato
 
 **`:501` — "A hipótese de valor esperado é testada contra vendas e o resultado é reportado".** Não existe em lugar nenhum: nem código, nem Spec, nem esta fila. As únicas menções em `src/` são comentários. Não é parâmetro faltando nem fiação inerte — é trabalho inteiro por fazer que nunca foi especificado. Registro porque critério de aceite invisível é pior que um não cumprido: ninguém o vê para decidir se ainda vale. **Vai ao dono:** confirmar se o critério permanece e, se sim, o que "testar a hipótese" entrega.
+
+## Rotação (§6.7) — o que impede a fatia de código (2026-09-02)
+
+A §6.7 tem duas metades. A primeira — *"a lista é recalculada integralmente a cada rodada de sexta. Não há permanência automática"* — **já vale hoje**: a sexta recalcula tudo, e nenhum imóvel permanece por inércia. A segunda — *"saída imediata, fora do ciclo: venda, reserva, despublicação ou alteração relevante de preço"* — não existe em código, e esta fatia registra **por que ela não pode ser simplesmente construída** antes de tentar construí-la.
+
+Dois critérios de aceite dependem dela e seguem abertos: `:491` ("imóvel vendido, reservado ou removido sai imediatamente, fora do ciclo") e `:480` ("a remoção de um imóvel libera a posição para o próximo elegível do mesmo nível"). A D-003 já fixou o enquadramento desses gatilhos: são **saída imediata fora do ciclo**, não regra de elegibilidade — "não uma **décima** regra", na numeração de então, que contava as nove do PRD mais o status.
+
+### [P-20] "Fora do ciclo" contradiz "dois momentos por semana" — dentro do MESMO documento
+
+Não é divergência entre PRD e Spec, que a hierarquia resolveria. É divergência **interna ao PRD**, entre duas linhas suas:
+
+- `:313` — *"A cadência é de dois momentos: sexta-feira para decisão e carga, segunda-feira para acompanhamento."* O `CLAUDE.md` reforça: **"Não existe execução diária."**
+- `:491` — *"Imóvel vendido, reservado ou removido sai imediatamente, **fora do ciclo**."* E não é linha isolada: a mesma regra aparece **três vezes** no PRD — `:155` (tabela do Estágio 1: "Vendido, reservado ou removido, com saída imediata fora do ciclo") e `:270` (prosa normativa: "Venda, reserva, despublicação ou alteração relevante de preço provocam saída imediata, fora do ciclo"). A `:270` é afirmação de **comportamento do produto**, não critério verificável — o que enfraquece a leitura 3 abaixo: "tratar fora do sistema" contradiz mais texto do que só um critério de aceite.
+
+Nenhuma leitura torna as duas verdadeiras ao mesmo tempo. "Fora do ciclo" exige um momento de execução que a cadência nega. Como os dois trechos têm a mesma hierarquia e estão no mesmo documento, a regra do projeto ("se dois documentos divergirem, prevalece o superior") não decide nada aqui — não há superior.
+
+**Vai ao dono [P-20]:** escolher entre três leituras, que produzem sistemas diferentes.
+
+1. **Terceiro momento.** Uma verificação entre sexta e sexta, que detecta os gatilhos e emite substituição. Contradiz "não existe execução diária" e exige dizer com que frequência.
+2. **"Imediatamente" leia-se "na próxima rodada de sexta".** **Esta leitura foi MEDIDA e não se sustenta.** A coleta interna filtra `WHERE f.RealtyStatus = 'Ativo'` (`coletor_interno.py:80`), e essa coluna é **binária** — `Ativo` 48.881, `Removido` 356.172, sem terceiro valor. Não existe "Reservado" nem "Vendido" nela. E a venda **não move o status de forma confiável**: **24,69% (40 de 162) dos IMÓVEIS distintos com venda assinada em 180 dias seguem `Ativo`** — medição de 02/09, janela móvel; a D-013 mediu 177 ofertas / 174 imóveis em 28/08, e a unidade aqui é imóvel, não oferta. Ou seja, a recoleta de sexta **continua propondo para destaque pago um quarto dos imóveis já vendidos**. Nesta leitura `:491` não estaria cumprido — estaria silenciosamente violado.
+3. **Fora do sistema.** Quem aplica a carga trata a saída manualmente ao encontrá-la, e o sistema não promete nada. Honesto, e torna `:491` um critério de aceite de processo, não de software.
+
+Não escolho por ele: a 2 é a mais barata e a 1 é a que o texto literalmente pede, e a diferença entre elas é dinheiro de posição paga, não estilo.
+
+## D-024 — "sai imediatamente" só pode significar EMITIR a substituição
+
+**Enquadramento, não pergunta.** É dedutível dos documentos e por isso não vai à fila do dono.
+
+O PRD `:15` diz que **"a carga é substituída manualmente a partir dela"**, e o `CLAUDE.md` fecha: "a carga é aplicada manualmente por uma pessoa a partir da planilha; **o sistema não publica nada**". Logo, qualquer que seja a leitura escolhida em [P-20], "sai imediatamente" **não pode** significar que o sistema remove o imóvel do portal — ele não tem esse poder, por desenho.
+
+O máximo que a §6.7 pode exigir de software é **emitir a substituição**: dizer quem sai, por qual gatilho, e quem entra no lugar. A remoção efetiva é ato humano em todas as três leituras. Isso não enfraquece `:491`; delimita o que ele pode cobrar de código.
+
+## D-025 — "alteração relevante de preço" é parâmetro pendente nº 15
+
+**Data**: 2026-09-02 · **Resolve**: nada — **REGISTRA** um parâmetro que faltava. Como a D-024, é enquadramento, não ato do dono: ninguém decidiu o valor aqui, e ele segue **nulo** até o dono defini-lo.
+
+Dos quatro gatilhos da §6.7, três são de estado (venda, reserva, despublicação) e um é de **magnitude**: "alteração **relevante** de preço". Nenhum documento quantifica "relevante" — nem o PRD, nem a Spec §6.7, nem Ferramentas. É a mesma situação que a D-022 encontrou na §6.4 e resolveu criando o nº 14.
+
+**Não sei se é um valor ou dois.** A D-022 fez o nº 14 ser **dois** valores, um por nível, porque a §6.4 diz "o resultado esperado **para o nível**". A §6.7 **não** distingue nível: fala da lista inteira. Afirmar que é um número só seria decisão minha, e afirmar que são dois seria copiar o precedente sem base no texto. A linha fica registrada com essa indefinição explícita, e a resposta do dono a resolve junto com o valor.
+
+Enquanto o nº 15 for nulo, o gatilho de preço **não é implementável** — e os outros três não dependem dele.
+
+## Rotação (§6.7) — levantamento no banco e limites estruturais (2026-09-02)
+
+### Limite estrutural: o Registro não guarda reserva, então `:480` não é servível hoje
+
+`:480` pede "o próximo elegível do mesmo nível". Ele **não existe no Registro**: a `registro.decisao_imovel` só guarda quem foi alocado. O comentário do esquema diz "uma linha por imóvel ESCOLHIDO", e a constraint `posicao_dentro_da_cota` limita `posicao_ranking` a 1–475 e 1–6.495 — nada é silenciosamente descartado: a constraint **rejeita** linha fora da cota, e a camada de escrita só oferece os alocados. De um jeito ou de outro, a reserva não existe no Registro.
+
+E recomputar na hora **não** substitui a reserva: o invariante 5 garante a mesma lista para a *mesma entrada*, e o estoque do Newcore numa terça não é o de sexta. Uma recomputação posterior produziria outra lista — legítima como rodada nova, mas não como "o próximo daquela lista".
+
+Consequência: servir `:480` exige **persistir a reserva ordenada** (mudança de esquema), e isso é fatia de código própria, posterior a esta. Registro aqui porque a alternativa aparentemente óbvia — "é só recalcular" — é falsa, e alguém a tentaria.
+
+### O que o banco realmente oferece para os quatro gatilhos (medido em 2026-09-02)
+
+Levantamento somente-leitura antes de qualquer implementação depender dos campos. **Três dos quatro gatilhos são detectáveis hoje; um não existe.**
+
+| Gatilho | Detectável? | Fonte | Data |
+|---|---|---|---|
+| Alteração de preço | **sim, plenamente** | `newcore.realtypricehistory` — `PriceBefore`/`PriceAfter` na MESMA linha | `CreatedAt` datetime, indexado |
+| Despublicação | **sim, plenamente** | `newcore.realtystatushistory_new` (`StatusBefore=1 → StatusAfter=3`) | `CreatedAt` datetime, indexado |
+| Venda | **sim, plenamente** — por `SignedAt` | `FT_LeadsOffers.SignedAt` (D-013) | `date`, granularidade de dia |
+| **Reserva** | **NÃO** | não modelada em coluna viva nenhuma | — |
+
+Duas consequências de desenho, para quem construir a fatia de código:
+
+- **O gatilho de venda não pode ser status.** Tem de ser `SignedAt`, e por esse caminho a detecção é plena. Os **24,69%** medidos são a taxa de falha do caminho **por status** — a razão de ele ficar proibido, não uma limitação do caminho adotado. A limitação real do `SignedAt` é a granularidade de dia, suficiente para uma cadência semanal.
+- **A rotação não pode ler só o `FT_RealtyRelation`.** Ver a limitação abaixo.
+
+### [P-21] A §6.7 exige "reserva", e o Newcore não modela imóvel reservado
+
+A §6.7 lista quatro gatilhos e um deles **não tem fato correspondente no banco**. Não é que a coluna seja imprecisa: o conceito não existe em coluna viva alguma. `newcore.publishstatus` tem 51 status, incluindo `7 = 'Ficha Reservada'` e `19 = 'Vendido'`, mas o `FT_RealtyRelation` usa apenas dois, e as transições medidas mostram que `Ficha Reservada` flui **para dentro** de `Ativo` (7→1, 2.099 vezes em 30 dias) — é estado de captação **pré-publicação**, não reserva de anúncio vivo. `Ativo → Vendido` ocorreu **uma única vez em toda a história** da tabela.
+
+**Armadilha que quase custou caro:** `realties.ReservedAt` tem o nome certo e o conteúdo errado. Está preenchida em **99,90% dos imóveis ativos** (48.831 de 48.881), seu `MAX` é o instante da consulta e coincide com `CreatedAt` em 40,3% das linhas — é carimbo de criação/toque de linha. Quem a usar sem medir marca praticamente todo o estoque ativo como reservado.
+
+**Vai ao dono [P-21]:** ou adotar um proxy declarado — `FT_LeadsOffers.AcceptedAt`, proposta aceita e ainda não assinada nem cancelada, hoje **157 imóveis ativos** —, ou tirar a reserva do escopo da §6.7 com a limitação escrita. É decisão, não engenharia: o proxy responde outra pergunta (há proposta aceita) e adotá-lo como se fosse reserva é escolha do dono, não minha.
+
+### Limitação encontrada FORA do escopo desta fatia: o espelho está defasado
+
+A coleta interna lê `newcore_bi.FT_RealtyRelation`, que é mantido **incrementalmente e atrasa mais de 24 horas** contra o transacional. Quem mede o **prazo** é o par remoção/espelho: das 82 remoções (`Ativo → Removido`) das últimas 24 horas, **70 ainda constavam `Ativo` no espelho — 85,4%**. Separadamente, como sinal de defasagem **corrente** no momento da medição, `MAX(FT_RealtyRelation.RealtyUpdate)` marcava 07:30 contra `MAX(realties.UpdatedAt)` às 18:38 do mesmo dia — 11 horas, que sozinhas não sustentariam o "mais de 24 h"; quem o sustenta é o 70 de 82.
+
+Isto **não é da rotação**: atinge a coleta interna e, por consequência, a elegibilidade — a sexta pode propor para posição paga imóvel já removido no transacional. Registro aqui porque foi esta fatia que mediu, e porque uma rotação construída sobre o espelho herdaria a defasagem e falharia **exatamente no caso que ela existe para cobrir**. Corrigir exige cruzar com `newcore.realties`/`realtystatushistory_new`, o que muda o universo de candidatos — mudança em regra de decisão, com CHANGELOG e revisão próprios. **Fatia separada, anterior ou paralela à rotação.**
