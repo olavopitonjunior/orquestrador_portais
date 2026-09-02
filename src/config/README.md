@@ -2,7 +2,7 @@
 
 Parâmetros de decisão. Toda alteração de parâmetro é registrada com data, autor e valor anterior (entidade `alteracao_parametro` do Registro) e no `CHANGELOG.md`.
 
-Treze parâmetros seguem pendentes (consolidação D-004, mais os dois da D-017) e devem permanecer nulos até serem definidos — a lista está no `CLAUDE.md`. Nenhum pode ser preenchido com valor inventado.
+Treze parâmetros seguem pendentes (consolidação D-004, mais os dois da D-017 e o da D-022) e devem permanecer nulos até serem definidos — a lista está no `CLAUDE.md`. Nenhum pode ser preenchido com valor inventado.
 
 ## O que mora aqui
 

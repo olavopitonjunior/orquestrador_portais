@@ -171,7 +171,7 @@ Ancorado em medição (distribuição de vendas por perfil, investigador 31/08, 
 
 **Decisão do dono: piso único N ≥ 3 para a piloto.** É o menor limiar defensável — abaixo dele, um bucket sobre 177 vendas é coincidência e não padrão — e o único que mantém o sinal geográfico e os pares finos utilizáveis. O dono considerou o esquema diferenciado (N≥3 para dimensões finas, N≥5 para grosseiras) e optou pelo piso único, mais simples de auditar na piloto.
 
-**Isto resolve o nº 1 na lista da D-004.** Os outros dez parâmetros seguem nulos. Os provisórios nº 2 (normalização) e nº 3 (intensidades das penalidades) usados na planilha-piloto são **run-local, rotulados PROVISÓRIO na própria planilha, e NÃO adotados** — continuam nulos na lista canônica e nunca entram em `src/config`.
+**Isto resolve o nº 1 na lista da D-004.** Os outros dez parâmetros seguem nulos. *(Contagem de então: os onze da D-004. Depois das emendas D-017 e D-022 são treze nulos de quatorze — ver a tabela do CLAUDE.md.)* Os provisórios nº 2 (normalização) e nº 3 (intensidades das penalidades) usados na planilha-piloto são **run-local, rotulados PROVISÓRIO na própria planilha, e NÃO adotados** — continuam nulos na lista canônica e nunca entram em `src/config`.
 
 ## D-015 — "Corretor ativo no distrito" = captou ou vendeu em 30 dias (produtivos), fiel à Spec §6.1
 
@@ -549,7 +549,7 @@ A correção é de ordem — o checkpointer nasce antes de a conexão do Registr
 
 ## Pendências que existiam sem registro próprio (2026-09-02)
 
-Ao consolidar a fila do dono (`docs/perguntas-abertas.md`) apareceram itens que **já aguardavam o dono** mas viviam só num comentário de código ou numa tabela de outro documento — sem entrada aqui, e portanto invisíveis para quem lesse este arquivo. Nenhum item abaixo é pendência nova: cada um recebe identificador estável e aponta para onde já vivia. **Nenhum enunciado normativo é criado ou alterado aqui.**
+Ao consolidar a fila do dono (`docs/perguntas-abertas.md`) apareceram itens que **já aguardavam o dono** mas viviam só num comentário de código ou numa tabela de outro documento — sem entrada aqui, e portanto invisíveis para quem lesse este arquivo. *(Precisão apontada pelo portão de regra: em [P-10] e [P-11] o que pré-existe é a ESCOLHA já fechada em Ferramentas §2 e o ônus assumido em §5 — não um registro de que algo estivesse pendente. O fato e o ato que restam são derivados dela, e formulados aqui pela primeira vez; nenhuma regra nova nasce disso.)* Nenhum item abaixo é pendência nova: cada um recebe identificador estável e aponta para onde já vivia. **Nenhum enunciado normativo é criado ou alterado aqui.**
 
 **[P-08] O "pronto" do Monitor olha só o corretor, e o PRD fala em corretor E gestor de distrito.** `src/grafo/segunda.py:59-62` e `:164-168`: o predicado que declara o Monitor pronto considera apenas o corretor gestor. Um lead sem tratamento que tenha corretor mas nenhum embaixador de distrito conta hoje como "com responsável". Mesma família da D-019, que já resolveu o que é "gestor de distrito". **Vai ao dono.**
 
