@@ -2,6 +2,8 @@
 
 Resoluções do dono da decisão (Olavo) para divergências e lacunas encontradas nos documentos-fonte. Cada decisão vale a partir da data registrada e prevalece sobre o trecho divergente dos documentos até que uma revisão deles a incorpore. As contradições foram identificadas na análise da sessão de fundação (2026-08-29), não persistida como artefato; o essencial de cada uma está resumido na própria decisão.
 
+> **O que ainda aguarda o dono está indexado em [`perguntas-abertas.md`](perguntas-abertas.md)** — uma linha por pendência, com o que cada resposta destrava. Este arquivo continua sendo a fonte: quem registrar pendência nova aqui **marca o identificador `[P-NN]`** e acrescenta a linha lá na mesma mudança. `tests/test_perguntas_abertas.py` falha se os dois divergirem.
+
 ---
 
 ## D-001 — Fonte de leitura da segunda-feira: o Registro, não a planilha
@@ -35,7 +37,7 @@ Onde os documentos disserem "nove regras", leia-se "oito regras gerais + piso de
 
 **Data**: 2026-08-29 · **Resolve**: contradição C2 (Spec §8 vs. Ferramentas §6 vs. tabela de parâmetros do PRD)
 
-A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais os dois que aparecem em apenas um documento. São **onze**, mantidos no CLAUDE.md. *(Emenda 2026-09-01, D-022: passaram a **quatorze** — a §6.4 exige um limiar de resultado POR NÍVEL que nenhum documento jamais quantificou, e ele entrou como nº 14. Treze seguem nulos. Mesmo procedimento da emenda da D-017 abaixo.)* O nº 1 foi resolvido em 2026-08-31 (D-014, `N ≥ 3`); os outros **dez seguem nulos** até definição:
+A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais os dois que aparecem em apenas um documento. São **onze**, mantidos no CLAUDE.md. *(Onde este parágrafo disser "os outros dez", leia-se: dez DOS ONZE DE ENTÃO — a contagem vigente é treze de quatorze, ver a emenda abaixo.)* *(Emenda 2026-09-01, D-022: passaram a **quatorze** — a §6.4 exige um limiar de resultado POR NÍVEL que nenhum documento jamais quantificou, e ele entrou como nº 14. Treze seguem nulos. Mesmo procedimento da emenda da D-017 abaixo.)* O nº 1 foi resolvido em 2026-08-31 (D-014, `N ≥ 3`); os outros **dez seguem nulos** até definição:
 
 1. ~~Evidência mínima por combinação de perfil~~ — **resolvido: N ≥ 3 (D-014)**
 2. Forma de normalização de cada fator do ranking
@@ -54,7 +56,7 @@ A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais
 12. Pesos dos quatro fatores do ranking por nível (semelhança, leads, desempenho, produtividade).
 13. Decaimento do peso por dimensão do F1 (a ORDEM preço > localização > metragem > dormitórios > vagas é adotada por decisão do dono; a MAGNITUDE do decaimento é que é nula).
 
-Doze seguem nulos (só o nº 1 resolvido). A tabela do CLAUDE.md foi atualizada na mesma fatia.
+**Treze** seguem nulos (só o nº 1 resolvido). *(Correção 2026-09-02: esta linha dizia "Doze" e a de cima dizia "onze"/"quatorze"; a tabela do CLAUDE.md e o `console/` sempre disseram 13 nulos de 14. O texto corrido da D-004 não acompanhou as emendas D-017 e D-022.)* A tabela do CLAUDE.md foi atualizada na mesma fatia.
 
 ## D-005 — Ganhos de relaxamento são ordem de grandeza, não conferência
 
@@ -169,7 +171,7 @@ Ancorado em medição (distribuição de vendas por perfil, investigador 31/08, 
 
 **Decisão do dono: piso único N ≥ 3 para a piloto.** É o menor limiar defensável — abaixo dele, um bucket sobre 177 vendas é coincidência e não padrão — e o único que mantém o sinal geográfico e os pares finos utilizáveis. O dono considerou o esquema diferenciado (N≥3 para dimensões finas, N≥5 para grosseiras) e optou pelo piso único, mais simples de auditar na piloto.
 
-**Isto resolve o nº 1 na lista da D-004.** Os outros dez parâmetros seguem nulos. Os provisórios nº 2 (normalização) e nº 3 (intensidades das penalidades) usados na planilha-piloto são **run-local, rotulados PROVISÓRIO na própria planilha, e NÃO adotados** — continuam nulos na lista canônica e nunca entram em `src/config`.
+**Isto resolve o nº 1 na lista da D-004.** Os outros dez parâmetros seguem nulos. *(Contagem de então: os onze da D-004. Depois das emendas D-017 e D-022 são treze nulos de quatorze — ver a tabela do CLAUDE.md.)* Os provisórios nº 2 (normalização) e nº 3 (intensidades das penalidades) usados na planilha-piloto são **run-local, rotulados PROVISÓRIO na própria planilha, e NÃO adotados** — continuam nulos na lista canônica e nunca entram em `src/config`.
 
 ## D-015 — "Corretor ativo no distrito" = captou ou vendeu em 30 dias (produtivos), fiel à Spec §6.1
 
@@ -193,7 +195,7 @@ São leituras estruturais da rodada de teste, declaradas (não inventadas), cali
 
 **Provisórios da rodada, dois mecanismos distintos, ambos fora de `src/config` e não adotados** (D-014 mantém nº 2 e nº 3 nulos na lista canônica):
 
-- **Tunáveis injetados run-local** (`ParametrosDecisao` / `ParametrosSemelhanca`): as intensidades e o decaimento das penalidades (nº 3) e o desconto de fragilidade. Trocáveis por rodada sem editar código.
+- **Tunáveis injetados run-local** (`ParametrosDecisao` / `ParametrosSemelhanca`): as intensidades e o decaimento das penalidades (nº 3) e o **[P-16]** desconto de fragilidade (peso do perfil frágil, Spec §6.2 "não recebe peso pleno" — provisório, fora dos quatorze e sem valor adotado). Trocáveis por rodada sem editar código.
 - **Forma da normalização (nº 2) fixa no código, provisória**: a piloto usa **min-max como forma PROVISÓRIA do parâmetro nº 2**. O nº 2 **não é adotado** por isso — permanece **pendente na lista canônica da D-004**. É uma única forma na v0, então vive como função no código (`_normalizar_minmax`), não como callable injetado (injetar uma forma sem segunda opção seria complexidade sem uso), exatamente como as faixas de preço em `bucketizacao.py`. **Trocar a forma, ou adotá-la de vez, exige decisão do dono + CHANGELOG** (afeta o ranking). A aba de limitações da planilha rotula min-max como PROVISÓRIO, ao lado do nº 3 e das faixas — para o dono saber, ao ler a piloto, que a forma de normalização não foi decidida por ele.
 
 **Acúmulo de limitações da piloto** (para o dono ler o resultado como teste de critério, não lista final): distrito = produtivos (D-015, cobertura 45,9%) + desempenho zerado + produtividade binária + normalização sobre elegíveis. As quatro na aba de limitações.
@@ -246,7 +248,7 @@ Novo componente (resposta do dono, Q4: "híbrido"), em duas camadas com natureza
 
 **Divergência declarada (não resolvida em silêncio — regra do CLAUDE.md):** a Spec §7.2 só prevê o estado **ABORTADA** para o caso de **coleta interna vazia** (sem estoque). Um veto do crivo é falha de **integridade da decisão**, não de fonte — a §7.2 não oferece estado terminal para isso. A G1 **reusa ABORTADA pela CONSEQUÊNCIA** (sem entrega), com o `motivo_aborto` distinguindo veto-de-integridade de estoque-vazio, e o `_rota_pos_crivo` desviando do Redator.
 
-**Pendência do dono:** decidir se um veto do crivo merece **estado terminal próprio** na Spec §7.2 (ex.: "reprovada"/"bloqueada") em vez de reusar ABORTADA. Até a decisão, vale o reuso declarado acima. Na prática o veto não dispara em rodada válida (a piloto/grafo dão PRONTA); é um gate de segurança contra bug upstream.
+**Pendência do dono [P-01]:** decidir se um veto do crivo merece **estado terminal próprio** na Spec §7.2 (ex.: "reprovada"/"bloqueada") em vez de reusar ABORTADA. Até a decisão, vale o reuso declarado acima. Na prática o veto não dispara em rodada válida (a piloto/grafo dão PRONTA); é um gate de segurança contra bug upstream.
 
 **Consequência de persistência (G2a-wire, 2026-09-01):** o nó de persistência do grafo só grava rodadas NÃO-abortadas, então uma rodada ABORTADA (por estoque vazio OU por veto do crivo) **não deixa nenhuma linha no Registro — nem o cabeçalho `rodada`**. Isso diverge da Spec §2.1, que prevê "uma linha por execução" e admite `estado='abortada'` + `motivo` + `tentativas_por_etapa`: hoje esses campos nunca são populados para abortos, e o Monitor de segunda / a auditoria não enxergam a execução que abortou. A distinção correta é "seleção inválida não se guarda em `decisao_imovel`" (mantido) versus "a execução não se registra" (diverge). **Pendência do dono, ligada à decisão de estado terminal acima:** registrar o cabeçalho da rodada abortada (sem `decisao_imovel`) é fatia futura candidata — a escrita atomica atual (`gravar_rodada_decisao`, rodada + posições) é tudo-ou-nada e não sabe gravar só o cabeçalho.
 
@@ -260,7 +262,7 @@ Novo componente (resposta do dono, Q4: "híbrido"), em duas camadas com natureza
 
 **`aprovada_por` passa a ser persistido (migração 004, resolve ressalva do revisor-de-regra):** D-001 descreve o carimbo como "aprovada em ⟨momento⟩, **por prazo**". Antes, `registro.rodada` guardava só `aprovada_em` (o instante) e o "por prazo / por quem" se perdia na borda de persistência. A migração 004 acrescenta a coluna nullable `aprovada_por` (CHECK: só com `aprovada_em`), e o sink de aprovação passa `"tácita"` (decurso de prazo) ou a identificação do dono (explícita) — a fonte da verdade agora distingue as duas, fiel ao "por prazo".
 
-**Limite DECLARADO — reprovação não entra na fonte da verdade (tensão com D-001, ressalva do revisor-de-regra):** o esquema `registro.rodada` tem só `aprovada_em`/`aprovada_por` nullable e **nenhuma coluna de status**. Uma **reprovação** explícita do dono é representável no estado do fluxo (`decisao="reprovada"`, no checkpointer), mas **não deixa rastro no Registro** — fica indistinguível de "ainda não decidida" (ambas com `aprovada_em` NULO). Isso é honesto, não é bug, mas cria tensão com D-001 ("o Registro é a fonte da verdade"). **Pendência do dono:** persistir a reprovação exigiria uma coluna de status na `rodada` (ex.: `estado_aprovacao`) — fatia futura candidata, análoga em espírito à divergência da rodada abortada acima.
+**Limite DECLARADO [P-04] — reprovação não entra na fonte da verdade (tensão com D-001, ressalva do revisor-de-regra):** o esquema `registro.rodada` tem só `aprovada_em`/`aprovada_por` nullable e **nenhuma coluna de status**. Uma **reprovação** explícita do dono é representável no estado do fluxo (`decisao="reprovada"`, no checkpointer), mas **não deixa rastro no Registro** — fica indistinguível de "ainda não decidida" (ambas com `aprovada_em` NULO). Isso é honesto, não é bug, mas cria tensão com D-001 ("o Registro é a fonte da verdade"). **Pendência do dono:** persistir a reprovação exigiria uma coluna de status na `rodada` (ex.: `estado_aprovacao`) — fatia futura candidata, análoga em espírito à divergência da rodada abortada acima.
 
 **Comportamento fail-closed e recuperável (robustez, ressalva do revisor-de-código):** uma retomada fora do contrato (não montada pelos construtores `aprovar_tacita`/`aprovar_explicita`/`reprovar`) **não aplica nada** — reabre a interrupção pedindo uma válida, e a retomada válida seguinte prossegue ("o dono corrigiu e reenviou"). Escolhido re-interromper em vez de `raise` porque um `raise` deixaria o thread preso num resume envenenado (o LangGraph reexecuta o mesmo resume anterior) — verificado empiricamente na fatia.
 
@@ -269,7 +271,7 @@ Novo componente (resposta do dono, Q4: "híbrido"), em duas camadas com natureza
 **O que a fatia entrega:** o nó `no_coletor_externo` deixa de ser stub e passa a LER a saída do raspador (`coletor-externo/`, contrato de arquivo `out/*.csv` + `status.json`, D-010) via `src/dados/coletor_externo.py`, aplicar as portas de admissão (Spec §7.3) e, passando, compor o **fator F3 (desempenho de portal)** por imóvel, que entra no ranking (`decidir(..., desempenho_por_imovel=...)`). Com raspagem fresca e amarrada a rodada pode ser **COMPLETA**; sem ela (stub, ausente, velha ou amarração baixa) segue **DEGRADADA** nesse fator, com o motivo declarado. A raspagem fica FORA do caminho da decisão (invariantes 4/5): é fonte datada pelo próprio `finishedAt`; o F3 resultante é cálculo determinístico (min-max entre a população, como os outros fatores), sem modelo.
 
 **Provisórios, NÃO adotados (seguem nulos em `src/config`; injetados run-local, rotulados provisórios):**
-- **Composição do sinal F3** a partir de nota (LQS)/visualizações/cliques: a FORMA de normalizar cada fator é o parâmetro nº 2, em aberto — a composição também é aberta. Default run-local do runner = `visualizações`; injetada como `ParametrosExterno.compor_desempenho`, nunca hardcode no domínio nem em `src/config`. Adotar uma composição exige decisão do dono + CHANGELOG.
+- **[P-15] Composição do sinal F3** a partir de nota (LQS)/visualizações/cliques: a FORMA de normalizar cada fator é o parâmetro nº 2, em aberto — a composição também é aberta. Default run-local do runner = `visualizações`; injetada como `ParametrosExterno.compor_desempenho`, nunca hardcode no domínio nem em `src/config`. Adotar uma composição exige decisão do dono + CHANGELOG.
 - **Limiar mínimo de amarração** (nº 7) e **idade máxima da coleta** (nº 5): injetados como `ParametrosExterno.limiar_amarracao`/`idade_maxima_dias`, provisórios; seguem nulos na lista canônica (D-004).
 
 **Limites DECLARADOS (honestos, não em silêncio):**
@@ -347,19 +349,19 @@ A fatia do runner da sexta (`src/executar/sexta.py`) obrigou a decidir **como um
 
 O **modelo** `docs/parametros-da-rodada.exemplo.toml` é recusado como entrada real: ele carrega com sucesso, e sem a recusa sairia dele uma planilha de aparência normal construída sobre números que o próprio arquivo declara ilustrativos.
 
-### Divergência aberta (aguarda o dono) — a ordem Registro → Redator
+### [P-02] Divergência aberta (aguarda o dono) — a ordem Registro → Redator
 
 Os documentos põem o Redator **antes** do Registro: PRD (fluxo de sexta, passo 6 = planilha, passo 7 = Registro, "saídas dos passos 5 e 6") e Spec §5 ("Registro | Consome: saídas do Decisor, **do Redator** e do Monitor"). O código faz o inverso: o grafo grava no Registro no último nó e o runner escreve a planilha depois.
 
 O argumento do código é que uma planilha sem rodada no Registro é uma decisão sem trilha. O **contra-argumento do revisor-de-regra é mais forte e fica registrado**: sob a D-001, com o Registro como fonte da verdade, uma rodada gravada sem planilha pode ser aprovada por decurso de prazo e virar a "carga vigente" contra a qual a segunda mede — uma lista que ninguém recebeu nem aplicou. O modo de falha inverso (artefato sem trilha) é detectável na aprovação.
 
-**Pergunta ao dono:** inverter para Redator → Registro (e o Registro passar a guardar o caminho do artefato, que hoje ele não guarda), ou manter a ordem atual e declarar a divergência com a §5? Até a resposta, a ordem atual permanece **com a divergência declarada aqui** — não em silêncio.
+**Pergunta ao dono [P-02]:** inverter para Redator → Registro (e o Registro passar a guardar o caminho do artefato, que hoje ele não guarda), ou manter a ordem atual e declarar a divergência com a §5? Até a resposta, a ordem atual permanece **com a divergência declarada aqui** — não em silêncio.
 
-### Lacuna operacional declarada — a cadeia sexta → carimbo → segunda não fecha
+### ~~Lacuna operacional declarada — a cadeia sexta → carimbo → segunda não fecha~~ (FECHADA em 2026-09-02)
 
 O runner da sexta informa o `rodada_id` e **não abre** o fluxo de aprovação: o que dispara a tácita sozinha é o prazo, parâmetro pendente nº 10, **nulo**, e abrir uma thread sem prazo afirmaria um prazo que ninguém definiu. Isso está correto quanto ao documento — a D-001 pede um carimbo (`aprovada_em`), não um estado formal "pendente", e `aprovada_em IS NULL` já É a pendência.
 
-O buraco é operacional: `ultima_carga_aprovada` exige `aprovada_em` não nulo, e **hoje nenhum componente existente carimba isso** (console e agendador não existem). Como está, toda segunda-feira declararia ausência de carga. Fica registrado para não ser descoberto na primeira segunda real.
+O buraco era operacional: `ultima_carga_aprovada` exige `aprovada_em` não nulo, e nada carimbava. **Fechada pelo ponto de entrada da aprovação** (`src/executar/aprovar.py`, PR #43, 2026-09-02), que dá o chamador que faltava. *Precisão do fechamento:* fechou o carimbo MANUAL — a cadeia só fecha de fato se alguém rodar `rodada-aprovar` toda semana, porque a aprovação automática por decurso de prazo depende do parâmetro nº 10, que segue nulo. Esse resíduo é o que a fila do dono registra; não é mais esta lacuna. *(O texto original também afirmava que o console não existe — não era verdade nem então: `console/lib/registro.ts` já montava a fila de rodadas aguardando aprovação.)*
 
 ### Limitações que passaram a ser DECLARADAS na planilha (antes invisíveis)
 
@@ -374,7 +376,7 @@ Corrigido junto: a limitação "desempenho de portal ausente" era emitida **inco
 
 E a **aba de relaxamento** passou a ser gerada: a Spec §6.6 é literal — "sem esse registro a etapa de decisão não é considerada pronta" — e a §3.1 a lista como obrigatória. O Registro já guardava o agregado por regra; ele só não chegava ao artefato que as pessoas leem, e a rodada saía COMPLETA assim mesmo.
 
-### Pergunta aberta ao dono — limitação de FIAÇÃO deve mudar o ESTADO da rodada?
+### [P-03] Pergunta aberta ao dono — limitação de FIAÇÃO deve mudar o ESTADO da rodada?
 
 As três limitações de fiação (histórico de janelas ausente, razão 1.0 sem decaimento, distrito a 45,9%) são declaradas na planilha **e** gravadas no `motivo_degradacao` do Registro — planilha e fonte da verdade dizem a mesma coisa. Mas elas **não** entram em `estado["degradacoes"]`, então não mudam o estado da rodada.
 
@@ -421,7 +423,7 @@ Os portões levantaram quatro casos que a D-021 não cobre e que o código teve 
 - **Os leads da janela são AMOSTRA, não total.** A segunda mede três dias corridos (Spec §1) sobre um ciclo de carga de sete, então parte da exposição nunca é contada — e a Spec §2.1 pede "acumulado durante a janela". Quando o limiar nº 14 existir, a janela será julgada por um número subestimado, o que **penaliza a mais**. Fechar isso exige contar os leads do intervalo inteiro: fatia própria.
 - **A contagem de semanas começa agora.** Um imóvel que já está na vitrine há semanas aparece com poucas — é o que o Registro sabe, não o que aconteceu. A D-020 previa colunas vazias que se preenchem; um "1" tem aparência de medição e por isso a limitação vai declarada.
 
-### Divergência de ordem também na SEGUNDA (Registro antes do Redator)
+### [P-02] Divergência de ordem também na SEGUNDA (Registro antes do Redator)
 
 Já estava declarada para a sexta. Vale igual para a segunda: o PRD põe o Redator no passo 4 e o Registro no passo 5, e o código grava primeiro (o histórico da janela só existe depois de acumular, e é ele que preenche as duas colunas da §4.3). Há uma tensão interna no próprio PRD aqui — sob leitura estrita, o Redator do passo 4 jamais teria colunas que o passo 5 produz. O código escolheu a leitura que salva a §4.3. **Vai ao dono junto com a pergunta da sexta.**
 
@@ -441,17 +443,17 @@ A fatia anterior deu produtor a `registro.janela_destaque`; esta liga o **consum
 
 **Ainda inerte na prática, por um motivo declarado:** o nº 14 continua nulo, então nenhuma janela é julgada hoje. O que mudou é que a fiação existe e a planilha diz **qual** das duas coisas falta. No dia em que o dono declarar os dois limiares no arquivo da rodada, a penalidade acende sem mais nenhuma mudança de código.
 
-### Perguntas abertas que o consumidor levantou (2026-09-02)
+### Perguntas que o consumidor levantou (2026-09-02) — as duas primeiras RESOLVIDAS pela D-023
 
 Ligar a penalidade tornou vivas quatro questões que estavam dormentes. Nenhuma bloqueia a fatia — o nº 14 segue nulo —, mas todas mudam quem é penalizado quando ele for declarado.
 
-**1. A §6.4 julga a ÚLTIMA janela ou QUALQUER janela do histórico?** O código aplica a penalidade se *alguma* janela encerrada não atingiu o resultado (`any(...)` em `penalidades.py`), sem recorte temporal. O PRD, no critério de aceite, fala em "o resultado da **sua última janela**, quando houver", e a Spec §6.4 usa o singular "janela **anterior**". Sob o código, uma janela ruim de um ano atrás penaliza para sempre — e com decaimento de razão 1.0, sem nunca esmaecer. **Agrava-se com a elaboração 1 da D-021, que o dono acabou de ratificar**: a mudança de nível fecha a janela, então a promoção a super destaque cria uma janela curta que quase certamente não bate o limiar e passaria a penalizar indefinidamente justo o imóvel que subiu por mérito. A leitura `any` estava declarada só no código; agora está aqui. **Vai ao dono.**
+**1. ~~A §6.4 julga a ÚLTIMA janela ou QUALQUER janela do histórico?~~ RESOLVIDA pela D-023 (só a última).** *(o texto abaixo descreve o estado ANTERIOR à decisão; fica como registro histórico)* O código aplica a penalidade se *alguma* janela encerrada não atingiu o resultado (`any(...)` em `penalidades.py`), sem recorte temporal. O PRD, no critério de aceite, fala em "o resultado da **sua última janela**, quando houver", e a Spec §6.4 usa o singular "janela **anterior**". Sob o código, uma janela ruim de um ano atrás penaliza para sempre — e com decaimento de razão 1.0, sem nunca esmaecer. **Agrava-se com a elaboração 1 da D-021, que o dono acabou de ratificar**: a mudança de nível fecha a janela, então a promoção a super destaque cria uma janela curta que quase certamente não bate o limiar e passaria a penalizar indefinidamente justo o imóvel que subiu por mérito. A leitura `any` estava declarada só no código; agora está aqui. ~~Vai ao dono.~~ **Respondida — ver D-023 abaixo.**
 
-**2. Falha ao ler o Registro derruba a rodada, e nenhum documento sanciona esse aborto.** A leitura acontece no nó do Decisor; qualquer exceção propaga e a sexta não entrega. A Spec §7.2 só prevê ABORTADA para "a coleta interna não ficou pronta", e a linha de DEGRADADA — "alguma fonte falhou e a decisão prosseguiu com dado parcial" — descreve exatamente este caso. O vocabulário para degradar já existe ("HISTÓRICO DE JANELAS vazio"). Hoje aborta por omissão, não por decisão. **Vai ao dono.**
+**2. ~~Falha ao ler o Registro derruba a rodada.~~ RESOLVIDA pela D-023 (degrada e entrega).** *(o texto abaixo descreve o estado ANTERIOR à decisão; fica como registro histórico)* A leitura acontece no nó do Decisor; qualquer exceção propaga e a sexta não entrega. A Spec §7.2 só prevê ABORTADA para "a coleta interna não ficou pronta", e a linha de DEGRADADA — "alguma fonte falhou e a decisão prosseguiu com dado parcial" — descreve exatamente este caso. O vocabulário para degradar já existe ("HISTÓRICO DE JANELAS vazio"). Hoje aborta por omissão, não por decisão. ~~Vai ao dono.~~ **Respondida — ver D-023 abaixo.**
 
-**3. O imóvel que nunca sai da carga nunca é julgado.** Só janelas ENCERRADAS são julgáveis (contrato de `ImovelPenalizavel`, e a §6.4 diz "janela anterior"). Mas sob a D-021 a janela só fecha quando o imóvel sai ou muda de nível — então o permanente-sem-lead, que é o caso que abre o PRD (88% das janelas sem lead, "a vitrine não gira"), é justamente o que a §6.4 nunca alcança. Não afirmo que o documento esteja errado; registro a suspeita. **Vai ao dono.**
+**3. [P-07] O imóvel que nunca sai da carga nunca é julgado.** Só janelas ENCERRADAS são julgáveis (contrato de `ImovelPenalizavel`, e a §6.4 diz "janela anterior"). Mas sob a D-021 a janela só fecha quando o imóvel sai ou muda de nível — então o permanente-sem-lead, que é o caso que abre o PRD (88% das janelas sem lead, "a vitrine não gira"), é justamente o que a §6.4 nunca alcança. Não afirmo que o documento esteja errado; registro a suspeita. **Vai ao dono.**
 
-**4. Reaberta de fato: limitação de fiação deve mudar o ESTADO da rodada?** A fatia anterior prometeu reabrir esta pergunta "na fatia do consumidor, com o fato novo" e a seção anterior não o fez — ficou fechada por omissão. Reabro aqui: o argumento original era temporal ("tornaria toda rodada degradada até o produtor existir"), e agora produtor e consumidor existem. A limitação de histórico vazio passou a ser **variável** — some quando houver janela encerrada. **Vai ao dono.**
+**4. [P-03] Reaberta de fato: limitação de fiação deve mudar o ESTADO da rodada?** A fatia anterior prometeu reabrir esta pergunta "na fatia do consumidor, com o fato novo" e a seção anterior não o fez — ficou fechada por omissão. Reabro aqui: o argumento original era temporal ("tornaria toda rodada degradada até o produtor existir"), e agora produtor e consumidor existem. A limitação de histórico vazio passou a ser **variável** — some quando houver janela encerrada. **Vai ao dono.**
 
 **5. Declarado, não perguntado:** `ciclos_desde` deriva a data no fuso da máquina que roda. A hospedagem é uma máquina só, então o risco é baixo, mas a mesma entrada em outra máquina pode dar ciclos diferentes. Fica registrado como limitação, não como pergunta.
 
@@ -510,7 +512,7 @@ A segunda só é alcançável por causa do `--em` desta mesma fatia, e a primeir
 
 **5. Aprovação tácita: o mecanismo existe, o prazo não.** O comando `tacita` grava `aprovada_por = "tácita"`, o "por prazo" da D-001. **Nada aqui calcula prazo**: o parâmetro nº 10 segue nulo, e quem invoca o comando está AFIRMANDO que o prazo decorreu. O carimbo distingue essa afirmação de uma aprovação que o dono deu olhando a lista — que é a razão de a coluna `aprovada_por` existir (migração 004).
 
-### Pergunta ao dono — a reprovação não é representável
+### [P-04] Pergunta ao dono — a reprovação não é representável
 
 `grafo/aprovacao.py` sabe representar um veredito de reprovação, mas `registro.rodada` **não a distingue de "ainda não decidida"**: as duas deixam `aprovada_em` nulo. Por isso o comando `reprovar` NÃO foi exposto — expô-lo daria ao dono a sensação de ter agido, enquanto o console continuaria mostrando "Aprove a rodada N" para sempre e a thread ficaria queimada.
 
@@ -520,7 +522,7 @@ Isso deixa um buraco real, e a formulação precisa importa. **No sistema como e
 
 Resolver o registro do "não" exige coluna de estado no esquema (uma migração) e uma decisão sobre o que a reprovação significa para a semana seguinte: a sexta seguinte reprocessa a mesma semana? A lista reprovada some da fila do console? **Vai ao dono.**
 
-### Pergunta ao dono — `aprovada_em` registra o ACEITE ou a entrada da carga no ar?
+### [P-05] Pergunta ao dono — `aprovada_em` registra o ACEITE ou a entrada da carga no ar?
 
 O `--em` desta fatia expôs uma ambiguidade que já existia e ninguém tinha precisado resolver. Os documentos puxam para os dois lados:
 
@@ -529,7 +531,7 @@ O `--em` desta fatia expôs uma ambiguidade que já existia e ninguém tinha pre
 
 Hoje o campo é único e serve aos dois usos: `janelas.py` já o tratava como "o melhor proxy" para a entrada no ar, com o resíduo declarado. O `--em` deixa o dono **absorver** esse resíduo — e ao fazê-lo, o instante do aceite deixa de existir no Registro, que a D-001 chama de fonte da verdade. As duas leituras fiéis são: coluna nova para a aplicação da carga, com `aprovada_em` preservando o aceite; ou emenda à D-001 redefinindo o campo. **Vai ao dono.** Enquanto não decidido, o `--em` é opcional e o default (`agora`) preserva o comportamento anterior.
 
-### Pergunta ao dono — a aprovação tácita deve registrar quem a invocou?
+### [P-06] Pergunta ao dono — a aprovação tácita deve registrar quem a invocou?
 
 `aprovar` exige `--por`; `tacita` grava só `aprovada_por = "tácita"`. Como nada calcula o prazo (nº 10 nulo), a tácita é hoje uma **afirmação humana sem autor** no Registro. Ferramentas §5 já cataloga o risco de o Registro afirmar aprovação não dada, então não é violação — mas enquanto o prazo for nulo, quem invocou a tácita é informação que existe e não está sendo guardada. **Vai ao dono.**
 
@@ -544,3 +546,27 @@ O efeito medido: a aprovação tácita falha no sink, o dono roda `aprovar --por
 O projeto usa **um único** PostgreSQL para o Registro e para o checkpointer do grafo, por desenho. O `setup()` do `PostgresSaver` roda `CREATE INDEX CONCURRENTLY`, que espera **toda** transação concorrente do banco terminar. Com a conexão do Registro já aberta, o índice espera por ela, ela espera o grafo terminar, e o comando trava para sempre — sem erro, sem timeout. Aconteceu de verdade, e só apareceu ao simular o passo de CI: nenhum teste com checkpointer em memória o alcança, porque o impasse é entre duas conexões do mesmo Postgres.
 
 A correção é de ordem — o checkpointer nasce antes de a conexão do Registro abrir — e tem teste próprio, porque a ordem aqui é correção e não estilo. Fica registrado porque **qualquer fatia futura que abra o checkpointer dentro de uma transação do Registro reintroduz o impasse**, e o sintoma não se parece com um bug de código.
+
+## Pendências que existiam sem registro próprio (2026-09-02)
+
+Ao consolidar a fila do dono (`docs/perguntas-abertas.md`) apareceram itens que **já aguardavam o dono** mas viviam só num comentário de código ou numa tabela de outro documento — sem entrada aqui, e portanto invisíveis para quem lesse este arquivo. *(Precisão apontada pelo portão de regra: em [P-10] e [P-11] o que pré-existe é a ESCOLHA já fechada em Ferramentas §2 e o ônus assumido em §5 — não um registro de que algo estivesse pendente. O fato e o ato que restam são derivados dela, e formulados aqui pela primeira vez; nenhuma regra nova nasce disso.)* Nenhum item abaixo é pendência nova: cada um recebe identificador estável e aponta para onde já vivia. **Nenhum enunciado normativo é criado ou alterado aqui.**
+
+**[P-08] O "pronto" do Monitor olha só o corretor, e o PRD fala em corretor E gestor de distrito.** `src/grafo/segunda.py:59-62` e `:164-168`: o predicado que declara o Monitor pronto considera apenas o corretor gestor. Um lead sem tratamento que tenha corretor mas nenhum embaixador de distrito conta hoje como "com responsável". Mesma família da D-019, que já resolveu o que é "gestor de distrito". **Vai ao dono.**
+
+**[P-09] "Não há carga aprovada" na segunda é chamado de rodada ABORTADA.** `src/grafo/segunda.py:55-58`: reuso declarado do estado — a consequência casa com a Spec §7.2 ("não há entrega"), mas o gatilho não está previsto lá. É a mesma questão de vocabulário do [P-01], e pode ser respondida junto. **Vai ao dono.**
+
+**[P-10] A conta Google do gestor é Workspace ou pessoal?** Não é decisão: `docs/vitrine-destaque-ferramentas.md` já **fechou** "Acesso ao Google: autorização na conta do gestor da vitrine", e o mesmo documento já assumiu o ônus dessa escolha ("quebra se a conta mudar de senha ou sair da organização"). O que falta é o **fato**, que só o dono tem, e que determina o fluxo de autorização. **Fato, não decisão.**
+
+**[P-11] A autorização na conta e o depósito da credencial no 1Password.** Decorre da escolha já fechada acima. Enquanto não acontecer, a entrega é CSV em disco — não a planilha do Google com link por e-mail que o contrato prevê. **Ato que só o dono pratica.**
+
+**[P-12] A sessão logada no Canal Pro para o reconhecimento do painel.** `coletor-externo/README.md` e D-010: o adapter do Canal Pro é stub. Sem a sessão, o fator de desempenho de portal (F3) nunca sai de zero e **toda rodada de sexta é degradada nesse fator**. Pela D-010, o reaquecimento após bloqueio é sempre manual — é ato recorrente, não único. **Ato que só o dono pratica.**
+
+**[P-13] Quem aplica a carga encontra o imóvel só pelo código interno?** `docs/mapa-de-dados.md` e Spec §8: a investigação foi **refutada no banco** — não existe id nem URL de anúncio do portal em nenhuma tabela, e a listagem do Canal Pro não traz a URL pública. Se quem carrega precisar de outra referência, a planilha entregue não é aplicável na prática. É a única das quatro investigações da Spec §8 que segue aberta. **Fato, não decisão.**
+
+**[P-14] Qual provedor comercial de modelo o sistema usa.** `docs/vitrine-destaque-ferramentas.md` deixa a escolha em aberto, com critério já definido (qualidade em navegação por visão contra o portal real). Não bloqueia nada hoje — o Redator é template, o Analista de Perfil é determinístico e a D-010 tirou o modelo do Coletor Externo. Bloqueia a camada consultiva do crivo prevista na D-017. **Escolha de ferramenta, com custo recorrente.**
+
+### Lacuna de especificação declarada — o mecanismo de Drive e e-mail
+
+`docs/vitrine-destaque-spec.md` §9 ("O que esta spec não cobre") lista literalmente: *"Mecanismo de envio por e-mail e de arquivamento no Drive."* A Ferramentas diz o **quê** (planilha do Google no Drive, link por e-mail) e nenhum documento diz o **como**.
+
+Isso **não é pendência do dono** e não entra na fila dele: é lacuna de especificação. Registro aqui porque ela tem consequência de engenharia imediata — o adaptador de publicação não tem critério de pronto contra o qual ser construído nem verificado, e este projeto não escreve peça que não possa provar. Some quando a spec for estendida, o que é trabalho meu, não decisão dele. Os itens [P-10] e [P-11] são o que resta do lado do dono.

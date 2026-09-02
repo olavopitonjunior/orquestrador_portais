@@ -73,6 +73,8 @@ Armadilhas conhecidas. Campos aparentemente úteis que não podem ser usados sem
 
 ## Números de referência medidos
 
+> **Aviso, 2026-09-02 — existe medição divergente ainda NÃO incorporada.** Uma conferência contra a base encontrou diferença material nos números desta seção, com causa aparente na produtividade de corretor. Nenhum valor foi alterado aqui: incorporar exige repetir a contagem noutro dia e conciliar com o PRD e o `CLAUDE.md`, que publicam os mesmos números — é fatia própria. Enquanto isso, **uma diferença grande ao rodar a verificação contra a spec pode ser deriva da base, não defeito da implementação**. Os valores medidos estão em [`perguntas-abertas.md`](perguntas-abertas.md), na seção do aviso de deriva.
+
 Medidos em 28/08/2026. Servem de conferência para implementações (skill `verificar-contra-spec`).
 
 | Referência | Valor |
