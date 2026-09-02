@@ -28,6 +28,7 @@ dependencies = [
 [project.scripts]
 rodada-segunda = "executar.segunda:main"
 rodada-sexta = "executar.sexta:main"
+rodada-aprovar = "executar.aprovar:main"
 
 [build-system]
 requires = ["hatchling"]
