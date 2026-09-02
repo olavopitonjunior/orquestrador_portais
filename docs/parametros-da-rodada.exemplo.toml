@@ -116,8 +116,11 @@ forma = "visualizacoes"
 # "limiar não definido" numa rodada que penalizou parte do estoque.
 #
 # O valor é a contagem de leads que a janela precisa ter gerado para NÃO ser
-# penalizada. ZERO é aceito e significa "toda janela passa" — decisão legítima, mas
-# indistinguível de um descuido, então declare-a de propósito ou omita a seção.
+# penalizada, e precisa ser >= 1: ZERO é RECUSADO pelo carregador. Sob zero,
+# `leads >= 0` é sempre verdadeiro, a coluna sairia 0,0 para todo imóvel e nenhuma
+# limitação seria emitida — indistinguível de "nenhum imóvel penalizado", que é o
+# "nunca 0,0 silencioso" que a D-022 proíbe. Para deixar a penalidade desligada,
+# OMITA a seção: aí a rodada declara o limiar como nulo, na cara de quem aprova.
 #
 # Referência histórica, descritiva e NÃO normativa: 88% das janelas terminaram com
 # zero lead, e a média foi de 0,21 lead por janela. Ressalva de procedência: esses
