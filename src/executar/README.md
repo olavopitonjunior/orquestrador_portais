@@ -180,6 +180,42 @@ mesmo número querer dizer duas coisas conforme o programa que saiu.
 continuaria mostrando "Aprove a rodada N" para sempre. É buraco de esquema,
 registrado em `docs/decisoes.md` como pergunta ao dono.
 
+## Medição dos números de referência
+
+```bash
+uv run python -m executar.referencias [--registrar] [--hoje AAAA-MM-DD]
+```
+
+Precisa das `NEWCORE_MYSQL_*`. Roda o passo 5 da skill `verificar-contra-spec` —
+"rodar a implementação contra a base e comparar com os números de referência" — que
+até aqui era feito à mão, com o resultado vivendo como prosa num documento.
+
+Três compromissos, e cada um evita um jeito de a conferência mentir:
+
+- **Reaproveita o coletor e as regras do sistema**, nunca reimplementa o funil. Uma
+  segunda implementação em SQL poderia divergir da primeira, e aí a conferência
+  passaria a medir a própria cópia.
+- **Lê os valores publicados do `docs/mapa-de-dados.md`**, não guarda cópia. Uma
+  quarta cópia (PRD, mapa, skill, ferramenta) é mais uma para esquecer de atualizar.
+- **Não altera número nenhum.** `--registrar` anexa um bloco de deriva datado, no
+  formato que o mapa já usa, declarando que nada foi adotado. Incorporar exige
+  repetir a contagem noutro dia — uma medição só não separa deriva de oscilação — e
+  conciliar PRD, `CLAUDE.md` e mapa, que publicam os mesmos números.
+
+Além do funil acumulado, imprime a **passagem por regra**: quantos dos que chegam à
+etapa final passam em cada uma das cinco regras restantes, isoladamente. Um funil
+acumulado só diz que encolheu; isso diz onde.
+
+**A banda de ruído é 1%**, e é escolha desta ferramenta — não é parâmetro de decisão,
+não entra em `src/config` e não toca o caminho da decisão. Está calibrada contra a
+deriva já documentada: as variações diárias do estoque ficam em torno de 0,05%, e a
+divergência medida em 02/09 passa de 24%. **Vendas assinadas fica fora dessa régua**:
+não é etapa do funil, não passa por regra de elegibilidade nenhuma, e com base de 176
+o mesmo 1% vale menos de duas vendas — sai como nota à parte, com o motivo.
+
+Código de saída: `0` mediu; `1` não conseguiu ler o mapa; `3` não conseguiu medir
+contra a base.
+
 ## Agendamento
 
 Fora do escopo: quem dispara é o agendador do sistema operacional (Ferramentas §4).

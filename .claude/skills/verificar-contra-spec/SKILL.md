@@ -15,12 +15,18 @@ PRD > Spec > Ferramentas > código. Divergência entre código e documento é **
 2. **Compare literal por literal**: limiares (R$ 300.000, R$ 700.000, 10 fotos, 90 dias, 30 dias, 2 corretores, 180 dias), as cinco categorias aceitas, os pesos (60/25/15 e 80/10/10), a ordem de relaxamento (fotos → cadastro → atualização → gestor → distrito).
 3. **Confira os invariantes** (CLAUDE.md): especialmente cotas como teto rígido e relaxamento restrito ao nível destaque.
 4. **Confira que nenhum parâmetro pendente ganhou valor.** Os treze nulos da tabela do CLAUDE.md (quatorze itens; só o nº 1 foi resolvido, D-014) permanecem nulos. Valor inventado é erro grave, mesmo "provisório".
-5. **Rode a implementação contra a base e compare com os números de referência** (abaixo).
+5. **Rode a implementação contra a base e compare com os números de referência**:
+   `uv run python -m executar.referencias`. A ferramenta reaproveita o coletor e as
+   regras do próprio sistema (nunca reimplementa o funil), lê os valores publicados do
+   `docs/mapa-de-dados.md` (não guarda cópia) e aplica o diagnóstico abaixo. Ela **não
+   altera número nenhum**; `--registrar` anexa o resultado datado ao mapa.
 6. Divergência encontrada: registre em `bug.md` (skill `registrar-bug`) se já houver comportamento em execução, ou corrija antes de integrar.
 
 ## Números que devem bater
 
 Medidos em 28/08/2026 (`docs/mapa-de-dados.md`). Deriva da base é possível — divergência pequena e uniforme sugere deriva; divergência concentrada numa etapa sugere bug naquela regra.
+
+**Cuidado com esta última leitura:** "sugere" não é "prova". A etapa pode concentrar a diferença porque o INSUMO dela mudou, e não porque a regra quebrou — foi o que a conferência de 02/09/2026 encontrou (ver o aviso no topo dos números de referência do mapa). Confira a passagem por regra que a ferramenta imprime antes de concluir que há defeito.
 
 | Conferência | Valor |
 |---|---|
