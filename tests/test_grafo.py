@@ -497,3 +497,40 @@ def test_sem_fonte_de_janelas_o_contador_e_NONE_nao_zero():
     afirma o segundo — declarar zero aqui seria afirmar uma consulta que não houve."""
     final = construir_grafo(_fontes([_candidato(1)]), PARAMS).invoke(_estado_inicial())
     assert final["janelas_lidas"] is None
+
+
+def test_a_ULTIMA_JANELA_CRUA_chega_ao_estado_mesmo_sem_limiar():
+    """A fiação que a coluna do PRD precisa, e que era o buraco: sem o limiar do
+    nº 14 nada é julgado e `janelas_anteriores` fica vazio — mas a planilha ainda
+    tem de poder dizer QUAL foi a última janela. Sem este carregamento ao lado, ela
+    afirmaria "sem janela anterior" sobre imóvel que TEM janela, que é exatamente o
+    que o critério de aceite do PRD proíbe."""
+    fontes = _fontes_com_janelas(
+        [_candidato(1)], {1: (("destaque", 9, 5), ("super_destaque", 0, 1))}
+    )
+    final = construir_grafo(fontes, PARAMS).invoke(_estado_inicial())  # sem limiar
+
+    assert final["janelas_lidas"] == 2
+    # o histórico CRU chega inteiro; a eleição da última é do domínio, na entrega
+    assert final["historico_janelas"][1] == (("destaque", 9, 5), ("super_destaque", 0, 1))
+
+
+def test_sem_fonte_de_janelas_o_historico_e_NONE_nao_vazio():
+    """Um sinal só: `None` é "não consultado" e dict vazio é "consultado e sem
+    janela". Dois sinais (mapa + contador) permitiam a combinação incoerente — mapa
+    vazio marcado como consultado —, e era exatamente ela que faria a planilha
+    escrever "sem janela anterior" para o estoque inteiro numa rodada degradada."""
+    final = construir_grafo(_fontes([_candidato(1)]), PARAMS).invoke(_estado_inicial())
+    assert final["janelas_lidas"] is None
+    assert final["historico_janelas"] is None
+
+
+def test_imovel_sem_janela_nao_entra_no_historico():
+    """Ausência do mapa é o sinal de "sem janela anterior" — e precisa ser ausência,
+    não uma entrada vazia que a planilha teria de interpretar."""
+    fontes = _fontes_com_janelas([_candidato(1), _candidato(2)], {1: (("destaque", 0, 1),)})
+    final = construir_grafo(fontes, PARAMS).invoke(_estado_inicial())
+    # o imóvel 2 PRECISA estar na rodada, senão o teste passa por ausência
+    assert 2 in final["resultado"].detalhes
+    assert 1 in final["historico_janelas"]
+    assert 2 not in final["historico_janelas"]
