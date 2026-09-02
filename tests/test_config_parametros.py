@@ -338,6 +338,31 @@ def test_resultado_esperado_negativo_e_recusado(tmp_path):
         carregar(_arquivo(tmp_path, dados))
 
 
+def test_limiar_ZERO_e_recusado_em_vez_de_desligar_em_silencio(tmp_path):
+    """`leads >= 0` é sempre verdadeiro: a coluna sairia 0,0 para todos e NENHUMA
+    limitação seria emitida (a de "limiar não definido" só sai quando ele é nulo).
+    A D-022 é explícita — "nunca 0,0 silencioso". Para desligar, omite-se a seção."""
+    dados = copy.deepcopy(VALIDO)
+    dados["resultado_esperado"] = {"super_destaque": 2, "destaque": 0}
+    with pytest.raises(ParametroInvalido, match="OMITA a seção"):
+        carregar(_arquivo(tmp_path, dados))
+
+
+def test_super_destaque_com_limiar_MENOR_que_destaque_e_recusado(tmp_path):
+    """PRD, "Rotação e penalidade": "o resultado suficiente é proporcional ao tipo de
+    posição: super destaque exige entrega SUPERIOR à de destaque". Sem esta guarda, um
+    arquivo com a régua invertida carregaria em silêncio e a rodada penalizaria o
+    super destaque menos que o destaque — o oposto do documento."""
+    dados = copy.deepcopy(VALIDO)
+    dados["resultado_esperado"] = {"super_destaque": 1, "destaque": 5}
+    with pytest.raises(ParametroInvalido, match="MAIOR que destaque"):
+        carregar(_arquivo(tmp_path, dados))
+
+    dados["resultado_esperado"] = {"super_destaque": 3, "destaque": 3}  # empate também
+    with pytest.raises(ParametroInvalido, match="MAIOR que destaque"):
+        carregar(_arquivo(tmp_path, dados))
+
+
 def test_nivel_desconhecido_em_resultado_esperado_e_recusado(tmp_path):
     dados = copy.deepcopy(VALIDO)
     dados["resultado_esperado"] = {"super_destaque": 3, "destaque": 1, "vitrine": 9}

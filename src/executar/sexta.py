@@ -69,8 +69,9 @@ from dados.coletor_externo import ler_coleta
 from dados.coletor_interno import DefinicaoAtivoDistrito, coletar
 from dados.registro.conexao import conectar
 from dados.registro.escrita import gravar_rodada_decisao
+from dados.registro.janelas import LIMITACAO_AMOSTRA, historico_para_penalidade
 from dados.vendas import coletar_vendas
-from dominio.penalidades import ImovelPenalizavel
+from dominio.penalidades import JanelaCrua
 from dominio.perfil import ImovelVendido
 from entrega.planilha_piloto import escrever_planilha
 from grafo.estado import Estado, EstadoRodada, Fontes
@@ -95,7 +96,9 @@ class SinkFalhou(RuntimeError):
     """Falha de ESCRITA (Registro ou planilha). Distinta de falha de fonte."""
 
 
-def _fontes(externo: Path | None) -> tuple[Fontes, list[tuple[list[ImovelVendido], int]]]:
+def _fontes(
+    externo: Path | None, *, dry_run: bool = False
+) -> tuple[Fontes, list[tuple[list[ImovelVendido], int]]]:
     """As fontes da sexta, mais o cache das vendas.
 
     `coletar_vendas` é MEMOIZADO e o cache devolvido ao chamador porque o nó do
@@ -119,8 +122,29 @@ def _fontes(externo: Path | None) -> tuple[Fontes, list[tuple[list[ImovelVendido
         # Tudo ou nada: o grafo recusa meia-fiação, e o nó declara a degradação
         # quando não há raspagem — rodada DEGRADADA nesse fator, nunca silenciosa.
         coletar_externo=(lambda: ler_coleta(externo)) if externo else None,
+        # A leitura que a Spec §5 atribui ao Decisor. Conexão por chamada, como as
+        # demais leituras do Registro no runner: a rodada é curta e a alternativa
+        # (segurar conexão aberta atravessando o grafo) traria estado de I/O para
+        # dentro do fluxo.
+        #
+        # Em ENSAIO a fonte não é fiada: `--dry-run` promete "não grava nem escreve
+        # nada" e antes não abria conexão nenhuma; fiá-la faria o ensaio falhar
+        # inteiro com o Registro fora, que é justamente quando se quer ensaiar. O
+        # ensaio então declara "Registro não consultado", que é a verdade sobre ele.
+        coletar_janelas=None if dry_run else _janelas_do_registro,
     )
     return fontes, cache
+
+
+def _janelas_do_registro(imoveis: Sequence[int], ate: date) -> Mapping[int, tuple[JanelaCrua, ...]]:
+    """Histórico de janelas encerradas, cru. O julgamento é do domínio.
+
+    `ate` é a data de referência da rodada, e ela TEM teto por isso: sem o teto, a
+    mesma sexta reprocessada semanas depois contaria as cargas aprovadas nesse
+    intervalo e daria outro decaimento — enquanto `--hoje` promete fixar o recorte.
+    """
+    with conectar() as conn:
+        return historico_para_penalidade(conn, imoveis, ate=ate)
 
 
 def _serializaveis(
@@ -207,7 +231,7 @@ def _registrador(
         # nem "distrito a 45,9%". Planilha e Registro precisam dizer a mesma coisa.
         degradacoes = [
             *estado.get("degradacoes", []),
-            *limitacoes_da_fiacao(parametros, estado.get("penalizaveis", {})),
+            *limitacoes_da_fiacao(parametros, estado.get("janelas_lidas")),
         ]
         motivo = "; ".join(degradacoes) or None
         if dry_run:
@@ -237,18 +261,16 @@ def _registrador(
     return registrar, capturado
 
 
-def limitacoes_da_fiacao(
-    parametros: ParametrosDaRodada, penalizaveis: Mapping[int, ImovelPenalizavel]
-) -> list[str]:
+def limitacoes_da_fiacao(parametros: ParametrosDaRodada, janelas_lidas: int | None) -> list[str]:
     """Limitações que nascem de COMO a rodada foi fiada, não do que o grafo achou.
 
     A §7.2 quer a limitação visível na planilha, e estas três não apareciam em lugar
     nenhum — quem lesse a lista não teria como saber que existiam:
 
     1. **Não há histórico de janelas: a penalidade da §6.4 fica inerte.** O Coletor
-       Interno devolve `janelas_anteriores=()` para todo imóvel e nada no caminho da
-       sexta lê `registro.janela_destaque` (produtor ainda não existe). Uma das três
-       penalidades da §6.4 nunca incide e a coluna sai 0,0 para todos —
+       sexta LÊ `registro.janela_destaque` (é esta a fatia do consumidor), mas o
+       Registro pode não ter janela ENCERRADA nenhuma para os imóveis da rodada — e
+       aí a penalidade da §6.4 não incide e a coluna sai 0,0 para todos,
        indistinguível de "imóvel sem histórico", que o PRD manda identificar como
        tal.
 
@@ -266,14 +288,29 @@ def limitacoes_da_fiacao(
        manda essa limitação aparecer na aba, e ela não aparecia.
     """
     limitacoes = []
-    if not any(p.janelas_anteriores for p in penalizaveis.values()):
+    if janelas_lidas is None:
         limitacoes.append(
-            "HISTÓRICO DE JANELAS ausente para todos os imóveis: a rodada de segunda já "
-            "acumula registro.janela_destaque (D-021), mas a SEXTA ainda não lê a tabela — "
-            "o Coletor Interno devolve a lista vazia, então a penalidade por janela "
-            "anterior sem resultado (Spec §6.4) não pode incidir. A coluna sai 0,0 para "
-            "todos — não é 'nenhum imóvel penalizado', é dado ausente"
+            "REGISTRO NÃO CONSULTADO para o histórico de janelas: a rodada correu sem a "
+            "fonte fiada, então a penalidade por janela anterior sem resultado (Spec §6.4) "
+            "não pôde nem ser avaliada. Não é 'não há histórico' — é que ninguém perguntou"
         )
+    elif janelas_lidas == 0:
+        limitacoes.append(
+            "HISTÓRICO DE JANELAS vazio: o Registro não devolveu nenhuma janela ENCERRADA "
+            "para os imóveis desta rodada, então a penalidade por janela anterior sem "
+            "resultado (Spec §6.4) não pode incidir. A coluna sai 0,0 para todos — não é "
+            "'nenhum imóvel penalizado', é dado ausente. A rodada de segunda acumula as "
+            "janelas (D-021), mas só as ENCERRADAS são julgáveis: a janela em curso ainda "
+            "não terminou de acumular"
+        )
+    if janelas_lidas:
+        # A §7.2 quer a limitação visível NA PLANILHA, e a planilha em que a penalidade
+        # sai é esta. O acumulado que a §6.4 julga vem de amostras de três dias num
+        # ciclo de sete (limitação declarada na segunda, D-021) — quem aprova a lista
+        # precisa saber que o número que penalizou é subestimado. Derivada: só sai
+        # quando o insumo foi de fato usado, e some sozinha quando a fatia do
+        # intervalo inteiro chegar.
+        limitacoes.append(f"insumo da penalidade §6.4 — {LIMITACAO_AMOSTRA}")
     if parametros.resultado_esperado is None:
         # A outra metade da D-022: "enquanto nulo... a rodada DECLARA 'limiar de
         # resultado não definido' na planilha. Nunca 0,0 silencioso". Sem esta linha,
@@ -386,7 +423,7 @@ def executar(
     # planilha é o artefato contratual, o que foi de fato aprovado e carregado.
     destino_da_rodada = destino / f"{hoje:%Y-%m-%d}"
     avisar = _avisar(destino_da_rodada, dry_run=dry_run)
-    fontes, cache_vendas = _fontes(externo)
+    fontes, cache_vendas = _fontes(externo, dry_run=dry_run)
     registrar, capturado = _registrador(
         parametros, hoje, externo, agora, dry_run=dry_run, avisar=avisar
     )
@@ -395,6 +432,7 @@ def executar(
         fontes,
         parametros.decisao,
         parametros_externo=parametros.externo if externo else None,
+        resultado_esperado=parametros.resultado_esperado,
         registrar=registrar,
     )
     final = grafo.invoke(
@@ -433,7 +471,7 @@ def executar(
                     [
                         *final.get("degradacoes", []),
                         # A MESMA lista que foi para o motivo gravado no Registro.
-                        *limitacoes_da_fiacao(parametros, final.get("penalizaveis", {})),
+                        *limitacoes_da_fiacao(parametros, final.get("janelas_lidas")),
                     ],
                     data_referencia=hoje,
                     vendas_descartadas=cache_vendas[0][1] if cache_vendas else None,

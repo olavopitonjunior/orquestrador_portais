@@ -55,6 +55,7 @@ from datetime import date
 import psycopg
 
 from dominio.acompanhamento import DesempenhoImovel
+from dominio.penalidades import JanelaCrua
 
 # Ditas na planilha E no motivo gravado no Registro, não só em comentário: são
 # números de aparência factual sobre coisas que o sistema não sabe.
@@ -255,7 +256,7 @@ def atualizar_janelas(
 
 
 def janelas_encerradas(
-    conn: psycopg.Connection, imoveis: Sequence[int]
+    conn: psycopg.Connection, imoveis: Sequence[int], *, ate: date
 ) -> dict[int, tuple[tuple[str, int, date], ...]]:
     """Janelas ENCERRADAS por imóvel: `(nivel, leads_gerados, fim)`, mais recente
     primeiro.
@@ -263,6 +264,14 @@ def janelas_encerradas(
     Só encerradas: o contrato de `ImovelPenalizavel` diz que `janelas_anteriores`
     contém apenas janelas com fim não nulo, e a janela em curso ainda não pode ser
     julgada — ela não terminou de acumular.
+
+    `ate` é a data de referência da rodada, e o RECORTE vale aqui também, não só na
+    contagem de ciclos. Sem ele, uma sexta reprocessada com `--hoje` no passado
+    julgaria janelas que encerraram DEPOIS da sua data de referência — que não são
+    "janela anterior" coisa nenhuma (§6.4) — e todas elas cairiam em `ciclos = 0`,
+    empatadas. O desempate por "a que falhou vence" então faria a regra voltar a se
+    comportar como o `any` que a D-023 removeu, em silêncio, com penalidade cheia
+    (`razao ** 0 = 1`). O teto em metade do mecanismo era pior que nenhum.
 
     Devolve o dado CRU, sem julgar se atingiu resultado: o limiar por nível é o
     parâmetro pendente nº 14 (D-022) e não mora aqui. Imóvel sem janela encerrada
@@ -274,9 +283,9 @@ def janelas_encerradas(
     with conn.cursor() as cur:
         cur.execute(
             "SELECT imovel_id, nivel, leads_gerados, fim FROM registro.janela_destaque "
-            "WHERE fim IS NOT NULL AND imovel_id = ANY(%s) "
+            "WHERE fim IS NOT NULL AND fim <= %s AND imovel_id = ANY(%s) "
             "ORDER BY imovel_id, fim DESC, id DESC",
-            (list(imoveis),),
+            (ate, list(imoveis)),
         )
         por_imovel: dict[int, list[tuple[str, int, date]]] = {}
         for imovel_id, nivel, leads, fim in cur.fetchall():
@@ -284,7 +293,7 @@ def janelas_encerradas(
     return {i: tuple(js) for i, js in por_imovel.items()}
 
 
-def ciclos_desde(conn: psycopg.Connection, fins: Sequence[date]) -> dict[date, int]:
+def ciclos_desde(conn: psycopg.Connection, fins: Sequence[date], *, ate: date) -> dict[date, int]:
     """Quantas cargas APROVADAS entraram no ar depois de cada data de fim.
 
     É o `ciclos_desde_encerramento` de `JanelaAnterior`, cuja docstring fixa
@@ -303,6 +312,12 @@ def ciclos_desde(conn: psycopg.Connection, fins: Sequence[date]) -> dict[date, i
       fechamento que ela mesma produziu, deslocando o decaimento da §6.4 em um.
       Uma derivação só, no mesmo lugar, elimina a classe inteira.
 
+    - a contagem tem TETO em `ate` (a data de referência da rodada). Sem ele, a
+      mesma sexta reprocessada um mês depois contaria as cargas que entraram nesse
+      intervalo, daria um decaimento maior e poderia produzir outra lista — enquanto
+      o help de `--hoje` promete "fixa o recorte, tornando a rodada reproduzível".
+      O teto é o que faz a promessa valer.
+
     As cargas aprovadas são uma por semana: trazê-las e contar em Python é barato, e
     a versão anterior fazia uma consulta por imóvel — milhares de idas ao banco.
     """
@@ -315,4 +330,29 @@ def ciclos_desde(conn: psycopg.Connection, fins: Sequence[date]) -> dict[date, i
             "WHERE tipo = 'decisao' AND aprovada_em IS NOT NULL"
         )
         datas = [ts.astimezone().date() if ts.tzinfo else ts.date() for (ts,) in cur.fetchall()]
-    return {fim: sum(1 for d in datas if d > fim) for fim in unicas}
+    return {fim: sum(1 for d in datas if fim < d <= ate) for fim in unicas}
+
+
+def historico_para_penalidade(
+    conn: psycopg.Connection, imoveis: Sequence[int], *, ate: date
+) -> dict[int, tuple[JanelaCrua, ...]]:
+    """O histórico de janelas encerradas por imóvel, no formato que a §6.4 consome.
+
+    Compõe as duas leituras num só resultado — `janelas_encerradas` (o que aconteceu)
+    e `ciclos_desde` (há quanto tempo) —, devolvendo `(nivel, leads_gerados, ciclos)`
+    por janela. **Cru**: não julga se atingiu resultado, porque o limiar por nível é
+    o parâmetro nº 14 e a decisão de julgar é do domínio, com o limiar injetado.
+
+    É a leitura que a Spec §5 atribui ao Decisor — "o único agente que lê o Registro
+    durante a rodada, e o faz para obter o histórico de janelas necessário ao cálculo
+    da penalidade". Por isso vive aqui e é chamada pelo nó do Decisor, não pelo
+    Coletor Interno, que lê só o Newcore.
+    """
+    encerradas = janelas_encerradas(conn, imoveis, ate=ate)
+    if not encerradas:
+        return {}
+    ciclos = ciclos_desde(conn, [fim for js in encerradas.values() for _n, _l, fim in js], ate=ate)
+    return {
+        imovel_id: tuple((nivel, leads, ciclos[fim]) for nivel, leads, fim in js)
+        for imovel_id, js in encerradas.items()
+    }

@@ -428,3 +428,59 @@ Já estava declarada para a sexta. Vale igual para a segunda: o PRD põe o Redat
 ### Reaberta: limitação de fiação deve mudar o ESTADO da rodada?
 
 O argumento que sustentou "não" era explicitamente temporal: marcá-las como degradação tornaria toda rodada degradada **até o produtor de `janela_destaque` existir**, e um estado que nunca varia deixa de informar. **O produtor existe agora.** Quando o consumidor da sexta for ligado, a limitação passa a ser variável — some sozinha quando houver janelas encerradas — e o argumento cai. A pergunta volta ao dono na fatia do consumidor, com esse fato novo.
+
+## Consumidor das janelas na sexta (2026-09-02) — a §6.4 passa a incidir
+
+A fatia anterior deu produtor a `registro.janela_destaque`; esta liga o **consumidor**. A penalidade "janela anterior sem resultado" (Spec §6.4), inerte desde sempre, passa a incidir.
+
+**Onde a leitura acontece, e por quê.** No nó do **Decisor**, não no Coletor Interno. A Spec §5 é explícita: "o Decisor é o único agente que lê o Registro durante a rodada, e o faz para obter o histórico de janelas necessário ao cálculo da penalidade". O Coletor Interno continua lendo só o Newcore e devolvendo `janelas_anteriores=()`; a costura é do Decisor.
+
+**Ler e julgar são separados.** O nó **sempre lê** (se a fonte estiver fiada) e só **julga** quando o limiar por nível existir. A razão é de diagnóstico: sem a separação, "o Registro não devolveu janela nenhuma" e "há histórico, mas o nº 14 é nulo" sairiam idênticos na planilha — e as duas zeram a penalidade por motivos **opostos**, com correções opostas. Só a segunda está sob controle do dono. O estado da rodada passa a carregar `janelas_lidas`, e a planilha declara as duas limitações separadamente.
+
+**O limiar é injetado, nunca constante.** `julgar_janelas` é função pura do domínio e recebe o mapa por nível como argumento obrigatório; nível ausente no mapa é **erro**, não default — usar a régua de outro nível é exatamente o que a §6.4 proíbe ao dizer "para o nível". Nenhum valor de parâmetro pendente entrou em `src/config` ou no domínio.
+
+**Ainda inerte na prática, por um motivo declarado:** o nº 14 continua nulo, então nenhuma janela é julgada hoje. O que mudou é que a fiação existe e a planilha diz **qual** das duas coisas falta. No dia em que o dono declarar os dois limiares no arquivo da rodada, a penalidade acende sem mais nenhuma mudança de código.
+
+### Perguntas abertas que o consumidor levantou (2026-09-02)
+
+Ligar a penalidade tornou vivas quatro questões que estavam dormentes. Nenhuma bloqueia a fatia — o nº 14 segue nulo —, mas todas mudam quem é penalizado quando ele for declarado.
+
+**1. A §6.4 julga a ÚLTIMA janela ou QUALQUER janela do histórico?** O código aplica a penalidade se *alguma* janela encerrada não atingiu o resultado (`any(...)` em `penalidades.py`), sem recorte temporal. O PRD, no critério de aceite, fala em "o resultado da **sua última janela**, quando houver", e a Spec §6.4 usa o singular "janela **anterior**". Sob o código, uma janela ruim de um ano atrás penaliza para sempre — e com decaimento de razão 1.0, sem nunca esmaecer. **Agrava-se com a elaboração 1 da D-021, que o dono acabou de ratificar**: a mudança de nível fecha a janela, então a promoção a super destaque cria uma janela curta que quase certamente não bate o limiar e passaria a penalizar indefinidamente justo o imóvel que subiu por mérito. A leitura `any` estava declarada só no código; agora está aqui. **Vai ao dono.**
+
+**2. Falha ao ler o Registro derruba a rodada, e nenhum documento sanciona esse aborto.** A leitura acontece no nó do Decisor; qualquer exceção propaga e a sexta não entrega. A Spec §7.2 só prevê ABORTADA para "a coleta interna não ficou pronta", e a linha de DEGRADADA — "alguma fonte falhou e a decisão prosseguiu com dado parcial" — descreve exatamente este caso. O vocabulário para degradar já existe ("HISTÓRICO DE JANELAS vazio"). Hoje aborta por omissão, não por decisão. **Vai ao dono.**
+
+**3. O imóvel que nunca sai da carga nunca é julgado.** Só janelas ENCERRADAS são julgáveis (contrato de `ImovelPenalizavel`, e a §6.4 diz "janela anterior"). Mas sob a D-021 a janela só fecha quando o imóvel sai ou muda de nível — então o permanente-sem-lead, que é o caso que abre o PRD (88% das janelas sem lead, "a vitrine não gira"), é justamente o que a §6.4 nunca alcança. Não afirmo que o documento esteja errado; registro a suspeita. **Vai ao dono.**
+
+**4. Reaberta de fato: limitação de fiação deve mudar o ESTADO da rodada?** A fatia anterior prometeu reabrir esta pergunta "na fatia do consumidor, com o fato novo" e a seção anterior não o fez — ficou fechada por omissão. Reabro aqui: o argumento original era temporal ("tornaria toda rodada degradada até o produtor existir"), e agora produtor e consumidor existem. A limitação de histórico vazio passou a ser **variável** — some quando houver janela encerrada. **Vai ao dono.**
+
+**5. Declarado, não perguntado:** `ciclos_desde` deriva a data no fuso da máquina que roda. A hospedagem é uma máquina só, então o risco é baixo, mas a mesma entrada em outra máquina pode dar ciclos diferentes. Fica registrado como limitação, não como pergunta.
+
+## D-023 — a §6.4 julga a ÚLTIMA janela, e Registro fora DEGRADA em vez de abortar
+
+**Data**: 2026-09-02 · **Resolve**: as duas perguntas 1 e 2 da seção anterior, respondidas pelo dono.
+
+### Qual janela é julgada
+
+**Decisão do dono: só a ÚLTIMA.** O código aplicava a penalidade se *qualquer* janela encerrada tivesse falhado, sem recorte temporal. O PRD descreve outra coisa — "o resultado da **sua última janela**, quando houver" — e a Spec §6.4 usa o singular "janela **anterior**".
+
+**O que motivou:** sob a regra antiga, uma janela ruim de um ano atrás penalizava para sempre, e com decaimento de razão 1.0 nunca esmaecia. Pior em combinação com a D-021, que o dono ratificou na fatia anterior: a promoção de nível fecha a janela, então subir para super destaque criava uma janela curta de destaque que quase nunca bate o limiar — e passaria a penalizar indefinidamente **justo o imóvel que subiu por mérito**.
+
+**Custo aceito e declarado:** um imóvel com histórico ruim longo "limpa a ficha" com uma única janela boa. O dono viu o trade-off e escolheu o desempenho recente.
+
+**Duas precisões da implementação, declaradas:** "mais recente" é o MENOR `ciclos_desde_encerramento`, não a posição na lista — a ordem vem do chamador e não pode governar a regra (invariante 5). E empate de ciclos é desempatado pelo veredito: a que FALHOU vence.
+
+**Correção de uma justificativa que eu tinha escrito errado:** disse que o empate "é o que a mudança de nível produz". Não é — o produtor da D-021 fecha no máximo uma janela por imóvel por carga, então duas encerradas têm sempre `fim` distintos, e como todo `fim` é data de carga aprovada a contagem de ciclos as separa por pelo menos 1. **O empate é hoje inalcançável.** O desempate existe porque a função precisa ser total e a regra não pode passar a depender da ordem da lista se alguma premissa mudar. Registro a correção porque uma justificativa falsa num registro de decisão é pior que nenhuma: o dono decide de novo em cima dela.
+
+Efeito colateral bom: `penalidades_aplicaveis` e `ciclos_desde_janela_sem_resultado` passam a olhar a MESMA janela. Antes divergiam — o predicado olhava qualquer uma, o desconto a mais recente sem resultado — e coincidiam só porque o desconto se aplica uma vez.
+
+### Registro indisponível na rodada de sexta
+
+**Decisão do dono: DEGRADA e entrega.** Antes, uma falha ao ler o Registro derrubava a rodada inteira: nenhuma planilha, semana sem vitrine, por causa de **uma** das três penalidades. A Spec §7.2 descreve exatamente este caso — "alguma fonte falhou e a decisão prosseguiu com dado parcial" — e nenhum documento sancionava o aborto, que acontecia por omissão.
+
+A etapa `janelas` entrou em `ETAPAS_PARA_COMPLETA`: sem o histórico a rodada é honestamente DEGRADADA, com o motivo declarado (só o TIPO da exceção, nunca a mensagem, que pode ecoar dado do banco). Sem a etapa na lista, uma rodada cujo Registro caiu sairia COMPLETA com a penalidade silenciosamente inerte.
+
+### Ainda abertas, não resolvidas aqui
+
+As perguntas 3 (o imóvel que nunca sai da carga nunca é julgado) e 4 (limitação de fiação deve mudar o estado da rodada) seguem com o dono, e a 3 mudou de peso com esta decisão: **com "só a última janela", o alcance da §6.4 encolheu**. Antes, o histórico antigo ainda alcançava alguém; agora o imóvel que nunca sai não tem janela encerrada, e o que ele fez em exposições passadas também deixou de contar. A pergunta ficou MAIS relevante depois da D-023, não menos.
+
+Atualização da limitação de fuso registrada antes: desde a D-023, `ciclos_desde` não governa só o decaimento — governa **qual janela é julgada**. Um fuso trocado deixou de significar "decaimento deslocado em um" e passou a poder trocar a janela eleita, mudando quem é penalizado. A decisão de não fixar o fuso no código continua (a hospedagem é uma máquina só, e fixá-lo seria escolher um valor que ninguém definiu), mas o risco é maior do que o texto anterior dizia.

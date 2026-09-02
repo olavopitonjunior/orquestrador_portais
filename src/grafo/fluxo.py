@@ -26,13 +26,14 @@ Limitações declaradas (honestas quanto ao estado, Spec §7.2):
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 
 from dados.coletor_externo import ParametrosExterno, avaliar_coleta
 from dominio.auditoria import ItemAuditavel, auditar
+from dominio.penalidades import com_janelas, julgar_janelas
 from dominio.perfil import perfis_de_conversao
 from grafo.estado import Estado, EstadoRodada, Fontes, estado_final
 from piloto.decisao import ParametrosDecisao, decidir
@@ -118,19 +119,75 @@ def no_coletor_externo(
     }
 
 
-def no_decisor(estado: EstadoRodada, *, parametros: ParametrosDecisao) -> dict:
+def no_decisor(
+    estado: EstadoRodada,
+    *,
+    parametros: ParametrosDecisao,
+    fontes: Fontes,
+    resultado_esperado: Mapping[str, int] | None = None,
+) -> dict:
     """Decisor (determinístico, invariante 4): elegibilidade → ranking → cotas →
-    relaxamento, via a costura já testada. PRONTO: produziu o resultado."""
+    relaxamento, via a costura já testada. PRONTO: produziu o resultado.
+
+    É AQUI que o histórico de janelas do Registro entra, e não no Coletor Interno:
+    a Spec §5 diz que "o Decisor é o único agente que lê o Registro durante a rodada,
+    e o faz para obter o histórico de janelas necessário ao cálculo da penalidade".
+
+    A leitura acontece SEMPRE que a fonte estiver fiada; o JULGAMENTO só quando o
+    limiar por nível (parâmetro nº 14, D-022) tiver sido declarado. As duas coisas
+    são separadas de propósito: sem limiar, `janelas_lidas` ainda diz quantas janelas
+    existem, e a planilha consegue distinguir "o produtor não fechou janela nenhuma"
+    de "há histórico, mas nenhuma régua para julgá-lo". Sob um sinal só, as duas
+    sairiam como a mesma coisa — e as duas zeram a penalidade por motivos opostos.
+    """
+    penalizaveis = estado["penalizaveis"]
+    janelas_lidas: int | None = None  # None = não consultado
+    degradacoes: list[str] = []
+    pronto_janelas = fontes.coletar_janelas is not None
+    if fontes.coletar_janelas is not None:
+        try:
+            cruas = fontes.coletar_janelas(list(penalizaveis), estado["data_referencia"])
+        except Exception as e:
+            # Decisão do dono: Registro fora DEGRADA e entrega, não aborta. A Spec
+            # §7.2 descreve exatamente este caso — "alguma fonte falhou e a decisão
+            # prosseguiu com dado parcial" — e a §6.4 é uma das três penalidades: sem
+            # ela ainda há lista para carregar. Abortar deixaria a semana sem vitrine
+            # por causa de uma penalidade. Só o TIPO no motivo: a mensagem pode ecoar
+            # dado do banco.
+            pronto_janelas = False
+            degradacoes.append(
+                f"HISTÓRICO DE JANELAS indisponível ({type(e).__name__}): a penalidade "
+                "por janela anterior sem resultado (Spec §6.4) não incidiu nesta rodada"
+            )
+        else:
+            janelas_lidas = sum(len(js) for js in cruas.values())
+            if resultado_esperado is not None:
+                penalizaveis = {
+                    imovel_id: com_janelas(
+                        p, julgar_janelas(cruas.get(imovel_id, ()), resultado_esperado)
+                    )
+                    for imovel_id, p in penalizaveis.items()
+                }
     resultado = decidir(
         estado["candidatos"],
-        estado["penalizaveis"],
+        penalizaveis,
         estado["dims"],
         estado["perfis"],
         parametros,
         estado["data_referencia"],
         desempenho_por_imovel=estado.get("desempenho_por_imovel"),
     )
-    return {"resultado": resultado, "prontos": {"decisor": True}}
+    return {
+        "resultado": resultado,
+        "janelas_lidas": janelas_lidas,
+        # `penalizaveis` volta ao estado JULGADO: era rebindado só localmente, e o
+        # estado guardava a versão sem janelas — divergente da entrada que `decidir`
+        # de fato consumiu. Com o checkpointer no Postgres, retomar depois do Decisor
+        # leria a entrada errada, em silêncio.
+        "penalizaveis": penalizaveis,
+        "degradacoes": degradacoes,
+        "prontos": {"decisor": True, "janelas": pronto_janelas},
+    }
 
 
 def no_crivo(estado: EstadoRodada) -> dict:
@@ -246,6 +303,7 @@ def construir_grafo(
     parametros: ParametrosDecisao,
     *,
     parametros_externo: ParametrosExterno | None = None,
+    resultado_esperado: Mapping[str, int] | None = None,
     registrar: Callable[[EstadoRodada], object] | None = None,
     checkpointer=None,
 ):
@@ -274,7 +332,15 @@ def construir_grafo(
         "coletor_externo",
         partial(no_coletor_externo, fontes=fontes, parametros_externo=parametros_externo),
     )
-    g.add_node("decisor", partial(no_decisor, parametros=parametros))
+    g.add_node(
+        "decisor",
+        partial(
+            no_decisor,
+            parametros=parametros,
+            fontes=fontes,
+            resultado_esperado=resultado_esperado,
+        ),
+    )
     g.add_node("crivo", no_crivo)
     g.add_node("redator", no_redator)
     g.add_node("finalizar", no_finalizar)

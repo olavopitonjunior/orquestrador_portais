@@ -314,10 +314,29 @@ def _ler_resultado_esperado(bruto: Mapping[str, Any] | None) -> Mapping[str, int
         for n in niveis
     }
     for nivel, valor in valores.items():
-        if valor < 0:
+        if valor < 1:
+            # Zero desligaria a penalidade em SILÊNCIO: `leads >= 0` é sempre
+            # verdadeiro, a coluna sairia 0,0 para todos e nenhuma limitação seria
+            # emitida (a de "limiar não definido" só sai quando ele é nulo). A D-022
+            # é explícita: "nunca 0,0 silencioso — um imóvel sem penalidade por falta
+            # de limiar não é um imóvel que passou no critério". Para desligar a
+            # penalidade, omita a seção; aí a rodada declara que o limiar é nulo.
             raise ParametroInvalido(
-                f"resultado_esperado.{nivel} negativo: {valor} — é uma contagem de leads"
+                f"resultado_esperado.{nivel} = {valor}: o limiar é a contagem de leads "
+                "que a janela precisa ter gerado, e precisa ser ao menos 1. Zero "
+                "desligaria a penalidade sem nenhuma declaração na planilha — para "
+                "deixá-la nula, OMITA a seção [resultado_esperado]"
             )
+    if valores["super_destaque"] <= valores["destaque"]:
+        # PRD, "Rotação e penalidade": "Resultado suficiente é proporcional ao tipo de
+        # posição: super destaque exige entrega SUPERIOR à de destaque". Sem esta
+        # guarda, um arquivo com a régua invertida carregaria em silêncio e a rodada
+        # penalizaria o super destaque menos que o destaque — o oposto do documento.
+        raise ParametroInvalido(
+            f"resultado_esperado.super_destaque ({valores['super_destaque']}) precisa ser "
+            f"MAIOR que destaque ({valores['destaque']}): o PRD fixa que o resultado "
+            "esperado é proporcional ao nível, e o super destaque exige entrega superior"
+        )
     return valores
 
 
