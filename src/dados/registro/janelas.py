@@ -27,8 +27,16 @@ publica nada — a carga é aplicada à mão — então a data real de entrada �
 inobservável. O melhor proxy que o sistema tem é `aprovada_em` da carga, que chega
 aqui como `data_da_carga`. Usar `datetime.now()` da execução, como esta fatia fazia
 antes, deslocaria toda janela em alguns dias e, num reprocessamento, carimbaria o
-Registro com a data de hoje — quebrando a reprodutibilidade. O resíduo (aprovação ≠
-momento da aplicação manual) é limitação declarada, não absorvida.
+Registro com a data de hoje — quebrando a reprodutibilidade.
+
+O resíduo (aprovação ≠ momento da aplicação manual) deixou de ser inevitável: o
+ponto de entrada da aprovação (`executar/aprovar.py`) aceita `--em`, com que o dono
+declara quando a carga entrou no ar em vez de aceitar "agora". **A absorção é
+opcional e depende de quem opera** — sem `--em` o resíduo continua exatamente como
+descrito. E ela custa uma ambiguidade que está registrada como pergunta ao dono em
+`docs/decisoes.md`: usado o `--em`, o instante do ACEITE deixa de existir no
+Registro, e a D-001 chama `aprovada_em` de carimbo do aceite. Resolver de vez pede
+ou coluna própria para a aplicação da carga, ou emenda à D-001.
 
 ## O que este módulo NÃO decide
 
