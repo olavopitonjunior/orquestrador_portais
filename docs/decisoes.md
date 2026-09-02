@@ -603,3 +603,45 @@ Os dois parecem simétricos e não são, e a distinção precisa estar escrita: 
 
 A régua geral continua valendo sem emenda: critério que depende de parâmetro nulo não é cumprido. O que esta seção fixa é *do que* `:478` depende — e não é do nº 14.
 
+
+## Primeira conferência da checklist do PRD (2026-09-02) — 19 marcadas, 12 em aberto
+
+Conferência item a item pelo portão `revisor-de-regra`, com evidência de arquivo e linha por critério, sob a política e a régua fixadas acima. Duas caixas (`:478`, `:479`) foram marcadas na fatia da coluna; as outras dezessete, aqui.
+
+**Marcadas aqui (17), das 19 no total** — `:478` e `:479` saíram na fatia da coluna: as cotas; o corte binário sem compensação e o registro de cada exclusão; as vendas assinadas em 180 dias, o perfil de uma ou duas dimensões e a contagem de casos que o sustenta; o relaxamento restrito ao destaque, a proibição no super, a ordem de cedência, o registro por regra cedida e as posições vazias declaradas; e **seis** dos sete critérios da rodada de segunda.
+
+**Duas distinções que o portão exigiu por escrito**, porque sem elas as marcações se leem como incoerentes — é a mesma classe de falha que o par `:478`/`:500` teve, e que só aparece olhando as marcações lado a lado, nunca item a item:
+
+- **`:528` marcado × [P-08] em aberto, sobre a mesma matéria.** O critério pede que o relatório **liste** os leads sem tratamento "com corretor e gestor de distrito nomeados", e ele lista: as duas colunas existem e o campo do embaixador é preenchido. A [P-08] é sobre outra coisa — o predicado de **pronto** do Monitor, que olha só o corretor e pode dar a rodada por pronta com leads que ninguém do nível distrital responde. Listar e julgar-se pronto são atos diferentes; o critério cobra o primeiro.
+- **`:527` marcado sob a convenção "leia-se" do CLAUDE.md.** O texto do PRD diz "a partir da planilha aprovada vigente", e o código lê do Registro. A D-001 **não revogou** essa frase — revogou outra, a de Ferramentas §3 — e para esta deu leitura: "leia-se: a lista da rodada de decisão registrada". O CLAUDE.md adota essa convenção explicitamente ("onde os documentos dizem 'nove regras', leia-se assim"), e o projeto inteiro lê os documentos através das decisões. Deixar `:527` aberto por causa da redação, lendo todo o resto pela decisão, seria a incoerência — não o contrário. *(Uma versão anterior deste registro afirmava que a D-001 declarara a frase "sem efeito". Era falso, e o portão o apanhou: ela dá leitura, não revoga.)*
+
+**Em aberto (12), e a razão de cada grupo importa mais que o número:**
+
+- **Sete não cumpridas.** Duas — `:480` e `:491` — dependem da rotação (§6.7), que não existe: um imóvel vendido ou removido só sai na sexta seguinte, por recoleta, e não "imediatamente, fora do ciclo". Duas — `:481` e `:532` — dependem do agendador, que não existe porque o horário é o parâmetro nº 8, nulo. Uma (`:482`) depende do produtor da variação de volume (nº 6). Uma (`:500`) — o desconto do perfil frágil — depende de valor adotado ([P-16]). E `:501` **não existe em lugar nenhum**: ver [P-19].
+
+- **Uma barrada por MECANISMO AUSENTE, não por parâmetro nulo: `:510`** ("a justificativa informa por qual objetivo o imóvel foi selecionado"). A planilha separa as abas por nível e traz fatores, perfil e penalidades, mas **nenhuma coluna nomeia o objetivo** — nem "valor esperado" nem "probabilidade de lead" aparecem na saída. Ela é critério de APRESENTAÇÃO, como `:478`, e a distinção entre as duas é simples: em `:478` a coluna existe e rotula o que não sabe; aqui não existe coluna nenhuma. *(A versão anterior deste registro dizia "oito não cumpridas" e enumerava sete — `:510` ficava sem razão escrita, inflado dentro de um número que não fechava. Achado do portão.)*
+- **Três parciais — `:507`, `:508` e `:509`**, todas pelo mesmo motivo e é o padrão que a régua expôs: a fiação está pronta e o valor é nulo. As listas saem ordenadas, mas por pesos que ninguém adotou (nº 12) — então não se pode afirmar que o super destaque persegue valor esperado nem que o destaque persegue probabilidade de lead.
+- **Uma que a reescrita do documento não destrava: `:490`.** A redação ("nove regras") é anterior às D-002/D-003, mas trocá-la por "oito" não a marca: sob o relaxamento que a História 5 sanciona, imóveis fora de até cinco regras **entram** no destaque, e "não entra" segue literalmente falso para aquele nível. Ver [P-18]. *(A versão anterior deste registro dizia "Duas cumpridas no código e não marcáveis" — rótulo falso para `:490` e contagem que fechava em 13 contra o 12 do cabeçalho. Segunda recorrência do mesmo achado; apanhada pelo portão.)*
+
+### Limite DECLARADO — o crivo de cotas não confere a UNIÃO entregue
+
+A lista de destaque que a planilha entrega **não é** `alocacao.destaque`: é o ranking **mais** os recuperados pelo relaxamento, numerados em continuação. O crivo de auditoria (`_checar_cotas`) confere só a primeira. O invariante 6 vale — o corte por déficit garante a soma por construção, e `relaxar` recusa déficit maior que a cota —, mas **por aritmética, não por veto**.
+
+Marcar o critério das cotas com a evidência sendo leitura de código seria afirmar mais do que se verifica. Esta fatia acrescenta a prova: dois testes amarram que `relaxar` nunca devolve mais recuperados que o déficit e que ranking + recuperados cabe na cota, verificados por mutação (remover o corte por déficit faz os dois morderem).
+
+Estender o crivo para a união é **mudança em regra de decisão** — puxa CHANGELOG e revisão própria —, então fica como **candidata a fatia futura**, não como pendência do dono: é cobertura de auditoria, engenharia, não decisão.
+
+### [P-18] Uma linha do PRD carrega redação anterior às decisões
+
+Não é pendência de código — o código está fiel às decisões. É linha do documento superior com a redação anterior a elas. E não pode ser corrigida aqui: o CLAUDE.md manda que divergência entre documentos seja **apontada, não resolvida em silêncio** — e tocar a linha das "nove regras" seria mudança de regra.
+
+- **`:490` — "Imóvel fora de qualquer uma das NOVE regras não entra".** As D-002 e D-003 fixaram **oito** regras eliminatórias, mais o piso de R$ 700.000 como condição de nível e o status impeditivo como saída imediata. Segunda tensão no mesmo item, e ela é do próprio PRD: sob o relaxamento que a História 5 sanciona, imóveis fora de até cinco dessas regras **entram** no destaque — então "não entra" é literalmente falso para aquele nível.
+**Vai ao dono:** autorizar a reescrita da linha `:490`. **Não destrava a marcação** — e a promessa anterior de "destrava duas marcações imediatas" era falsa, contradita três linhas acima pela segunda tensão: trocar "nove" por "oito" não resolve o fato de o relaxamento fazer entrar quem está fora de até cinco regras. `:527` saiu do P-18 e foi marcado sob a convenção "leia-se"; o que resta aqui é só o texto de `:490`, e ele é higiene documental, não destravamento.
+
+### Fronteira declarada — o recorte da coleta não gera linha em "excluídos por regra"
+
+A coleta interna recorta `WHERE RealtyStatus = 'Ativo'`, então a regra de status nunca reprova no caminho real: as oito regras operam como sete, e imóvel inativo fica de fora **sem linha na aba de excluídos**. Toca `:489` ("cada exclusão registra o motivo"), que está marcado. A marcação se sustenta — o recorte define o universo, não é exclusão de um candidato —, mas a fronteira fica escrita porque um leitor a lerá como exclusão silenciosa. Pergunta que os documentos não respondem e que vale investigar: se `RealtyStatus` não distingue "Reservado" de "Ativo", nem a recoleta de sexta remove o reservado, e o `:491` está pior do que este registro descreve.
+
+### [P-19] Um critério de aceite sem dono, sem prazo e sem contrato
+
+**`:501` — "A hipótese de valor esperado é testada contra vendas e o resultado é reportado".** Não existe em lugar nenhum: nem código, nem Spec, nem esta fila. As únicas menções em `src/` são comentários. Não é parâmetro faltando nem fiação inerte — é trabalho inteiro por fazer que nunca foi especificado. Registro porque critério de aceite invisível é pior que um não cumprido: ninguém o vê para decidir se ainda vale. **Vai ao dono:** confirmar se o critério permanece e, se sim, o que "testar a hipótese" entrega.
