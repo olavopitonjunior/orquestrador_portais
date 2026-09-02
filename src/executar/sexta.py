@@ -64,9 +64,10 @@ from pathlib import Path
 from typing import Any
 
 from config.parametros import ParametroAusente, ParametroInvalido, ParametrosDaRodada, carregar
+from config.recorte import DEFINICAO_ATIVO
 from dados.candidatos_perfil import coletar_dimensoes_candidatos
 from dados.coletor_externo import ler_coleta
-from dados.coletor_interno import DefinicaoAtivoDistrito, coletar
+from dados.coletor_interno import coletar
 from dados.registro.conexao import conectar
 from dados.registro.escrita import gravar_rodada_decisao
 from dados.registro.janelas import LIMITACAO_AMOSTRA, historico_para_penalidade
@@ -77,10 +78,9 @@ from entrega.planilha_piloto import escrever_planilha
 from grafo.estado import Estado, EstadoRodada, Fontes
 from grafo.fluxo import construir_grafo
 
-# D-015 fixou a definição de gestor ativo do distrito usada na elegibilidade.
-# Constante nomeada e não argumento de linha de comando: trocá-la muda a regra de
-# decisão, e regra se muda por decisão registrada, não por flag de invocação.
-DEFINICAO_ATIVO = DefinicaoAtivoDistrito.PRODUTIVOS
+# D-015 (definição de gestor ativo do distrito) vive em `config/recorte.py`, porque
+# a medição dos números de referência precisa da MESMA constante e ponto de entrada
+# não deve ser importado por outro. Reexportado aqui para os leitores da sexta.
 
 # O modelo ilustrativo, recusado como entrada real (ver `main`). Num wheel instalado
 # este caminho não existe, e a comparação simplesmente nunca casa — que é o correto:

@@ -77,6 +77,7 @@ jobs:
           uv run python -m executar.segunda --help
           uv run python -m executar.sexta --help
           uv run python -m executar.aprovar --help
+          uv run python -m executar.referencias --help
       # A sexta precisa RECUSAR a rodada quando falta um parâmetro do dono. O alvo é
       # um arquivo que EXISTE e a que falta uma chave: a primeira versão deste passo
       # apontava para um caminho inexistente, que sai 5 pelo ramo de arquivo ilegível
