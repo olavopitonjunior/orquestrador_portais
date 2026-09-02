@@ -14,8 +14,10 @@ from dominio.penalidades import (
     JanelaAnterior,
     Penalidade,
     ciclos_desde_janela_sem_resultado,
+    com_janelas,
     desconto_total,
     descontos_por_penalidade,
+    julgar_janelas,
     penalidades_aplicaveis,
 )
 
@@ -34,6 +36,53 @@ def imovel(**kwargs) -> ImovelPenalizavel:
 
 def janela(atingiu: bool, ciclos: int = 1) -> JanelaAnterior:
     return JanelaAnterior(atingiu_resultado=atingiu, ciclos_desde_encerramento=ciclos)
+
+
+# --- julgar_janelas: o limiar por nível vira booleano, e é INJETADO ------------
+
+
+def test_julga_cada_janela_pela_regua_do_SEU_nivel():
+    """A §6.4 penaliza a janela que "não atingiu o resultado esperado PARA O NÍVEL".
+    Duas janelas com os MESMOS leads podem ter vereditos opostos — é o ponto."""
+    julgadas = julgar_janelas(
+        [("super_destaque", 2, 0), ("destaque", 2, 1)],
+        {"super_destaque": 5, "destaque": 1},
+    )
+    assert [j.atingiu_resultado for j in julgadas] == [False, True]
+    assert [j.ciclos_desde_encerramento for j in julgadas] == [0, 1]
+
+
+def test_limiar_ausente_para_um_nivel_e_ERRO_nao_default():
+    """Cair na régua de outro nível é exatamente o que a §6.4 proíbe ao dizer "para o
+    nível" — e um default aqui seria invisível na planilha."""
+    with pytest.raises(ValueError, match="POR NÍVEL"):
+        julgar_janelas([("super_destaque", 9, 0)], {"destaque": 1})
+
+
+def test_atingir_o_limiar_EXATO_conta_como_resultado():
+    """`>=`, não `>`: o limiar é "o resultado esperado", e alcançá-lo é atingi-lo."""
+    (j,) = julgar_janelas([("destaque", 3, 0)], {"destaque": 3})
+    assert j.atingiu_resultado is True
+
+
+def test_sem_janela_nenhuma_o_resultado_e_vazio():
+    assert julgar_janelas([], {"destaque": 1}) == ()
+
+
+def test_com_janelas_acopla_sem_tocar_o_resto():
+    """O Coletor Interno lê só o Newcore e devolve a lista vazia; o histórico vem do
+    Registro. `com_janelas` é a costura, e não pode mexer em mais nada."""
+    base = imovel(leads_180d=7, alguma_categoria_avaliada=False)
+    j = janela(atingiu=False, ciclos=2)
+    novo = com_janelas(base, [j])
+
+    assert novo.janelas_anteriores == (j,)
+    assert (novo.imovel_id, novo.leads_180d, novo.alguma_categoria_avaliada) == (
+        base.imovel_id,
+        base.leads_180d,
+        base.alguma_categoria_avaliada,
+    )
+    assert base.janelas_anteriores == ()  # o original não é mutado
 
 
 # Fixtures ARBITRÁRIAS de teste — o parâmetro pendente nº 3 (D-004) segue nulo;
@@ -75,7 +124,9 @@ def test_janela_anterior_com_resultado_nao_penaliza():
     assert penalidades_aplicaveis(alvo) == frozenset()
 
 
-def test_uma_janela_sem_resultado_entre_varias_basta():
+def test_a_ULTIMA_janela_sem_resultado_penaliza_ainda_que_haja_anterior_boa():
+    """Sob a regra revogada (`any`), este caso passava por outro motivo — bastava uma
+    falha em qualquer lugar. Agora passa porque a MAIS RECENTE (ciclos=2) falhou."""
     alvo = imovel(
         janelas_anteriores=(janela(atingiu=True, ciclos=5), janela(atingiu=False, ciclos=2))
     )
@@ -109,24 +160,57 @@ def test_as_tres_penalidades_acumulam():
     }
 
 
-# --- janela mais recente dirige o decaimento --------------------------------
+# --- SÓ a última janela é julgada (D-023) ------------------------------------
 
 
-def test_ciclos_vem_da_janela_sem_resultado_mais_recente():
+def test_janela_recente_COM_resultado_limpa_o_historico_ruim():
+    """A decisão do dono: a §6.4 julga a ÚLTIMA exposição, não o histórico inteiro.
+    Sob a regra anterior (`any`), estas duas janelas antigas sem resultado
+    penalizariam para sempre — e com decaimento de razão 1.0, sem nunca esmaecer."""
     alvo = imovel(
         janelas_anteriores=(
             janela(atingiu=False, ciclos=7),
             janela(atingiu=False, ciclos=3),
-            janela(atingiu=True, ciclos=1),  # com resultado não dirige o decaimento
+            janela(atingiu=True, ciclos=1),  # a mais recente ATINGIU
         )
     )
-    assert ciclos_desde_janela_sem_resultado(alvo) == 3
+    assert Penalidade.JANELA_SEM_RESULTADO not in penalidades_aplicaveis(alvo)
+    assert ciclos_desde_janela_sem_resultado(alvo) is None
 
 
-def test_empate_de_ciclos_entre_janelas_sem_resultado():
+def test_janela_recente_SEM_resultado_penaliza_mesmo_com_passado_bom():
+    """A contraprova: o que manda é a última, para os dois lados."""
     alvo = imovel(
-        janelas_anteriores=(janela(atingiu=False, ciclos=2), janela(atingiu=False, ciclos=2))
+        janelas_anteriores=(
+            janela(atingiu=True, ciclos=9),
+            janela(atingiu=False, ciclos=2),  # a mais recente FALHOU
+        )
     )
+    assert Penalidade.JANELA_SEM_RESULTADO in penalidades_aplicaveis(alvo)
+    assert ciclos_desde_janela_sem_resultado(alvo) == 2
+
+
+def test_a_ordem_da_lista_nao_governa_qual_janela_e_a_ultima():
+    """ "Mais recente" é o MENOR `ciclos_desde_encerramento`, não a posição na tupla —
+    a ordem vem do chamador e não pode decidir a regra (invariante 5)."""
+    recentes_primeiro = imovel(
+        janelas_anteriores=(janela(atingiu=True, ciclos=1), janela(atingiu=False, ciclos=5))
+    )
+    antigas_primeiro = imovel(
+        janelas_anteriores=(janela(atingiu=False, ciclos=5), janela(atingiu=True, ciclos=1))
+    )
+    assert penalidades_aplicaveis(recentes_primeiro) == penalidades_aplicaveis(antigas_primeiro)
+    assert Penalidade.JANELA_SEM_RESULTADO not in penalidades_aplicaveis(antigas_primeiro)
+
+
+def test_empate_de_ciclos_a_janela_que_FALHOU_vence():
+    """Duas janelas encerradas no mesmo ciclo é o que a mudança de nível produz
+    (D-021). O desempate é determinístico e conservador: entre duas exposições
+    simultâneas, a §6.4 penaliza a que falhou."""
+    alvo = imovel(
+        janelas_anteriores=(janela(atingiu=True, ciclos=2), janela(atingiu=False, ciclos=2))
+    )
+    assert Penalidade.JANELA_SEM_RESULTADO in penalidades_aplicaveis(alvo)
     assert ciclos_desde_janela_sem_resultado(alvo) == 2
 
 
