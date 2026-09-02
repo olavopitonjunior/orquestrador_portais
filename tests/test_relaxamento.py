@@ -196,3 +196,41 @@ def test_mesma_entrada_mesma_saida():
     lote = [candidato(i, {ORDEM_RELAXAMENTO[i % 3]}, nota=float(i % 5)) for i in range(1, 30)]
     resultados = {relaxar(7, lote) for _ in range(20)}
     assert len(resultados) == 1
+
+
+# --- a UNIÃO contra a cota (invariante 6) ---------------------------------------
+
+
+def test_relaxar_NUNCA_devolve_mais_recuperados_que_o_deficit():
+    """O invariante 6 no destaque vale por CONSTRUÇÃO — `pool[:restante]` corta —, mas
+    até aqui nada o amarrava: nenhum teste comparava o total de recuperados com o
+    déficit pedido, em nenhum arquivo.
+
+    Isso importa porque a lista de destaque ENTREGUE não é `alocacao.destaque`: a
+    planilha emite o ranking mais os recuperados, numerando em continuação
+    (`entrega/planilha_piloto.py`). E o crivo de auditoria confere só
+    `alocacao.destaque` — a união, que é o que vai ao portal, não passa por veto
+    nenhum. Achado do `orchestrator` ao conferir o critério de aceite das cotas: sem
+    esta trava, a evidência do critério é leitura de código, não prova."""
+    for deficit in (0, 1, 3, 7):
+        candidatos = [candidato(i, SO_FOTOS, nota=100.0 - i) for i in range(1, 20)]
+        resultado = relaxar(deficit, candidatos)
+        assert len(resultado.recuperados) == min(deficit, len(candidatos))
+        assert len(resultado.recuperados) <= deficit
+
+
+def test_a_UNIAO_ranking_mais_recuperados_cabe_na_cota():
+    """A propriedade que o critério de aceite das cotas afirma, e que ninguém provava:
+    o que a planilha entrega no destaque é ranking + recuperados, e a soma não pode
+    passar de COTA_DESTAQUE.
+
+    O caso aqui é o do ranking QUASE cheio — cinco vagas de déficit e mais candidatos
+    que vagas —, que é onde o corte precisa morder. O déficit igual à cota inteira,
+    limite superior aceito por `relaxar`, já tem teste próprio acima. *(A versão
+    anterior desta docstring dizia ser o caso da cota inteira; era falso, e o portão
+    o apanhou — o corpo usa déficit 5.)*"""
+    candidatos = [candidato(i, SO_FOTOS) for i in range(1, 12)]
+    ja_no_ranking = COTA_DESTAQUE - 5  # sobra 5 de déficit
+    resultado = relaxar(COTA_DESTAQUE - ja_no_ranking, candidatos)
+    assert ja_no_ranking + len(resultado.recuperados) <= COTA_DESTAQUE
+    assert len(resultado.recuperados) == 5  # encheu o déficit, não passou dele
