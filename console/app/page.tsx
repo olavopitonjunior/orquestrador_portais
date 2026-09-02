@@ -1,6 +1,6 @@
 import { montarAcoes, type Acao } from "@/lib/acoes";
 import { outDirPublico, saudeColeta, type SaudeColeta } from "@/lib/coletor";
-import { PARAMETROS_PENDENTES } from "@/lib/parametros";
+import { PARAMETROS, PARAMETROS_PENDENTES } from "@/lib/parametros";
 import {
   listarRodadas,
   rodadasAguardandoAprovacao,
@@ -123,7 +123,7 @@ export default async function Page() {
       <section className="secao">
         <h2>Parâmetros pendentes</h2>
         <p className="vazio-inline">
-          {PARAMETROS_PENDENTES.length} de 13 aguardam sua decisão — permanecem nulos até você
+          {PARAMETROS_PENDENTES.length} de {PARAMETROS.length} aguardam sua decisão — permanecem nulos até você
           definir (nada é inventado).
         </p>
         <div className="chips">

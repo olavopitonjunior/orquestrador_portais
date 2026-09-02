@@ -1,5 +1,5 @@
-// Os quatorze parâmetros de decisão e seu estado (fonte: CLAUDE.md / D-004 / D-014 /
-// D-017). É DADO DE REFERÊNCIA para o console mostrar o que ainda depende de você —
+// Os quinze parâmetros de decisão e seu estado (fonte: CLAUDE.md / D-004 / D-014 /
+// D-017 / D-022 / D-025). É DADO DE REFERÊNCIA para o console mostrar o que ainda depende de você —
 // os valores nulos permanecem nulos aqui, nada é inventado. Se a tabela do CLAUDE.md
 // mudar, esta lista precisa acompanhar (é a única cópia; a fonte da verdade é o doc).
 
@@ -29,6 +29,11 @@ export const PARAMETROS: Parametro[] = [
   {
     numero: 14,
     titulo: "Resultado esperado por nível para a janela não ser penalizada (D-022)",
+    estado: "pendente",
+  },
+  {
+    numero: 15,
+    titulo: 'Magnitude da "alteração relevante de preço" que dispara a saída da carga (D-025)',
     estado: "pendente",
   },
 ];

@@ -20,7 +20,7 @@ Você é o revisor de regras do sistema de curadoria da vitrine de destaques. Se
 
 ## Parâmetros pendentes
 
-Treze parâmetros estão nulos (lista consolidada pela D-004 no CLAUDE.md). Se encontrar qualquer valor concreto preenchendo um deles no código, é erro grave: nenhum pode ser inventado.
+Catorze parâmetros estão nulos, de quinze (lista consolidada pela D-004 no CLAUDE.md). Se encontrar qualquer valor concreto preenchendo um deles no código, é erro grave: nenhum pode ser inventado.
 
 ## Saída
 

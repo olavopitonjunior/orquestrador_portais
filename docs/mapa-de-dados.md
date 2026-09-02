@@ -261,3 +261,28 @@ desprezível. `FT_Leads` é atualizada praticamente em tempo real (não é snaps
 
 Latência distribuição → 1º atendimento (30d, n = 4.398): **82,2% em até 1 hora** (a Spec diz
 85%), 98,5% em 24 h, mediana 74 s. Mesma ordem de grandeza — a afirmação da Spec se sustenta.
+
+## Fontes dos gatilhos da ROTAÇÃO (Spec §6.7 — medição 02/09/2026)
+
+Levantamento somente-leitura feito antes de qualquer implementação depender destes campos. Consulte-o antes de escrever a rotação: metade das colunas com o nome mais óbvio é armadilha.
+
+### Duas tabelas de histórico que resolvem dois gatilhos — e não estavam neste mapa
+
+- **`newcore.realtypricehistory`** — 270.774 linhas, 134.597 imóveis, viva (máx. 02/09/2026). Colunas: `Realty_Id`, **`PriceBefore`**, **`PriceAfter`**, `UpdatedByUser_Id`, `UserHost`, **`CreatedAt` (datetime, indexado)**. O par antes/depois vem na MESMA linha: a variação é calculável sem snapshot próprio. Na semana medida, 664 alterações, nenhuma sem base de comparação, variação média absoluta de 10,57%.
+- **`newcore.realtystatushistory_new`** — 1.342.962 linhas, viva em tempo real. `Realty_Id`, `StatusBefore`, `StatusAfter`, `CreatedAt`, todas indexadas. É a trilha de auditoria de status do imóvel; a despublicação é `StatusBefore=1 → StatusAfter=3`.
+  **Cuidado com a irmã:** `newcore.realtystatushistory` (sem `_new`) está **MORTA** desde 30/10/2019, e nem tem as colunas de transição. Nomes quase idênticos.
+
+### Armadilhas medidas
+
+- **`realties.ReservedAt` NÃO é data de reserva.** Preenchida em **99,90% dos imóveis ativos** (48.831 de 48.881), `MAX` igual ao instante da consulta, coincide com `CreatedAt` em 40,3% das linhas. É carimbo de criação/toque. Usá-la pelo nome marca quase todo o estoque como reservado.
+- **`FT_RealtyRelation.RealtyStatus` é BINÁRIO**: `Ativo` 48.881, `Removido` 356.172. Sem `NULL`, sem terceiro valor. Não distingue venda, reserva ou despublicação entre si. `newcore.publishstatus` tem 51 status, mas o espelho usa dois.
+- **A venda não move o status.** **24,69% (40 de 162) dos IMÓVEIS distintos com venda assinada em 180 dias seguem `Ativo`** — medição de 02/09, janela móvel; a D-013 mediu 177 ofertas / 174 imóveis em 28/08, e a unidade aqui é imóvel, não oferta. O gatilho de venda tem de ser `FT_LeadsOffers.SignedAt` (`date`), nunca status.
+- **O espelho `FT_RealtyRelation` atrasa mais de 24 h** contra o transacional: das 82 remoções das últimas 24 h, **70 ainda constavam `Ativo` (85,4%)**. `MAX(RealtyUpdate)` 07:30 vs `MAX(realties.UpdatedAt)` 18:38. Atinge a coleta interna e a elegibilidade, não só a rotação.
+- **`realties.RemovedAt` só é gravada desde 17/07/2026** — 1,29% dos removidos têm data, sem retroativo. Para histórico de remoção, use `realtystatushistory_new`.
+- **`realties.Reason_Id` → `newcore.reasons`** distingue o motivo da remoção (vendido por mim/por outrem, desistência, suspensão), mas é **26,9% nulo** em 90 dias, e "vendido por outrem" (perda de exclusividade) não é venda Newcore — os conjuntos não conciliam com `SignedAt`.
+- **`Ficha Reservada` (status 7) é pré-publicação, não reserva de anúncio vivo**: flui 7→1 (2.099 vezes em 30 dias), nunca o contrário. `Ativo → Vendido` (19) ocorreu **uma vez** em toda a história.
+- **`FT_LeadsOffers.AcceptedAt`** (datetime) é o único proxy disponível para "reserva": proposta **aceita, ainda não assinada e não cancelada** — hoje **157 imóveis ativos**. É proxy declarado, não o fato; adotá-lo é decisão do dono ([P-21]).
+
+### Deriva do universo ativo
+
+Ativos em 02/09: **48.881**, contra 48.985 em 31/08 e 48.989 em 29/08. O total da tabela (`Ativo` + `Removido` = **405.053**) também subiu contra os 404.680 do cabeçalho deste mapa — 373 linhas em cinco dias, crescimento normal do estoque. Ordem de grandeza compatível; nenhuma divergência material com o restante deste mapa.
