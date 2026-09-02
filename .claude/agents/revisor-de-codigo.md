@@ -13,7 +13,7 @@ O caminho elegibilidade → ranking → penalidades → alocação → relaxamen
 - Qualquer chamada a modelo de linguagem, direta ou indireta, em `src/dominio/`.
 - Fontes de não-determinismo: `random` sem semente fixa, ordenação instável ou sem critério de desempate total (dois imóveis com a mesma nota precisam de desempate determinístico), iteração sobre estruturas sem ordem garantida, dependência de horário corrente dentro do cálculo, floats acumulados em ordem variável.
 - Efeitos colaterais em funções de domínio: I/O, escrita, leitura de ambiente.
-- Parâmetro pendente preenchido com valor inventado (os onze nulos do CLAUDE.md, consolidação D-004).
+- Parâmetro pendente preenchido com valor inventado (os treze nulos do CLAUDE.md, consolidação D-004).
 
 ## LangGraph
 
