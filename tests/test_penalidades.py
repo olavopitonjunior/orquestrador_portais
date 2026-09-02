@@ -17,8 +17,10 @@ from dominio.penalidades import (
     com_janelas,
     desconto_total,
     descontos_por_penalidade,
+    eleger_ultima_janela,
     julgar_janelas,
     penalidades_aplicaveis,
+    ultima_janela,
 )
 
 
@@ -367,3 +369,47 @@ def test_descontos_por_penalidade_aplica_decaimento_na_janela():
     alvo = imovel(janelas_anteriores=(janela(atingiu=False),))
     breakdown = descontos_por_penalidade(alvo, INTENSIDADES, lambda _: 0.5)
     assert breakdown[Penalidade.JANELA_SEM_RESULTADO] == 5.0  # 10.0 × 0.5
+
+
+# --- a eleição da última janela, compartilhada com a ENTREGA ---------------------
+#
+# Estes três moram aqui, e não no teste da planilha, porque guardam funções do
+# DOMÍNIO. Nasceram no arquivo da entrega, e o portão apanhou a consequência:
+# quem refatorasse `ultima_janela` e rodasse só `pytest tests/test_penalidades.py`
+# veria verde, com a trava de equivalência guardada em outro arquivo.
+
+LIMIAR_NIVEL = {"destaque": 1, "super_destaque": 3}
+
+
+def test_a_eleicao_bate_com_a_da_PENALIDADE_no_empate():
+    """A trava central, e a primeira versão dela não trancava nada: usava ciclos
+    distintos, então o desempate — a única parte onde duas regras podem divergir —
+    nunca era exercido, e comparava `ciclos`, a única coordenada em que elas não
+    podem diferir.
+
+    O contraexemplo é dos portões, e é o que a regra paralela errava: com o limiar
+    POR NÍVEL, a janela de MENOS leads pode ser justamente a que ATINGIU. Aqui as
+    duas empatam em ciclos; a de super destaque falhou (2 < 3) e a de destaque
+    atingiu (1 >= 1). A penalidade elege a que falhou, e a eleição crua tem de
+    eleger a mesma — senão a planilha diria "atingiu" ao lado de um desconto
+    não-nulo, na mesma linha."""
+    cruas = [("super_destaque", 2, 4), ("destaque", 1, 4)]
+    assert eleger_ultima_janela(cruas, LIMIAR_NIVEL) == ("super_destaque", 2, 4)
+
+    julgada = ultima_janela(imovel(janelas_anteriores=julgar_janelas(cruas, LIMIAR_NIVEL)))
+    assert julgada is not None and julgada.atingiu_resultado is False
+
+
+def test_a_eleicao_sem_limiar_nao_tem_com_o_que_divergir():
+    """Sem julgamento não há veredito para contradizer: elege pelo menor ciclo e
+    desempata de forma determinística, só para a função ser total."""
+    cruas = [("super_destaque", 2, 4), ("destaque", 1, 4)]
+    assert eleger_ultima_janela(cruas, None) == ("destaque", 1, 4)
+    assert eleger_ultima_janela(list(reversed(cruas)), None) == ("destaque", 1, 4)
+
+
+def test_eleger_ultima_janela_ignora_a_ORDEM_da_lista():
+    """A ordem vem do chamador e não pode governar a regra (invariante 5)."""
+    janelas = [("destaque", 2, 4), ("super_destaque", 7, 1), ("destaque", 0, 9)]
+    assert eleger_ultima_janela(janelas) == eleger_ultima_janela(list(reversed(janelas)))
+    assert eleger_ultima_janela(janelas)[2] == 1

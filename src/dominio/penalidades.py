@@ -235,6 +235,53 @@ def desconto_total(
 type JanelaCrua = tuple[str, int, int]
 
 
+# Índices da JanelaCrua, nomeados: a tupla é posicional, e transpor `leads` com
+# `ciclos` passa pelo mypy sem reclamar. (O comentário anterior remetia a uma "dívida
+# registrada no topo do módulo" que não existe em lugar nenhum — apontava para o
+# vazio. Um NamedTuple resolveria de verdade; fica como fatia própria.)
+_LEADS, _CICLOS = 1, 2
+
+
+def eleger_ultima_janela(
+    cruas: Sequence[JanelaCrua], resultado_esperado: Mapping[str, int] | None = None
+) -> JanelaCrua | None:
+    """A janela encerrada MAIS RECENTE, devolvida CRUA — a mesma que a §6.4 julga.
+
+    Existe para a entrega poder dizer ao dono *qual* foi a última janela, inclusive
+    quando o limiar do nº 14 é nulo e nada foi julgado. Sem ela, a planilha só teria
+    `janelas_anteriores`, que fica vazio justamente nesse caso, e afirmaria "sem
+    janela anterior" sobre imóvel que TEM janela — o que os critérios de aceite do
+    PRD proíbem.
+
+    **A equivalência com `ultima_janela` é por CONSTRUÇÃO, não por afirmação.** Havendo
+    limiar, esta função julga com `julgar_janelas` e elege com a MESMA chave e sobre a
+    MESMA ordem que `ultima_janela` usa — logo escolhe o mesmo índice, empates
+    inclusive. Uma primeira versão tinha regra paralela (`(ciclos, leads)`) e o
+    docstring jurava que era idêntica: era falso, e os dois portões acharam o
+    contraexemplo. Como o limiar é POR NÍVEL, "menos leads" não é o análogo cru de
+    "não atingiu" — entre uma janela de super destaque com 2 leads (limiar 3, falhou)
+    e uma de destaque com 1 lead (limiar 1, atingiu), a regra paralela elegia a
+    SEGUNDA e a penalidade cobrava a PRIMEIRA. A planilha diria "atingiu" ao lado de
+    um desconto não-nulo, na mesma linha.
+
+    Sem limiar não há julgamento e nada com que divergir: elege pelo menor ciclo,
+    desempatando pela de menos leads só para a função ser total e não depender da
+    ordem da lista (invariante 5).
+    """
+    if not cruas:
+        return None
+    if resultado_esperado is None:
+        return min(cruas, key=lambda j: (j[_CICLOS], j[_LEADS]))
+    julgadas = julgar_janelas(cruas, resultado_esperado)
+    # `julgar_janelas` preserva a ordem, então `min` com a chave de `ultima_janela`
+    # sobre os pares elege o mesmo elemento que ela elegeria — inclusive o desempate
+    # por "primeiro da lista", que `min` faz nos dois lados.
+    return min(
+        zip(julgadas, cruas, strict=True),
+        key=lambda par: (par[0].ciclos_desde_encerramento, par[0].atingiu_resultado),
+    )[1]
+
+
 def julgar_janelas(
     cruas: Sequence[JanelaCrua], resultado_esperado: Mapping[str, int]
 ) -> tuple[JanelaAnterior, ...]:
