@@ -577,6 +577,29 @@ Isso **não é pendência do dono** e não entra na fila dele: é lacuna de espe
 
 Separadamente, o item do cofre **não tem `POSTGRES_URL`**, embora o `.env.tmpl` a declare — logo `op inject -i .env.tmpl -o .env` não produz um `.env` completo, e nada que dependa do Registro (aprovação, janelas, console) roda na máquina do gestor.
 
-**O que está bloqueado:** a medição contra a base, e portanto o passo 5 da skill `verificar-contra-spec`. A ferramenta existe e é testada, mas a execução real fica pendente. Também impede repetir a contagem noutro dia, que é a condição declarada para incorporar a deriva aos números de referência.
+**O que está bloqueado — atualizado em 2026-09-02, depois de o dono destravar o acesso.** A metade do MySQL caiu: a credencial existe e funciona (veio da configuração do MCP de MySQL, não do cofre), e **a medição contra a base foi executada** — a ferramenta rodou ponta a ponta e reproduziu a deriva por caminho independente do portão de números (7.803 elegíveis contra 7.801, duas horas antes). Isso fechou o risco residual de a ferramenta nunca ter tocado o banco.
+
+**O que permanece:** o item do cofre continua errado. O campo `NEWCORE_MYSQL_PASSWORD` guarda uma **linha de comando** (uma referência a outro item), não a senha — então `op inject -i .env.tmpl -o .env` não produz um `.env` utilizável. E `POSTGRES_URL` segue **ausente** do item, embora o template a declare, então nada ligado ao Registro roda sem rodeio. Enquanto isso durar, a credencial de produção vive em texto claro em dois arquivos de configuração de MCP, contra a convenção do próprio projeto (`${VAR}` do ambiente, nunca no arquivo) — três cópias e nenhuma fonte da verdade.
+
+A recontagem noutro dia, que a incorporação da deriva exige, deixou de estar bloqueada por credencial e passou a ser só questão de calendário.
 
 **Ato que só o dono pratica.** Não é decisão nem defeito de código: é conserto de cofre e de acesso.
+
+## A checklist de critérios de aceite do PRD passa a ser mantida viva (2026-09-02)
+
+**Decisão do dono**, tomada nesta data: as caixas do PRD deixam de ser lista morta e passam a refletir o estado real. Até aqui **nenhuma das 31 tinha sido marcada**, inclusive as de critérios entregues há semanas — o que fazia a checklist não significar nada, nem "pronto" nem "não pronto".
+
+**Quem marca, quando, com que prova.** Marca quem entrega a fatia, no mesmo PR, **só depois de conferência item a item com evidência de arquivo e linha**, feita pelo portão `revisor-de-regra`. Marcar é afirmar "pronto" no documento do topo da hierarquia; sem evidência verificável, não se marca.
+
+**Regra que a primeira conferência estabeleceu, e que vale daqui em diante: critério que depende de parâmetro pendente NULO não está cumprido**, mesmo com a fiação inteira pronta. Mecanismo ligado e inerte não é critério atendido — é a diferença entre a lista sair e a lista perseguir o objetivo que o PRD lhe atribui. Foi o que reprovou os itens de ordenação por valor esperado e por probabilidade de lead: os quatro fatores estão fiados e injetados, mas os pesos são o parâmetro nº 12, nulo, e ninguém pode dizer que a ordem persegue o objetivo enquanto o dono não os declarar.
+
+### Por que `:478` é marcado e `:500` não — a regra do parâmetro nulo aplicada
+
+Os dois parecem simétricos e não são, e a distinção precisa estar escrita: sem ela, quem aplicar a regra vai ler as duas marcações lado a lado e concluir que uma está errada. (O portão apanhou exatamente isso.)
+
+**`:500` exige um COMPORTAMENTO do ranking** — "não recebem peso pleno". Quem garante esse comportamento é o desconto de fragilidade, tunável provisório sem valor adotado ([P-16]); a faixa aceita `1.0`, que é peso pleno. Enquanto ninguém adotar o valor, o comportamento não está garantido. **Não cumprido**, pela regra.
+
+**`:478` exige uma APRESENTAÇÃO** — "cada imóvel apresenta ... o resultado da sua última janela, quando houver". A coluna apresenta o resultado: o nível da exposição, os leads que ela acumulou e há quantos ciclos encerrou. Isso É o resultado da janela. O que o parâmetro nº 14 governa é o **veredito sobre** esse resultado — se atingiu ou não o esperado para o nível —, que é julgamento, não resultado, e que a §6.4 pede noutro lugar. A coluna **rotula a ausência do veredito** em vez de fingi-lo, o que é o oposto de mecanismo inerte. **Cumprido.**
+
+A régua geral continua valendo sem emenda: critério que depende de parâmetro nulo não é cumprido. O que esta seção fixa é *do que* `:478` depende — e não é do nº 14.
+

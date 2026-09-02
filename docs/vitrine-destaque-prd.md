@@ -475,8 +475,8 @@ O acumulado da etapa 5 alimenta a penalidade da rodada de sexta seguinte.
 **Como** gestor da vitrine **quero** receber as duas listas com o motivo de cada imóvel ter entrado **para** aprovar com base em evidência.
 
 - [ ] As listas respeitam as cotas de 475 super destaques e 6.495 destaques.
-- [ ] Cada imóvel apresenta o critério que o classificou, o perfil com que casa, a evidência desse perfil e o resultado da sua última janela, quando houver.
-- [ ] Imóveis sem janela anterior são identificados como tal, sem penalização.
+- [x] Cada imóvel apresenta o critério que o classificou, o perfil com que casa, a evidência desse perfil e o resultado da sua última janela, quando houver.
+- [x] Imóveis sem janela anterior são identificados como tal, sem penalização.
 - [ ] A remoção de um imóvel libera a posição para o próximo elegível do mesmo nível.
 - [ ] A rodada executa em horário agendado.
 - [ ] Variação de volume, idade do dado externo e estado degradado aparecem de forma visível.

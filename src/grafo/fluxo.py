@@ -33,7 +33,7 @@ from langgraph.graph import END, START, StateGraph
 
 from dados.coletor_externo import ParametrosExterno, avaliar_coleta
 from dominio.auditoria import ItemAuditavel, auditar
-from dominio.penalidades import com_janelas, julgar_janelas
+from dominio.penalidades import JanelaCrua, com_janelas, julgar_janelas
 from dominio.perfil import perfis_de_conversao
 from grafo.estado import Estado, EstadoRodada, Fontes, estado_final
 from piloto.decisao import ParametrosDecisao, decidir
@@ -142,6 +142,13 @@ def no_decisor(
     """
     penalizaveis = estado["penalizaveis"]
     janelas_lidas: int | None = None  # None = não consultado
+    # O histórico CRU de janelas por imóvel, independente do julgamento, para a
+    # entrega poder dizer QUAL foi a última janela mesmo com o limiar do nº 14 nulo.
+    # `None` é um SINAL, não vazio: quer dizer histórico não consultado. Um sinal só
+    # em vez de dois (mapa + contador) porque a combinação incoerente — mapa vazio
+    # com "consultado" — era exprimível e produzia exatamente a afirmação falsa que
+    # esta coluna existe para eliminar. Não entra em `decidir`: viaja ao lado.
+    historico_janelas: dict[int, tuple[JanelaCrua, ...]] | None = None
     degradacoes: list[str] = []
     pronto_janelas = fontes.coletar_janelas is not None
     if fontes.coletar_janelas is not None:
@@ -161,6 +168,7 @@ def no_decisor(
             )
         else:
             janelas_lidas = sum(len(js) for js in cruas.values())
+            historico_janelas = dict(cruas)
             if resultado_esperado is not None:
                 penalizaveis = {
                     imovel_id: com_janelas(
@@ -180,6 +188,7 @@ def no_decisor(
     return {
         "resultado": resultado,
         "janelas_lidas": janelas_lidas,
+        "historico_janelas": historico_janelas,
         # `penalizaveis` volta ao estado JULGADO: era rebindado só localmente, e o
         # estado guardava a versão sem janelas — divergente da entrada que `decidir`
         # de fato consumiu. Com o checkpointer no Postgres, retomar depois do Decisor

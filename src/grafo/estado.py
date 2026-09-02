@@ -80,6 +80,10 @@ class EstadoRodada(TypedDict, total=False):
     # vezes. Junto com o limiar nulo, são TRÊS causas distintas para a mesma coluna
     # 0,0, e a planilha precisa dizer qual.
     janelas_lidas: int | None
+    # Histórico CRU de janelas por imóvel, sem julgamento — insumo da coluna que o
+    # PRD exige. `None` = NÃO consultado; dict vazio = consultado e sem janela. São
+    # estados diferentes, e um sinal só impede a combinação incoerente.
+    historico_janelas: dict[int, tuple[JanelaCrua, ...]] | None
     motivo_aborto: str | None
 
 

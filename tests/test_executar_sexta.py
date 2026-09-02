@@ -11,6 +11,7 @@ apanhada pelo crivo não sai com o mesmo código de "não havia estoque".
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -527,3 +528,81 @@ def test_notas_trazem_data_e_posicoes_preenchidas(parametros):
     )
     assert notas[0] == "DATA DE REFERÊNCIA DA RODADA: 2026-09-04"
     assert any("preenchidas: 6970" in n for n in notas)
+
+
+# --- a fiação da coluna da última janela ----------------------------------------
+
+
+@pytest.fixture
+def conexao_falsa(monkeypatch):
+    """Registro em memória: a fatia da coluna não testa persistência."""
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def transaction(self):
+            return self
+
+    monkeypatch.setattr(mod, "conectar", lambda: _Conn())
+    monkeypatch.setattr(mod, "gravar_rodada_decisao", lambda *a, **k: 1)
+
+
+def _capturar_planilha(monkeypatch):
+    """Troca `escrever_planilha` por um espião que guarda os kwargs.
+
+    Existe porque a fiação do runner era 0% coberta: os testes monkeypatchavam com
+    `lambda *a, **k: []` e nunca olhavam os argumentos. As duas linhas que decidem o
+    que a coluna da última janela vê passavam por mutação sem morder.
+    """
+    vistos: dict = {}
+    monkeypatch.setattr(mod, "escrever_planilha", lambda *a, **k: vistos.update(k) or [])
+    return vistos
+
+
+def _grafo_completo(final_extra):
+    resultado = _resultado_falso()
+    base = {"estado": Estado.COMPLETA, "resultado": resultado, "prontos": {}, **final_extra}
+    return _grafo_que_devolve(base)
+
+
+def test_registro_fora_faz_a_planilha_receber_HISTORICO_NONE(
+    tmp_path, monkeypatch, parametros, conexao_falsa
+):
+    """O caso que a fatia existe para impedir, no único ponto onde ele é fiado de
+    verdade. Rodada degradada: o histórico não foi consultado. Se o runner passasse
+    um dict vazio, a planilha o leria como "consultado" e escreveria "sem janela
+    anterior" para o estoque INTEIRO — a afirmação falsa que o critério de aceite do
+    PRD proíbe."""
+    vistos = _capturar_planilha(monkeypatch)
+    monkeypatch.setattr(
+        mod, "construir_grafo", _grafo_completo({"janelas_lidas": None, "historico_janelas": None})
+    )
+    mod.executar(tmp_path, parametros, hoje=HOJE)
+    assert vistos["historico_janelas"] is None
+
+
+def test_com_historico_a_planilha_recebe_o_dict_e_o_limiar(
+    tmp_path, monkeypatch, parametros, conexao_falsa
+):
+    """A contraprova: sem ela, um runner que passasse `None` sempre satisfaria o
+    teste acima e a coluna diria "não consultado" para sempre."""
+    vistos = _capturar_planilha(monkeypatch)
+    historico = {1: (("destaque", 0, 2),)}
+    monkeypatch.setattr(
+        mod,
+        "construir_grafo",
+        _grafo_completo({"janelas_lidas": 1, "historico_janelas": historico}),
+    )
+    # O limiar precisa ser NÃO-nulo aqui. Com o nº 14 pendente no modelo, o valor é
+    # None, e asserir `is None` passaria mesmo com o runner nunca repassando nada —
+    # a mutação sobrevivia por vacuidade.
+    com_limiar = replace(parametros, resultado_esperado={"destaque": 1, "super_destaque": 3})
+    mod.executar(tmp_path, com_limiar, hoje=HOJE)
+    assert vistos["historico_janelas"] == historico
+    # e o limiar acompanha: sem ele a coluna declararia pendência de parâmetro para
+    # sempre, inclusive depois de o dono definir o nº 14
+    assert vistos["resultado_esperado"] == {"destaque": 1, "super_destaque": 3}
