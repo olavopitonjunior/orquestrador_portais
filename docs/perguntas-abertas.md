@@ -44,6 +44,7 @@ Estes são os mais baratos em CÓDIGO — nenhum precisa de linha nova. Mas aten
 
 | Id | Pergunta | Bloqueado hoje | Quando você responder |
 |---|---|---|---|
+| **[P-19]** | O critério de aceite "a hipótese de valor esperado é testada contra vendas e o resultado é reportado" permanece? Se sim, o que "testar a hipótese" entrega? | Não existe em lugar nenhum — nem código, nem spec, nem esta fila. Não é parâmetro faltando: é trabalho nunca especificado. | Define escopo; hoje é critério invisível, que ninguém vê para decidir se ainda vale. |
 | **[P-04]** | Quando você reprova uma lista, o que acontece com a semana — a sexta seguinte reprocessa, e a lista some da fila? | O comando de reprovar **não existe**: o banco não distingue "o dono disse não" de "ninguém olhou". Hoje o silêncio já recusa na prática; falta poder registrar a recusa. | Migração de esquema + expor o comando. Sua resposta define a semântica. |
 | **[P-05]** | O carimbo de aprovação marca quando você aceitou a lista, ou quando a carga foi aplicada no portal? | O campo é único e serve aos dois usos. Declarar a aplicação real apaga do Registro o instante do aceite — e o Registro é a fonte da verdade. | Uma saída pede coluna nova; a outra, emenda à D-001. |
 | **[P-03]** | Uma limitação de fiação deve fazer a rodada sair como DEGRADADA, ou só ir declarada na planilha? | Hoje vai à planilha e ao motivo gravado, mas não muda o estado. O argumento que sustentava o "não" era temporal e caiu: produtor e consumidor de janelas já existem. | Mudança pequena de fiação. |
@@ -52,6 +53,7 @@ Estes são os mais baratos em CÓDIGO — nenhum precisa de linha nova. Mas aten
 | **[P-07]** | O imóvel que nunca sai da carga nunca tem janela encerrada, logo nunca é penalizado — o caso que abre o PRD é justamente o que escapa. Está certo? | Nada trava, mas o alcance da penalidade encolheu depois da D-023. | "Está certo" = só registro. Alcançar o permanente = muda regra. |
 | **[P-06]** | A aprovação tácita deve guardar quem a invocou, ou basta gravar "tácita"? | Enquanto o prazo for nulo, a tácita é uma afirmação humana **sem autor** no Registro. | A coluna já existe; guardar o autor é mudança pequena. |
 | **[P-08]** | Um lead sem tratamento que tem corretor mas não tem embaixador conta como "com responsável"? | O "pronto" do Monitor olha só o corretor; o PRD fala em corretor **e** gestor de distrito. A segunda pode dar pronta com leads que ninguém do nível distrital responde. | Mudança pequena no predicado — mas é regra, não código. |
+| **[P-18]** | A linha :490 do PRD diz "nove regras" onde as D-002/D-003 fixaram oito. Autoriza reescrevê-la? | Nada. É higiene documental: o código está fiel às decisões, e o projeto já lê os documentos através delas. **Não destrava marcação** — :490 segue em aberto por outra razão, que a reescrita não resolve: sob o relaxamento, imóveis fora de até cinco regras entram no destaque. | O texto do PRD passa a dizer o que as decisões dizem. |
 
 ## 4. Fatos que só você tem, e atos que só você pratica
 

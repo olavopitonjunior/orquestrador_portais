@@ -474,7 +474,7 @@ O acumulado da etapa 5 alimenta a penalidade da rodada de sexta seguinte.
 
 **Como** gestor da vitrine **quero** receber as duas listas com o motivo de cada imóvel ter entrado **para** aprovar com base em evidência.
 
-- [ ] As listas respeitam as cotas de 475 super destaques e 6.495 destaques.
+- [x] As listas respeitam as cotas de 475 super destaques e 6.495 destaques.
 - [x] Cada imóvel apresenta o critério que o classificou, o perfil com que casa, a evidência desse perfil e o resultado da sua última janela, quando houver.
 - [x] Imóveis sem janela anterior são identificados como tal, sem penalização.
 - [ ] A remoção de um imóvel libera a posição para o próximo elegível do mesmo nível.
@@ -485,8 +485,8 @@ O acumulado da etapa 5 alimenta a penalidade da rodada de sexta seguinte.
 
 **Como** gestor da vitrine **quero** que imóveis inviáveis sejam eliminados antes do ranking **para** que a posição não seja gasta com imóvel que não converte por motivo conhecido.
 
-- [ ] O corte é binário e não admite compensação.
-- [ ] Cada exclusão registra o motivo.
+- [x] O corte é binário e não admite compensação.
+- [x] Cada exclusão registra o motivo.
 - [ ] Imóvel fora de qualquer uma das nove regras não entra.
 - [ ] Imóvel vendido, reservado ou removido sai imediatamente, fora do ciclo.
 
@@ -494,9 +494,9 @@ O acumulado da etapa 5 alimenta a penalidade da rodada de sexta seguinte.
 
 **Como** gestor da vitrine **quero** saber quais características convertem **e** quanta evidência sustenta cada achado **para** não priorizar com base em coincidência.
 
-- [ ] A análise parte das vendas assinadas dos últimos seis meses.
-- [ ] O perfil mede uma ou duas dimensões por vez, nunca as cinco simultaneamente.
-- [ ] Cada resultado informa o número de vendas que o sustenta.
+- [x] A análise parte das vendas assinadas dos últimos seis meses.
+- [x] O perfil mede uma ou duas dimensões por vez, nunca as cinco simultaneamente.
+- [x] Cada resultado informa o número de vendas que o sustenta.
 - [ ] Resultados abaixo da evidência mínima são declarados frágeis e não recebem peso pleno.
 - [ ] A hipótese de valor esperado é testada contra vendas e o resultado é reportado.
 
@@ -513,22 +513,22 @@ O acumulado da etapa 5 alimenta a penalidade da rodada de sexta seguinte.
 
 **Como** gestor da vitrine **quero** que o sistema ceda critério de forma controlada quando faltar imóvel **para** aproveitar posições já pagas.
 
-- [ ] O relaxamento se aplica apenas às posições de destaque.
-- [ ] As posições de super destaque nunca relaxam.
-- [ ] A ordem de cedência é fotos, cadastro, atualização, gestor e distrito.
-- [ ] Cada regra relaxada é registrada com a quantidade de posições que dependeram dela.
-- [ ] Se ainda faltar imóvel, a planilha informa quantas posições ficaram vazias.
+- [x] O relaxamento se aplica apenas às posições de destaque.
+- [x] As posições de super destaque nunca relaxam.
+- [x] A ordem de cedência é fotos, cadastro, atualização, gestor e distrito.
+- [x] Cada regra relaxada é registrada com a quantidade de posições que dependeram dela.
+- [x] Se ainda faltar imóvel, a planilha informa quantas posições ficaram vazias.
 
 ### História 6: medir o que a carga produziu e cobrar o padrão
 
 **Como** gestor da vitrine **quero** um relatório na segunda-feira **para** saber o que a carga de sexta produziu e quem deixou lead morrer.
 
-- [ ] O relatório cobre os leads entrados desde a carga de sexta.
-- [ ] Identifica os leads originados de imóveis em destaque e super destaque a partir da planilha aprovada vigente.
-- [ ] Lista os leads que não tiveram atendimento nem contato registrado, com corretor e gestor de distrito nomeados.
-- [ ] Lista todos os imóveis em destaque e super destaque com a quantidade de leads que cada um gerou, inclusive os que geraram zero.
-- [ ] Nenhuma notificação é enviada diretamente a corretor ou gestor de distrito.
-- [ ] Não existe alerta diário.
+- [x] O relatório cobre os leads entrados desde a carga de sexta.
+- [x] Identifica os leads originados de imóveis em destaque e super destaque a partir da planilha aprovada vigente.
+- [x] Lista os leads que não tiveram atendimento nem contato registrado, com corretor e gestor de distrito nomeados.
+- [x] Lista todos os imóveis em destaque e super destaque com a quantidade de leads que cada um gerou, inclusive os que geraram zero.
+- [x] Nenhuma notificação é enviada diretamente a corretor ou gestor de distrito.
+- [x] Não existe alerta diário.
 - [ ] A rodada de segunda executa em horário agendado e independe da raspagem.
 
 ---
