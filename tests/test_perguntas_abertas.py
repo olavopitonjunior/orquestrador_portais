@@ -19,7 +19,7 @@ FILA = RAIZ / "docs" / "perguntas-abertas.md"
 DECISOES = RAIZ / "docs" / "decisoes.md"
 CLAUDE_MD = RAIZ / "CLAUDE.md"
 
-_P = re.compile(r"\[(P-\d{2})\]")
+_P = re.compile(r"\[(P-\d{2,})\]")  # `{2,}` para não parar de casar depois de P-99
 # Linha da tabela de parâmetros do CLAUDE.md: `| 14 | Nome do parâmetro | valor |`
 _PARAMETRO = re.compile(r"^\|\s*(\d{1,2})\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$", re.M)
 # Como a fila cita um parâmetro: `**nº 14** — nome`
@@ -28,6 +28,23 @@ _CITADO = re.compile(r"\*\*nº (\d{1,2})\*\*")
 
 def _ids(caminho: Path) -> set[str]:
     return set(_P.findall(caminho.read_text(encoding="utf-8")))
+
+
+def _citados(caminho: Path = FILA) -> set[int]:
+    """Os parâmetros que a fila cobra, COM a contraprova embutida.
+
+    A garantia precisa morar aqui, não num teste vizinho. Enquanto ela era só um
+    `assert citados` de um dos três testes que usam esta regex, os outros dois
+    passavam vazios se `_CITADO` deixasse de casar — e o modo de deixar de casar é
+    banal: alguém estende o negrito ao nome do parâmetro ao "arrumar a tabela". O
+    pior deles é o que impede a fila de cobrar o que já foi resolvido. Verificado:
+    com o negrito estendido, ele passava guardando nada."""
+    citados = {int(n) for n in _CITADO.findall(caminho.read_text(encoding="utf-8"))}
+    assert citados, (
+        "nenhuma citação `**nº N**` encontrada na fila — a regex parou de casar e "
+        "todo o casamento com a tabela de parâmetros estaria vazio"
+    )
+    return citados
 
 
 def test_toda_pendencia_registrada_tem_linha_na_fila():
@@ -62,8 +79,9 @@ def _tabela_de_parametros() -> dict[int, tuple[str, str]]:
     texto = CLAUDE_MD.read_text(encoding="utf-8")
     return {
         int(n): (nome, valor)
+        # A regex já exige dígito na 1ª célula, e o cabeçalho real (`| # | Parâmetro |`)
+        # não casa — não há filtro de cabeçalho aqui porque ele seria código morto.
         for n, nome, valor in _PARAMETRO.findall(texto)
-        if n.isdigit() and nome != "Parâmetro"
     }
 
 
@@ -71,9 +89,7 @@ def test_a_fila_so_cita_parametro_que_existe_na_tabela():
     """A tabela do CLAUDE.md é a fonte da verdade dos parâmetros. Citar um número que
     não existe lá é apontar para o vazio."""
     tabela = _tabela_de_parametros()
-    citados = {int(n) for n in _CITADO.findall(FILA.read_text(encoding="utf-8"))}
-    assert citados, "a fila deveria citar parâmetros"
-    ausentes = citados - set(tabela)
+    ausentes = _citados() - set(tabela)
     assert not ausentes, f"a fila cita parâmetros inexistentes na tabela: {sorted(ausentes)}"
 
 
@@ -81,8 +97,9 @@ def test_a_fila_so_cobra_parametro_que_continua_NULO():
     """A pior falha possível deste documento: mandar o dono decidir o que ele já
     decidiu. O nº 1 foi resolvido pela D-014 e não pode reaparecer na fila."""
     tabela = _tabela_de_parametros()
-    citados = {int(n) for n in _CITADO.findall(FILA.read_text(encoding="utf-8"))}
-    resolvidos = {n for n in citados if "nulo" not in tabela[n][1].lower()}
+    # `n in tabela` porque a ausência é responsabilidade do teste anterior: sem isso,
+    # um parâmetro fora da tabela estoura KeyError e a mensagem explicativa se perde.
+    resolvidos = {n for n in _citados() if n in tabela and "nulo" not in tabela[n][1].lower()}
     assert not resolvidos, (
         f"a fila cobra parâmetros JÁ RESOLVIDOS na tabela do CLAUDE.md: {sorted(resolvidos)} "
         f"({', '.join(tabela[n][1] for n in sorted(resolvidos))})"
@@ -94,8 +111,7 @@ def test_todo_parametro_NULO_da_tabela_aparece_na_fila():
     passivo invisível que esta fatia existe para acabar."""
     tabela = _tabela_de_parametros()
     nulos = {n for n, (_, valor) in tabela.items() if "nulo" in valor.lower()}
-    citados = {int(n) for n in _CITADO.findall(FILA.read_text(encoding="utf-8"))}
-    faltando = nulos - citados
+    faltando = nulos - _citados()
     assert not faltando, f"parâmetros nulos ausentes da fila do dono: {sorted(faltando)}"
 
 
@@ -120,7 +136,10 @@ _MARCADORES = (
     "# pergunta aberta ao dono",
     "# divergência aberta",
 )
-# Trecho riscado = pendência resolvida; não exige identificador.
+# Trecho riscado = pendência resolvida; não exige identificador. Reconhece só a
+# sintaxe nativa `~~...~~`: se o registro passar a usar <s>/<del>, o trecho volta a
+# ser varrido e uma pendência resolvida reaparece como "sem id" — falha por RUÍDO,
+# não por silêncio, que é o lado certo de errar.
 _RISCADO = re.compile(r"~~.*?~~", re.S)
 
 
@@ -128,7 +147,10 @@ def _secoes(texto: str) -> list[tuple[str, str]]:
     """Quebra o registro em seções por cabeçalho `##`/`###`, devolvendo (título, corpo)."""
     secoes: list[tuple[str, list[str]]] = [("(topo)", [])]
     for linha in texto.split("\n"):
-        if re.match(r"^#{2,3} ", linha):
+        # QUALQUER nível de cabeçalho: a checagem de marcador casa por substring
+        # independente do número de `#`, e cortar seção só em 2-3 abria a brecha de
+        # duas seções se fundirem — aí o identificador de uma cobriria a outra.
+        if re.match(r"^#{1,6} ", linha):
             secoes.append((linha, []))
         else:
             secoes[-1][1].append(linha)
