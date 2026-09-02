@@ -22,10 +22,10 @@ comprador ou lead. A saída vai para `saida/piloto/` (ignorada pelo .gitignore):
 from __future__ import annotations
 
 import csv
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from dominio.penalidades import Penalidade
+from dominio.penalidades import JanelaCrua, Penalidade, eleger_ultima_janela, julgar_janelas
 from dominio.perfil import PerfilConversao
 from dominio.ranking import PesosNivel
 from piloto.decisao import DetalheImovel, ParametrosDecisao, ResultadoDecisao
@@ -47,7 +47,67 @@ def _perfil_texto(perfil: PerfilConversao | None) -> str:
     )
 
 
-def _colunas_justificativa(det: DetalheImovel) -> dict[str, object]:
+# Os CINCO estados em que a última janela de um imóvel pode estar. Hoje os cinco
+# saem como `0,0` na coluna de penalidade, indistinguíveis — e é isso que os dois
+# critérios de aceite do PRD (§478 e §479) cobram: "o resultado da sua última
+# janela, quando houver" e "imóveis sem janela anterior são identificados como tal".
+#
+# O quinto é o que mais engana e o que quase ficou de fora: histórico NÃO LIDO
+# (Registro indisponível, rodada degradada — Spec §7.2) não é "sem janela anterior".
+# Colapsar um no outro faria a planilha afirmar ausência de janela sobre um imóvel
+# cujo histórico ninguém consultou.
+NAO_CONSULTADO = "HISTÓRICO NÃO CONSULTADO — Registro indisponível nesta rodada"
+SEM_JANELA = "sem janela anterior"
+NAO_JULGADA = "NÃO JULGADA — limiar da §6.4 pendente (parâmetro nº 14)"
+
+
+def descrever_ultima_janela(
+    cruas: tuple[JanelaCrua, ...] | None,
+    resultado_esperado: Mapping[str, int] | None,
+) -> str:
+    """Como a última janela do imóvel aparece na planilha, sem inventar veredito.
+
+    `cruas` é o histórico do imóvel: `None` quer dizer que o histórico NÃO foi
+    consultado (Registro fora, rodada degradada — Spec §7.2), e tupla vazia quer
+    dizer consultado e sem janela. São estados diferentes, e colapsá-los afirmaria
+    ausência de janela sobre imóvel cujo histórico ninguém leu.
+
+    A eleição da janela e o veredito vêm do DOMÍNIO — `eleger_ultima_janela` e
+    `julgar_janelas`, as mesmas que a penalidade usa. Nada é reescrito aqui: duas
+    leituras do mesmo limiar podem divergir, e a divergência apareceria como a
+    planilha contradizendo o desconto que ela própria mostra, na mesma linha.
+
+    Sem limiar não há veredito, e a coluna diz isso em vez de omitir: "0 leads" sem
+    rótulo lê como reprovação, e reprovar por conta própria é o que a D-022 proíbe ao
+    manter o nº 14 nulo."""
+    if cruas is None:
+        return NAO_CONSULTADO
+    crua = eleger_ultima_janela(cruas, resultado_esperado)
+    if crua is None:
+        return SEM_JANELA
+    nivel, leads, ciclos = crua
+    # `ciclos == 0` = nenhuma carga aprovada entrou no ar depois do encerramento —
+    # NÃO "encerrada nesta rodada": quem fecha janela é a rodada de segunda, sobre a
+    # carga anterior, e a sexta corrente não encerra nenhuma. O contrato de
+    # `JanelaAnterior` chama isso de "encerrada no ciclo corrente".
+    quando = "no ciclo corrente" if ciclos == 0 else f"há {ciclos} ciclo(s)"
+    fato = f"{nivel.replace('_', ' ')} · {leads} lead(s) · encerrada {quando}"
+    if resultado_esperado is None:
+        return f"{fato} — {NAO_JULGADA}"
+    # Levanta ValueError para nível fora do limiar — aqui isso aconteceria DEPOIS de
+    # a rodada estar gravada, virando SinkFalhou (rodada sem artefato). Hoje é
+    # inalcançável porque o grafo julga as mesmas cruas antes e estoura primeiro, com
+    # o MESMO objeto de limiar; se um dia forem dois, este vira o ponto frágil.
+    julgada = julgar_janelas([crua], resultado_esperado)[0]
+    veredito = "atingiu" if julgada.atingiu_resultado else "NÃO atingiu"
+    return f"{fato} — {veredito} o resultado esperado para o nível"
+
+
+def _colunas_justificativa(
+    det: DetalheImovel,
+    historico: Mapping[int, tuple[JanelaCrua, ...]] | None,
+    resultado_esperado: Mapping[str, int] | None,
+) -> dict[str, object]:
     """As colunas de justificativa comuns aos dois níveis (Spec §2.1/§3.2):
     os QUATRO fatores (D-017), cada penalidade, o desconto total e o perfil que
     puxou com sua evidência. Tudo lido do DetalheImovel — nada recalculado."""
@@ -60,6 +120,13 @@ def _colunas_justificativa(det: DetalheImovel) -> dict[str, object]:
     for pen in _PENALIDADES_COLUNAS:
         colunas[f"pen_{pen.value}"] = det.descontos_por_penalidade.get(pen, 0.0)
     colunas["desconto_total"] = det.desconto_total
+    # Critérios de aceite do PRD: "o resultado da sua última janela, quando houver" e
+    # "imóveis sem janela anterior são identificados como tal". A coluna de desconto
+    # acima NÃO responde isso — ela sai 0,0 em cinco situações diferentes.
+    colunas["ultima_janela"] = descrever_ultima_janela(
+        None if historico is None else historico.get(det.imovel_id, ()),
+        resultado_esperado,
+    )
     colunas["perfil_que_puxou"] = _perfil_texto(det.perfil_que_puxou)
     colunas["perfil_num_vendas"] = (
         det.perfil_que_puxou.num_vendas if det.perfil_que_puxou is not None else ""
@@ -70,7 +137,11 @@ def _colunas_justificativa(det: DetalheImovel) -> dict[str, object]:
     return colunas
 
 
-def linhas_super_destaque(resultado: ResultadoDecisao) -> list[dict[str, object]]:
+def linhas_super_destaque(
+    resultado: ResultadoDecisao,
+    historico: Mapping[int, tuple[JanelaCrua, ...]] | None,
+    resultado_esperado: Mapping[str, int] | None,
+) -> list[dict[str, object]]:
     """Uma linha por posição de super destaque, com a justificativa.
 
     Carrega `origem`/`degrau_cedido` iguais à aba de destaque (Spec §3.2:
@@ -82,13 +153,17 @@ def linhas_super_destaque(resultado: ResultadoDecisao) -> list[dict[str, object]
         det = resultado.detalhes[pos.imovel_id]
         linhas.append(
             {"posicao": pos.posicao, "imovel_id": pos.imovel_id, "nota": pos.nota}
-            | _colunas_justificativa(det)
+            | _colunas_justificativa(det, historico, resultado_esperado)
             | {"origem": "ranking", "degrau_cedido": ""}
         )
     return linhas
 
 
-def linhas_destaque(resultado: ResultadoDecisao) -> list[dict[str, object]]:
+def linhas_destaque(
+    resultado: ResultadoDecisao,
+    historico: Mapping[int, tuple[JanelaCrua, ...]] | None,
+    resultado_esperado: Mapping[str, int] | None,
+) -> list[dict[str, object]]:
     """As posições de destaque: primeiro o ranking, depois os recuperados por
     relaxamento (posições continuando), com o degrau que cedeu para cada."""
     linhas = []
@@ -96,7 +171,7 @@ def linhas_destaque(resultado: ResultadoDecisao) -> list[dict[str, object]]:
         det = resultado.detalhes[pos.imovel_id]
         linhas.append(
             {"posicao": pos.posicao, "imovel_id": pos.imovel_id, "nota": pos.nota}
-            | _colunas_justificativa(det)
+            | _colunas_justificativa(det, historico, resultado_esperado)
             | {"origem": "ranking", "degrau_cedido": ""}
         )
     # Recuperados continuam a numeração de posição após o ranking.
@@ -106,13 +181,17 @@ def linhas_destaque(resultado: ResultadoDecisao) -> list[dict[str, object]]:
         det = resultado.detalhes[rec.imovel_id]
         linhas.append(
             {"posicao": proxima, "imovel_id": rec.imovel_id, "nota": rec.nota_destaque}
-            | _colunas_justificativa(det)
+            | _colunas_justificativa(det, historico, resultado_esperado)
             | {"origem": "relaxamento", "degrau_cedido": rec.degrau.value}
         )
     return linhas
 
 
-def linhas_excluidos_por_regra(resultado: ResultadoDecisao) -> list[dict[str, object]]:
+def linhas_excluidos_por_regra(
+    resultado: ResultadoDecisao,
+    historico: Mapping[int, tuple[JanelaCrua, ...]] | None,
+    resultado_esperado: Mapping[str, int] | None,
+) -> list[dict[str, object]]:
     """Reprovados que NÃO foram recuperados pelo relaxamento, com as regras que
     reprovaram (por que ficaram de fora). Ordenado por imovel_id (determinístico)."""
     recuperados = {rec.imovel_id for rec in resultado.relaxamento.recuperados}
@@ -130,7 +209,11 @@ def linhas_excluidos_por_regra(resultado: ResultadoDecisao) -> list[dict[str, ob
     return linhas
 
 
-def linhas_relaxamento(resultado: ResultadoDecisao) -> list[dict[str, object]]:
+def linhas_relaxamento(
+    resultado: ResultadoDecisao,
+    historico: Mapping[int, tuple[JanelaCrua, ...]] | None,
+    resultado_esperado: Mapping[str, int] | None,
+) -> list[dict[str, object]]:
     """O relatório de relaxamento da Spec §6.6, na ordem de cedência.
 
     Existe porque a §6.6 é literal: "Cada cedência gera linha no relatório de
@@ -252,6 +335,9 @@ def escrever_planilha(
     resultado: ResultadoDecisao,
     parametros: ParametrosDecisao,
     destino: Path,
+    *,
+    historico_janelas: Mapping[int, tuple[JanelaCrua, ...]] | None,
+    resultado_esperado: Mapping[str, int] | None,
     notas_coleta: Sequence[str] = (),
 ) -> list[Path]:
     """Escreve os cinco CSVs em `destino` e devolve os caminhos gerados.
@@ -260,12 +346,23 @@ def escrever_planilha(
     Registro, preservado). Vai para `saida/piloto/` (ignorada pelo .gitignore):
     dado de rodada, nunca commitado. `notas_coleta` são limitações da coleta
     (ex.: vendas descartadas) declaradas na aba de parâmetros.
+
+    `historico_janelas` é o histórico CRU de janelas por imóvel, do Registro. `None` tem
+    significado próprio e não é "vazio": quer dizer que o histórico NÃO foi
+    consultado (rodada degradada), que é diferente de consultar e não achar nada. A
+    coluna por imóvel distingue os dois — colapsá-los afirmaria ausência de janela
+    sobre imóvel cujo histórico ninguém leu.
     """
     destino.mkdir(parents=True, exist_ok=True)
     escritos: list[Path] = []
 
     for nome, construtor in _ABAS.items():
-        escritos.append(_escrever_csv(destino / f"{nome}.csv", construtor(resultado)))
+        escritos.append(
+            _escrever_csv(
+                destino / f"{nome}.csv",
+                construtor(resultado, historico_janelas, resultado_esperado),
+            )
+        )
     escritos.append(
         _escrever_csv(
             destino / "parametros_e_limitacoes.csv",

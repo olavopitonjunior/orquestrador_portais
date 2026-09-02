@@ -484,6 +484,13 @@ def executar(
                         + len(resultado.relaxamento.recuperados)
                     ),
                 ),
+                # O histórico CRU e o limiar, para a coluna que os critérios de aceite
+                # do PRD exigem. `None` já significa "não consultado" na origem — sem
+                # guarda aqui, porque duas chaves permitiam a combinação incoerente
+                # (mapa vazio marcado como consultado) que produzia justamente a
+                # afirmação falsa que a coluna existe para eliminar.
+                historico_janelas=final.get("historico_janelas"),
+                resultado_esperado=parametros.resultado_esperado,
             )
         except Exception as e:
             # A rodada JÁ está no Registro: avisa que a planilha não saiu e propaga.
