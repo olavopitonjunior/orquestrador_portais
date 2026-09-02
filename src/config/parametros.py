@@ -1,6 +1,6 @@
 """Carregador dos parâmetros da rodada. **Nenhum valor mora aqui.**
 
-Doze dos treze parâmetros (D-004, D-017) são NULOS: o dono da decisão ainda não
+Treze dos quatorze parâmetros (D-004, D-017) são NULOS: o dono da decisão ainda não
 os definiu, e o CLAUDE.md proíbe preenchê-los com valor inventado. A rodada de
 sexta, porém, não calcula nada sem eles. Este módulo é a saída honesta dessa
 tensão: os valores vivem FORA do repositório, num arquivo que o dono escreve, e
@@ -71,6 +71,8 @@ PENDENTE_DE: Mapping[str, str] = {
     "pesos.destaque": "nº 12 (pesos dos quatro fatores do ranking, por nível)",
     "externo.limiar_amarracao": "nº 7 (limiar mínimo de taxa de amarração)",
     "externo.idade_maxima_dias": "nº 5 (idade máxima da coleta externa de reserva)",
+    "resultado_esperado.super_destaque": "nº 14 (resultado esperado por nível, §6.4)",
+    "resultado_esperado.destaque": "nº 14 (resultado esperado por nível, §6.4)",
 }
 
 
@@ -93,6 +95,16 @@ class ParametrosDaRodada:
     externo: ParametrosExterno
     origem: str
     declarado: Mapping[str, Any]
+    # Parâmetro nº 14 (D-022), por nível. `None` = o dono ainda não o definiu, e a
+    # rodada DECLARA isso: a penalidade §6.4 não incide, e não incidir por falta de
+    # limiar não é o mesmo que passar no critério.
+    #
+    # É a única SEÇÃO opcional do arquivo, e a exceção é deliberada. A regra "nenhum
+    # default" existe para que nenhum VALOR seja inventado; ausência de seção não é
+    # valor, é o estado nulo que a D-022 declarou — e ele vira limitação visível na
+    # planilha, não silêncio. Dentro da seção não há opcional: quem a declara declara
+    # os dois níveis.
+    resultado_esperado: Mapping[str, int] | None = None
     rotulo: str = "PROVISÓRIO"
 
 
@@ -286,6 +298,29 @@ def _ler_desempenho(bruto: Mapping[str, Any]) -> Callable[[DesempenhoAnuncio], f
     )
 
 
+def _ler_resultado_esperado(bruto: Mapping[str, Any] | None) -> Mapping[str, int] | None:
+    """O nº 14, se o dono o declarou. Os DOIS níveis ou nenhum.
+
+    Meio-declarado seria pior que nulo: metade das janelas julgada por um limiar e a
+    outra metade sem julgamento, com a planilha declarando "limiar não definido" para
+    uma rodada que penalizou parte do estoque.
+    """
+    if bruto is None:
+        return None
+    niveis = ("super_destaque", "destaque")
+    _so_estas_chaves(bruto, set(niveis), "resultado_esperado")
+    valores = {
+        n: _inteiro(_exigir(bruto, n, "resultado_esperado"), f"resultado_esperado.{n}")
+        for n in niveis
+    }
+    for nivel, valor in valores.items():
+        if valor < 0:
+            raise ParametroInvalido(
+                f"resultado_esperado.{nivel} negativo: {valor} — é uma contagem de leads"
+            )
+    return valores
+
+
 def _ler_externo(bruto: Mapping[str, Any]) -> ParametrosExterno:
     _so_estas_chaves(bruto, {"limiar_amarracao", "idade_maxima_dias", "desempenho"}, "externo")
     limiar = _numero(_exigir(bruto, "limiar_amarracao", "externo"), "externo.limiar_amarracao")
@@ -315,7 +350,16 @@ def carregar(caminho: Path) -> ParametrosDaRodada:
         raise ParametroInvalido(f"{caminho}: TOML inválido — {e}") from e
 
     _so_estas_chaves(
-        bruto, {"semelhanca", "intensidades", "decaimento_janela", "pesos", "externo"}, ""
+        bruto,
+        {
+            "semelhanca",
+            "intensidades",
+            "decaimento_janela",
+            "pesos",
+            "externo",
+            "resultado_esperado",  # OPCIONAL — ver `ParametrosDaRodada.resultado_esperado`
+        },
+        "",
     )
     pesos = _tabela(bruto, "pesos", "")
     _so_estas_chaves(pesos, {"super_destaque", "destaque"}, "pesos")
@@ -332,4 +376,5 @@ def carregar(caminho: Path) -> ParametrosDaRodada:
         externo=_ler_externo(_tabela(bruto, "externo", "")),
         origem=str(caminho),
         declarado=bruto,
+        resultado_esperado=_ler_resultado_esperado(bruto.get("resultado_esperado")),
     )

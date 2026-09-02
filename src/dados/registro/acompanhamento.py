@@ -15,25 +15,40 @@ da rodada de segunda (fatia seguinte); mecanismo pronto ainda não é §7.3 cump
 
 Escrita SÓ no Postgres próprio (invariante 2); nada aqui toca o Newcore.
 
-CORTE DE ESCOPO DECLARADO (não em silêncio): a D-020 decidiu que as duas colunas da
-Spec §4.3 sem fonte no Newcore ("semanas consecutivas em destaque" e "leads
-acumulados na janela atual") ficam vazias e **acumulam** pelo Registro próprio. Esta
-fatia NÃO acumula: ninguém escreve `registro.janela_destaque` (a tabela existe no
-DDL e não tem produtor), e `apurar(historico=...)` não recebe nada. Consequência: as
-duas colunas ficam `None` INDEFINIDAMENTE, não "nas primeiras semanas" — e a
-penalidade §6.4 "janela anterior sem resultado" segue sem insumo. Fechar/estender a
-janela na rodada de segunda é a fatia que falta para a D-020 valer de fato.
+3. **Acumular o histórico de janelas**: `gravar_acompanhamento` atualiza
+   `registro.janela_destaque` na MESMA transação (PRD, passo 5 do ciclo de segunda:
+   "Registro | Resultado da carga | Acumulação do resultado por janela de destaque")
+   e devolve o histórico resultante. É o que fecha a D-020 de fato: as duas colunas
+   da Spec §4.3 sem fonte no Newcore ("semanas consecutivas em destaque" e "leads
+   acumulados na janela atual") ficavam `None` INDEFINIDAMENTE, não "nas primeiras
+   semanas" como a decisão previa, porque ninguém escrevia a tabela. A regra de
+   abertura e fechamento é a D-021; ver `janelas.py`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 
 import psycopg
 from psycopg.types.json import Json
 
+from dados.registro.janelas import atualizar_janelas, limitacoes_do_acumulo
 from dominio.acompanhamento import Nivel, PosicaoPaga, ResultadoAcompanhamento
+
+
+@dataclass(frozen=True)
+class AcumuloDaJanela:
+    """O que a atualização das janelas produziu nesta rodada.
+
+    `historico` preenche as duas colunas da §4.3 no relatório desta mesma segunda;
+    `limitacoes` são o que o acúmulo ainda não sabe, e vão para a planilha E para o
+    motivo gravado — as duas, porque planilha e Registro têm de dizer o mesmo.
+    """
+
+    historico: Mapping[int, tuple[int, int]]
+    limitacoes: tuple[str, ...]
 
 
 def _exigir_transacao(conn: psycopg.Connection) -> None:
@@ -123,12 +138,16 @@ def gravar_acompanhamento(
     estado: str = "completa",
     motivo_degradacao: str | None = None,
     etapas: Mapping[str, bool] | None = None,
-) -> int:
+) -> tuple[int, AcumuloDaJanela]:
     """Grava a rodada de acompanhamento e o `resultado_carga` por imóvel (Spec §2.1).
 
     Uma transação só (o chamador controla o commit). Devolve o id da rodada de
     acompanhamento — a chave que o domínio puro deliberadamente não carrega, porque
-    é esta camada que a conhece.
+    é esta camada que a conhece — e o HISTÓRICO de janelas resultante,
+    `{imovel_id: (semanas_consecutivas, leads_acumulados)}`, que preenche as duas
+    colunas da §4.3 no relatório desta mesma segunda (D-020/D-021). Devolver o
+    histórico daqui, e não de uma leitura à parte, é o que garante que ele reflita a
+    atualização que acabou de acontecer nesta transação.
 
     NÃO grava a lista de leads sem tratamento: ela carrega PII (Spec §4.2) e vive na
     planilha, lida por gente. O Registro guarda a CONTAGEM por imóvel, que é o que a
@@ -185,7 +204,36 @@ def gravar_acompanhamento(
                 " leads_gerados, leads_sem_tratamento) VALUES (%s, %s, %s, %s, %s)",
                 linhas,
             )
-    return rodada_id
+    # O histórico de janelas é atualizado na MESMA transação (PRD, passo 5 do ciclo
+    # de segunda: "Registro | Resultado da carga | Acumulação do resultado por janela
+    # de destaque"). Transação única de propósito: uma rodada gravada cuja janela não
+    # acumulou faria o relatório da semana seguinte contar uma permanência a menos, e
+    # a §6.4 julgar a janela por um acumulado incompleto.
+    acumulo = atualizar_janelas(
+        conn,
+        rodada_decisao_id=resultado.resumo.rodada_decisao_id,
+        rodada_acompanhamento_id=rodada_id,
+        desempenho=resultado.desempenho,
+        # A data da CARGA, não o relógio da execução. `inicio_periodo` é derivado de
+        # `aprovada_em` (Spec §1), então é quando a carga entrou no ar; `fim` aqui é
+        # `datetime.now()`, e usá-lo deslocaria toda janela em alguns dias e
+        # carimbaria um reprocessamento com a data de hoje.
+        data_da_carga=resultado.resumo.inicio_periodo,
+    )
+    # As limitações do acúmulo entram no MOTIVO gravado, não só na planilha: sob a
+    # D-001 o Registro é a fonte da verdade, e quem auditasse pelo banco não veria
+    # que os leads da janela são amostra nem que a contagem começou agora. É a mesma
+    # regra que a rodada de sexta já aplica às limitações de fiação. O UPDATE vem
+    # depois do acúmulo de propósito: a limitação de história rasa é DERIVADA do
+    # estado resultante, e computá-la antes descreveria a rodada anterior.
+    limitacoes = limitacoes_do_acumulo(conn)
+    motivos = [*([motivo_degradacao] if motivo_degradacao else []), *limitacoes]
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE registro.rodada SET motivo_degradacao = %s WHERE id = %s",
+            ("; ".join(motivos) or None, rodada_id),
+        )
+    return rodada_id, AcumuloDaJanela(historico=acumulo, limitacoes=limitacoes)
 
 
 def ler_resultado_carga(

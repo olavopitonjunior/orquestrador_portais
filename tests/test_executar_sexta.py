@@ -58,7 +58,7 @@ def _resultado_falso():
 
 
 def test_parametros_e_obrigatorio():
-    """Sem `--parametros` não há rodada: doze dos treze são nulos, e um default
+    """Sem `--parametros` não há rodada: treze dos quatorze são nulos, e um default
     aqui seria o valor inventado que o CLAUDE.md proíbe — invisível na planilha."""
     with pytest.raises(SystemExit) as e:
         mod.main([])

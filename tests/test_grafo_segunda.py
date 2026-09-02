@@ -11,6 +11,7 @@ from datetime import date
 
 import pytest
 
+from dados.registro.acompanhamento import AcumuloDaJanela
 from dominio.acompanhamento import LeadDoPeriodo, Nivel, PosicaoPaga, ResultadoAcompanhamento
 from grafo.estado import Estado
 from grafo.segunda import (
@@ -49,7 +50,9 @@ def _lead(
 class _Sinks:
     """Sinks falsos que registram o que receberam."""
 
-    def __init__(self):
+    def __init__(self, historico=None, limitacoes=()):
+        self.historico = historico or {}
+        self.limitacoes = limitacoes
         self.entregues: list[tuple[ResultadoAcompanhamento, str, tuple[str, ...]]] = []
         self.registrados: list[tuple[ResultadoAcompanhamento, str, str | None, dict]] = []
         self.ausencias: list[str] = []
@@ -58,7 +61,10 @@ class _Sinks:
     def como_sinks(self) -> SinksSegunda:
         return SinksSegunda(
             entregar=lambda r, e, d: self.entregues.append((r, e, d)),
-            registrar=lambda r, e, m, p: (self.registrados.append((r, e, m, p)), 77)[1],
+            registrar=lambda r, e, m, p: (
+                self.registrados.append((r, e, m, p)),
+                (77, AcumuloDaJanela(historico=self.historico, limitacoes=self.limitacoes)),
+            )[1],
             declarar_ausencia=lambda motivo, prontos: (self.ausencias.append(motivo), 88)[1],
             avisar=self.avisos.append,
         )
@@ -321,7 +327,10 @@ def test_registro_vem_antes_da_planilha():
     ordem = []
     sinks = SinksSegunda(
         entregar=lambda r, e, d: ordem.append("entregar"),
-        registrar=lambda r, e, m, p: (ordem.append("registrar"), 77)[1],
+        registrar=lambda r, e, m, p: (
+            ordem.append("registrar"),
+            (77, AcumuloDaJanela(historico={}, limitacoes=())),
+        )[1],
         declarar_ausencia=lambda m, p: 88,
         avisar=lambda m: None,
     )
@@ -374,3 +383,49 @@ def test_payload_e_o_recorte_sem_identidade():
     final = construir_grafo_segunda(_fontes(), s.como_sinks()).invoke(_inicial())
     campos = {f.name for f in fields(final["payload"])}
     assert campos == {"resumo", "desempenho"}  # sem leads_sem_tratamento
+
+
+def test_historico_da_janela_chega_a_PLANILHA():
+    """A costura entre `registrar` e `entregar`: o histórico de janelas nasce dentro
+    da transação que grava a rodada e precisa atravessar até a planilha, porque são
+    duas colunas que a Spec §4.3 exige NELA.
+
+    Sem esta trava, quebrar a costura deixaria a planilha declarando `None` nas duas
+    colunas numa semana em que a janela acumulou — indistinguível de "imóvel sem
+    histórico", que é justamente a distinção que a D-020 mandou preservar.
+    """
+    sinks = _Sinks(historico={1: (3, 12)})
+    construir_grafo_segunda(_fontes(), sinks.como_sinks()).invoke(_inicial())
+
+    resultado_entregue = sinks.entregues[0][0]
+    (d,) = resultado_entregue.desempenho
+    assert (d.semanas_consecutivas, d.leads_acumulados_janela) == (3, 12)
+
+    # E o que foi REGISTRADO não carrega as colunas: elas são relato da planilha
+    # (§4.3), e o Registro guarda a janela em tabela própria — gravar as duas ali
+    # seria a mesma verdade em dois lugares, livre para divergir.
+    registrado = sinks.registrados[0][0]
+    assert registrado.desempenho[0].semanas_consecutivas is None
+
+
+def test_limitacoes_do_acumulo_chegam_a_PLANILHA():
+    """Num projeto cujo argumento central é "limitação declarada, nunca silenciosa",
+    a declaração recém-criada era a única parte da fatia sem trava: removê-la da
+    chamada de `entregar` passava nos 521 testes."""
+    sinks = _Sinks(limitacoes=("leads são AMOSTRA, não total",))
+    construir_grafo_segunda(_fontes(), sinks.como_sinks()).invoke(_inicial())
+
+    _resultado, _estado, declaradas = sinks.entregues[0]
+    assert "leads são AMOSTRA, não total" in declaradas
+
+
+def test_limitacoes_do_acumulo_NAO_mudam_o_estado_da_rodada():
+    """Elas não são falha de fonte — são o que o produtor de janelas ainda não sabe.
+    Somá-las ao estado tornaria TODA segunda degradada enquanto durarem, e um estado
+    que nunca varia deixa de informar. Decisão declarada, com pergunta aberta ao dono
+    em docs/decisoes.md — este teste trava a decisão, não a esconde."""
+    sinks = _Sinks(limitacoes=("limitação estrutural qualquer",))
+    final = construir_grafo_segunda(_fontes(), sinks.como_sinks()).invoke(_inicial())
+
+    assert final["estado"] == Estado.COMPLETA
+    assert "limitação estrutural qualquer" not in final.get("degradacoes", [])

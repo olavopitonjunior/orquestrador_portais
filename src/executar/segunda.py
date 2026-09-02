@@ -40,6 +40,7 @@ from typing import Any
 
 from dados.acompanhamento import coletar_leads
 from dados.registro.acompanhamento import (
+    AcumuloDaJanela,
     declarar_ausencia_de_carga,
     gravar_acompanhamento,
     posicoes_da_carga,
@@ -141,10 +142,14 @@ def _sinks(destino: Path, agora: datetime, *, dry_run: bool) -> SinksSegunda:
         estado: str,
         motivo: str | None,
         prontos: Mapping[str, bool],
-    ) -> int:
+    ) -> tuple[int, AcumuloDaJanela]:
         if dry_run:
+            # Histórico VAZIO no ensaio, não inventado: em dry-run a janela não é
+            # atualizada, então as duas colunas da §4.3 saem declaradas ausentes — que
+            # é a verdade sobre um ensaio, e não os números de uma semana que não foi
+            # gravada.
             log.info("[dry-run] rodada NÃO gravada (estado=%s)", estado)
-            return -1
+            return -1, AcumuloDaJanela(historico={}, limitacoes=())
         try:
             with conectar() as conn, conn.transaction():
                 return gravar_acompanhamento(

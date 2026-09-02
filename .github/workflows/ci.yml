@@ -8,6 +8,24 @@ on:
 jobs:
   verificar:
     runs-on: ubuntu-latest
+    # Postgres de verdade no CI. Sem ele os testes de I/O do Registro PULAM, e a
+    # fatia do produtor de janelas mostrou o custo disso: o defeito de idempotência
+    # que os três portões apanharam vivia justamente na metade que nenhum ambiente
+    # automatizado exercitava. Uma garantia central que não roda em lugar nenhum é
+    # uma garantia declarada.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: orquestrador_portais
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_URL: postgresql://ci:ci@127.0.0.1:5432/orquestrador_portais
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -25,8 +43,31 @@ jobs:
       # roda seria escolher não olhar justamente onde o erro é caro.
       - name: Tipos (domínio, config e pontos de entrada — estrito)
         run: uv run mypy --strict src/dominio src/config src/executar
-      - name: Testes
-        run: uv run pytest -q
+      # As migrações são aplicadas em ORDEM, à mão — não há aplicador (pendência
+      # declarada em escrita.py). Aplicá-las aqui prova, a cada PR, que a sequência
+      # inteira sobe num banco limpo: sem isso, uma migração nova só falharia no
+      # banco de quem opera.
+      - name: Cliente psql
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client)
+      - name: Aplicar migrações do Registro
+        run: |
+          for m in $(ls src/dados/registro/[0-9]*.sql | sort); do
+            echo "aplicando $m"
+            psql "$POSTGRES_URL" -v ON_ERROR_STOP=1 -q -f "$m"
+          done
+      # `-rs` lista os pulados, e o `grep` FALHA o passo se houver algum: um skip
+      # silencioso é indistinguível de um teste que passou, e é assim que o serviço
+      # acima viraria enfeite no dia em que a variável de ambiente sumisse.
+      - name: Testes (nenhum pode ser pulado)
+        run: |
+          set -o pipefail
+          uv run pytest -q -rs | tee /tmp/pytest.txt
+          resumo=$(grep -E "passed|failed|error" /tmp/pytest.txt | tail -n 1)
+          case "$resumo" in
+            *skipped*)
+              echo "::error::teste PULADO — o Postgres do CI não está sendo usado"
+              exit 1 ;;
+          esac
       # Fumaça do ponto de entrada: prova que o comando DOCUMENTADO roda de fato.
       # Sem isto, `python -m executar.segunda` voltaria a só funcionar com
       # PYTHONPATH=src — a falha que a fatia do runner existiu para consertar, e que
@@ -54,12 +95,17 @@ jobs:
           uv run python -m executar.sexta --parametros docs/parametros-da-rodada.exemplo.toml \
             || codigo=$?
           test "$codigo" -eq 5 || { echo "esperado 5 (modelo recusado), veio $codigo"; exit 1; }
+      # TODAS as migrações, não só a 001: elas são aplicadas à mão (não há aplicador
+      # em ordem — pendência declarada em escrita.py), então um erro de sintaxe numa
+      # migração nova só apareceria na hora de aplicar, no banco de quem opera.
       - name: Parse do DDL do Registro (dialeto postgres)
         run: >
           uv run --with 'sqlglot==30.17.0' python -c
-          "import sqlglot;
-          n = len(sqlglot.parse(open('src/dados/registro/001_registro.sql').read(), read='postgres'));
-          print(f'DDL OK: {n} statements')"
+          "import sqlglot, pathlib;
+          arquivos = sorted(pathlib.Path('src/dados/registro').glob('*.sql'));
+          assert arquivos, 'nenhuma migracao encontrada — o passo passaria guardando nada';
+          total = sum(len(sqlglot.parse(a.read_text(), read='postgres')) for a in arquivos);
+          print(f'DDL OK: {len(arquivos)} migracoes, {total} statements')"
 
   # Job do Coletor Externo (TypeScript). Separado de "verificar" e NÃO obrigatório
   # na proteção de main até ser adicionado a ela pelo dono (ação administrativa).

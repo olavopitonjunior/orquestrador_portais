@@ -1,4 +1,4 @@
-// Os treze parâmetros de decisão e seu estado (fonte: CLAUDE.md / D-004 / D-014 /
+// Os quatorze parâmetros de decisão e seu estado (fonte: CLAUDE.md / D-004 / D-014 /
 // D-017). É DADO DE REFERÊNCIA para o console mostrar o que ainda depende de você —
 // os valores nulos permanecem nulos aqui, nada é inventado. Se a tabela do CLAUDE.md
 // mudar, esta lista precisa acompanhar (é a única cópia; a fonte da verdade é o doc).
@@ -26,6 +26,11 @@ export const PARAMETROS: Parametro[] = [
   { numero: 11, titulo: "Prazo de atendimento de lead e limite de inatividade", estado: "pendente" },
   { numero: 12, titulo: "Pesos dos quatro fatores do ranking por nível (D-017)", estado: "pendente" },
   { numero: 13, titulo: "Decaimento do peso por dimensão do F1 (D-017)", estado: "pendente" },
+  {
+    numero: 14,
+    titulo: "Resultado esperado por nível para a janela não ser penalizada (D-022)",
+    estado: "pendente",
+  },
 ];
 
 export const PARAMETROS_PENDENTES = PARAMETROS.filter((p) => p.estado === "pendente");

@@ -136,7 +136,7 @@ def _resultado(rodada_decisao_id):
 def test_grava_e_le_resultado_carga(conn):
     decisao_id = _rodada_decisao(conn, aprovada=True)
     resultado = _resultado(decisao_id)
-    rid = gravar_acompanhamento(conn, resultado=resultado, inicio=INICIO, fim=FIM)
+    rid, _acum = gravar_acompanhamento(conn, resultado=resultado, inicio=INICIO, fim=FIM)
     lido = ler_resultado_carga(conn, rid)
     # TODAS as posições entram, inclusive a de zero lead (Spec §4.3)
     assert lido == {1: (2, 1), 2: (0, 0)}
@@ -168,7 +168,7 @@ def test_pronto_do_monitor_e_derivado_nao_afirmado(conn):
         gravar_acompanhamento(conn, resultado=sem_resp, inicio=INICIO, fim=FIM)
 
     # Declarando o estado honesto, grava — e o Registro diz que o pronto não saiu.
-    rid = gravar_acompanhamento(
+    rid, _acum = gravar_acompanhamento(
         conn,
         resultado=sem_resp,
         inicio=INICIO,
@@ -195,7 +195,9 @@ def test_autocommit_e_recusado(conn):
 
 def test_rodada_de_acompanhamento_referencia_a_carga(conn):
     decisao_id = _rodada_decisao(conn, aprovada=True)
-    rid = gravar_acompanhamento(conn, resultado=_resultado(decisao_id), inicio=INICIO, fim=FIM)
+    rid, _acum = gravar_acompanhamento(
+        conn, resultado=_resultado(decisao_id), inicio=INICIO, fim=FIM
+    )
     with conn.cursor() as cur:
         cur.execute("SELECT tipo, estado FROM registro.rodada WHERE id = %s", (rid,))
         assert cur.fetchone() == ("acompanhamento", "completa")
@@ -213,7 +215,7 @@ def test_pii_do_lead_nao_vai_para_o_registro(conn):
     decisao_id = _rodada_decisao(conn, aprovada=True)
     resultado = _resultado(decisao_id)
     assert resultado.leads_sem_tratamento  # o resultado TEM a lista com PII
-    rid = gravar_acompanhamento(conn, resultado=resultado, inicio=INICIO, fim=FIM)
+    rid, _acum = gravar_acompanhamento(conn, resultado=resultado, inicio=INICIO, fim=FIM)
     with conn.cursor() as cur:
         cur.execute(
             "SELECT column_name FROM information_schema.columns "
@@ -228,3 +230,43 @@ def test_pii_do_lead_nao_vai_para_o_registro(conn):
         "leads_sem_tratamento",
     }  # nenhuma coluna de pessoa
     assert ler_resultado_carga(conn, rid)  # e a contagem está lá
+
+
+def test_janela_usa_a_data_da_CARGA_nao_o_relogio(conn):
+    """`gravar_acompanhamento` recebe `inicio`/`fim` que são o relógio da EXECUÇÃO.
+    A janela precisa das datas da vitrine (Spec §2.1), e o proxy que o sistema tem é
+    `aprovada_em` da carga — que chega como `resumo.inicio_periodo`.
+
+    Sem esta trava, trocar a fonte da data de volta para o relógio passava despercebido:
+    nenhum teste cobria a costura, e o efeito seria toda janela deslocada em dias e um
+    reprocessamento carimbando o Registro com a data de hoje."""
+    decisao_id = _rodada_decisao(conn, aprovada=True)
+    resultado = apurar(
+        rodada_decisao_id=decisao_id,
+        posicoes=[PosicaoPaga(1, Nivel.SUPER_DESTAQUE)],
+        leads=[],
+        inicio_periodo=date(2026, 8, 28),  # a sexta da carga
+        fim_periodo=date(2026, 8, 31),
+    )
+    # INICIO/FIM do relógio são 28/08 18h e 31/08 09h — datas DIFERENTES do período.
+    gravar_acompanhamento(conn, resultado=resultado, inicio=INICIO, fim=FIM)
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT inicio FROM registro.janela_destaque WHERE imovel_id = 1")
+        (inicio,) = cur.fetchone()
+    assert inicio == date(2026, 8, 28)  # a data da CARGA, não FIM.date()
+
+
+def test_gravar_devolve_o_historico_da_janela(conn):
+    """O histórico sai da MESMA transação que acumulou — uma leitura à parte veria o
+    estado anterior e o relatório diria "2 semanas" na terceira."""
+    decisao_id = _rodada_decisao(conn, aprovada=True)
+    resultado = apurar(
+        rodada_decisao_id=decisao_id,
+        posicoes=[PosicaoPaga(1, Nivel.SUPER_DESTAQUE)],
+        leads=[],
+        inicio_periodo=date(2026, 8, 28),
+        fim_periodo=date(2026, 8, 31),
+    )
+    _rid, acumulo = gravar_acompanhamento(conn, resultado=resultado, inicio=INICIO, fim=FIM)
+    assert acumulo.historico == {1: (1, 0)}  # primeira semana, zero lead

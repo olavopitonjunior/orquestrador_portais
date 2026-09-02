@@ -35,7 +35,7 @@ Onde os documentos disserem "nove regras", leia-se "oito regras gerais + piso de
 
 **Data**: 2026-08-29 · **Resolve**: contradição C2 (Spec §8 vs. Ferramentas §6 vs. tabela de parâmetros do PRD)
 
-A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais os dois que aparecem em apenas um documento. São **onze**, mantidos no CLAUDE.md. O nº 1 foi resolvido em 2026-08-31 (D-014, `N ≥ 3`); os outros **dez seguem nulos** até definição:
+A lista canônica de parâmetros sem valor consolida os nove bullets comuns mais os dois que aparecem em apenas um documento. São **onze**, mantidos no CLAUDE.md. *(Emenda 2026-09-01, D-022: passaram a **quatorze** — a §6.4 exige um limiar de resultado POR NÍVEL que nenhum documento jamais quantificou, e ele entrou como nº 14. Treze seguem nulos. Mesmo procedimento da emenda da D-017 abaixo.)* O nº 1 foi resolvido em 2026-08-31 (D-014, `N ≥ 3`); os outros **dez seguem nulos** até definição:
 
 1. ~~Evidência mínima por combinação de perfil~~ — **resolvido: N ≥ 3 (D-014)**
 2. Forma de normalização de cada fator do ranking
@@ -339,7 +339,7 @@ Mantém a fidelidade à Spec §4.3 (as colunas existem) sem fabricar dado.
 
 ## Ponto de entrada da sexta (2026-09-01) — o que foi resolvido e o que aguarda o dono
 
-A fatia do runner da sexta (`src/executar/sexta.py`) obrigou a decidir **como uma rodada roda se doze dos treze parâmetros são nulos**, e os três portões levantaram divergências que ficam registradas aqui.
+A fatia do runner da sexta (`src/executar/sexta.py`) obrigou a decidir **como uma rodada roda se treze dos quatorze parâmetros são nulos**, e os três portões levantaram divergências que ficam registradas aqui.
 
 ### Resolvido no código: os parâmetros entram por arquivo do dono, e a rodada recusa rodar sem eles
 
@@ -381,3 +381,50 @@ As três limitações de fiação (histórico de janelas ausente, razão 1.0 sem
 A escolha é discutível nos dois sentidos. A §7.2 define degradada como "alguma fonte falhou e a decisão prosseguiu com dado parcial", e o histórico de janelas **é** uma fonte ausente produzindo dado parcial — o que argumenta por DEGRADADA. Por outro lado, marcá-las como degradação tornaria **toda** rodada degradada até o produtor de `registro.janela_destaque` existir, e um estado que nunca varia deixa de informar: o dono passaria a aprovar "degradada" toda semana sem que a palavra distinguisse nada.
 
 Mantive o estado intocado e a limitação declarada, porque é a opção que preserva o poder de sinalização do estado. **Mas é decisão de regra, não de código**, e fica aqui para o dono. Achado do `revisor-de-codigo`.
+
+## D-021 — a janela de destaque fecha quando o imóvel SAI da carga
+
+**Data**: 2026-09-01 · **Resolve**: Spec §2.1 define os campos da `janela_destaque` ("início e fim = datas de entrada e saída da vitrine") mas nenhum documento diz quem observa a saída, nem quando a janela fecha.
+
+**Decisão do dono: a janela fica ABERTA enquanto o imóvel continuar aparecendo nas cargas aprovadas.** A cada carga em que ele permanece, a janela acumula os leads do período e incrementa `semanas_consecutivas`. Ela FECHA quando uma carga aprovada nova não o traz mais; `fim` é a data dessa carga.
+
+**Por quê:** é o que casa com o dado histórico — a janela média durou **33 dias** contra 7 dias de ciclo de carga (PRD), ou seja, imóveis costumam permanecer por várias cargas seguidas. **Ressalva sobre a força desse número:** ele vem de `adsrealtyextra_historic`, que o `mapa-de-dados.md` registra como MORTA desde 27/06/2023 — descreve um histórico congelado há três anos, não o estoque vivo. A procedência é o PRD, não é número inventado; mas o argumento é mais fraco do que parece, e a regra deve ser revista quando houver histórico próprio no Registro (que esta fatia começa a produzir). E é a única leitura que dá sentido a `semanas_consecutivas`, campo que a Spec §2.1 exige e que só existe se a janela atravessa semanas: sob a alternativa (uma janela por ciclo) ele seria sempre 1.
+
+**Consequência para a penalidade §6.4:** a janela julgada é o período INTEIRO de exposição, não a última semana. Um imóvel que ficou 21 dias na vitrine é julgado pelos leads dos 21 dias — sob a alternativa, seria julgado pelos 7 últimos, ignorando a exposição real que o contrato pagou.
+
+## D-022 — "resultado esperado para o nível" é parâmetro pendente nº 14
+
+**Data**: 2026-09-01 · **Resolve**: Spec §6.4 penaliza a janela que "não atingiu o resultado esperado **para o nível**", e nenhum documento quantifica isso.
+
+O `src/dominio/penalidades.py` já se recusava a inventar o limiar — `atingiu_resultado` chega pré-calculado, "pela camada que o dono da decisão vier a definir". Esta decisão nomeia a camada e o parâmetro.
+
+**Decisão do dono: o limiar entra na tabela de parâmetros pendentes como nº 14**, com **dois valores** (super destaque e destaque, porque a §6.4 diz "para o nível"), declarados no arquivo TOML da rodada como os demais. Fica **nulo** até o dono o definir.
+
+**Enquanto nulo:** o histórico de janelas é gravado normalmente — `semanas_consecutivas` e leads acumulados passam a funcionar, fechando a D-020 —, mas a penalidade não incide e a rodada **declara** "limiar de resultado não definido" na planilha. Nunca 0,0 silencioso: um imóvel sem penalidade por falta de limiar não é um imóvel que passou no critério.
+
+**Descartado: "pelo menos 1 lead", igual nos dois níveis.** Tem apoio descritivo no PRD ("12% das janelas históricas geraram ao menos um lead"), mas diverge da §6.4 ao julgar super destaque e destaque pela mesma régua, e penalizaria **88%** da base — uma penalidade quase universal perde o poder de discriminar que a §6.4 lhe atribui.
+
+### Elaborações e divergências da D-021, declaradas (2026-09-01)
+
+Os portões levantaram quatro casos que a D-021 não cobre e que o código teve de resolver. Ficam aqui em vez de dentro do código, porque cada um é regra.
+
+**1. Mudança de nível fecha a janela e abre outra.** **RATIFICADO pelo dono em 2026-09-02.** Muda o insumo da §6.4, e o precedente para leitura estrutural que altera quem é penalizado é levar ao dono (D-009, D-015). Custo aceito e declarado: o imóvel promovido perde o acumulado da janela anterior, porque cada janela passa a ser julgada pela régua do seu próprio nível — uma janela que atravessasse os dois não teria régua nenhuma. O documento decide quando a janela abre e fecha, não o que fazer quando o imóvel permanece na carga mas muda de destaque para super destaque. A primeira implementação congelava o nível da abertura — e como a §6.4 julga "o resultado esperado **para o nível**" e o nº 14 tem um valor por nível, uma janela que atravessasse os dois seria julgada pela régua errada, em silêncio. Adotado: a mudança de nível encerra a janela e abre uma nova, pela mesma razão que sair e voltar gera janela nova — são exposições distintas, com expectativas distintas.
+
+**2. A unidade de acumulação é a CARGA.** A guarda de idempotência é `ultima_rodada_decisao_id`, não a rodada de acompanhamento. Não é detalhe de implementação: chaveada pela execução, a guarda não guardaria nada (cada reexecução abre uma rodada nova, com id novo) e duas segundas medindo a mesma carga contariam duas semanas para uma carga só. É a letra da D-021 — "a cada **carga** em que ele permanece".
+
+**3. Carga retroativa é recusada.** Rodar uma segunda antiga depois de uma nova sobrescreveria histórico mais novo com dado mais velho. Recusado com mensagem própria, em vez de deixar o CHECK do banco derrubar a transação inteira com uma violação que não diz a causa.
+
+**4. `ciclo`, para o decaimento da penalidade, é uma carga APROVADA.** **RATIFICADO pelo dono em 2026-09-02.** A alternativa — contar toda sexta que rodou — faria a penalidade enfraquecer por semanas em que nada foi ao ar e o imóvel não teve chance nenhuma de gerar lead. Nenhum documento define "ciclo"; o contrato de `JanelaAnterior` diz "rodada de decisão completa". Adotado: conta só rodada de decisão **aprovada** (D-001: carga vigente é a aprovada), porque uma sexta abortada ou não aprovada não expôs imóvel nenhum, e fazer o decaimento avançar por ela contaria um ciclo que não aconteceu.
+
+### Duas limitações do acúmulo, declaradas na planilha da segunda
+
+- **Os leads da janela são AMOSTRA, não total.** A segunda mede três dias corridos (Spec §1) sobre um ciclo de carga de sete, então parte da exposição nunca é contada — e a Spec §2.1 pede "acumulado durante a janela". Quando o limiar nº 14 existir, a janela será julgada por um número subestimado, o que **penaliza a mais**. Fechar isso exige contar os leads do intervalo inteiro: fatia própria.
+- **A contagem de semanas começa agora.** Um imóvel que já está na vitrine há semanas aparece com poucas — é o que o Registro sabe, não o que aconteceu. A D-020 previa colunas vazias que se preenchem; um "1" tem aparência de medição e por isso a limitação vai declarada.
+
+### Divergência de ordem também na SEGUNDA (Registro antes do Redator)
+
+Já estava declarada para a sexta. Vale igual para a segunda: o PRD põe o Redator no passo 4 e o Registro no passo 5, e o código grava primeiro (o histórico da janela só existe depois de acumular, e é ele que preenche as duas colunas da §4.3). Há uma tensão interna no próprio PRD aqui — sob leitura estrita, o Redator do passo 4 jamais teria colunas que o passo 5 produz. O código escolheu a leitura que salva a §4.3. **Vai ao dono junto com a pergunta da sexta.**
+
+### Reaberta: limitação de fiação deve mudar o ESTADO da rodada?
+
+O argumento que sustentou "não" era explicitamente temporal: marcá-las como degradação tornaria toda rodada degradada **até o produtor de `janela_destaque` existir**, e um estado que nunca varia deixa de informar. **O produtor existe agora.** Quando o consumidor da sexta for ligado, a limitação passa a ser variável — some sozinha quando houver janelas encerradas — e o argumento cai. A pergunta volta ao dono na fatia do consumidor, com esse fato novo.

@@ -47,7 +47,7 @@ uv run python -m executar.sexta --parametros ARQUIVO.toml [--externo DIR] \
 Precisa das `NEWCORE_MYSQL_*` (estoque, vendas, dimensões) e de `POSTGRES_URL`
 (Registro) no ambiente.
 
-`--parametros` é **obrigatório e não tem default**. Doze dos treze parâmetros da
+`--parametros` é **obrigatório e não tem default**. Treze dos quatorze parâmetros da
 decisão são nulos, e a sexta não calcula nada sem eles; embutir um valor aqui seria
 inventá-lo — com o agravante de ficar invisível numa planilha aprovada. O arquivo é
 escrito pelo **dono da decisão**, mora **fora do repositório**, e o carregador recusa
