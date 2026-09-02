@@ -18,7 +18,12 @@ import psycopg
 import pytest
 
 from dados.registro.conexao import conectar
-from dados.registro.janelas import atualizar_janelas, ciclos_desde, janelas_encerradas
+from dados.registro.janelas import (
+    atualizar_janelas,
+    ciclos_desde,
+    historico_para_penalidade,
+    janelas_encerradas,
+)
 from dominio.acompanhamento import DesempenhoImovel, Nivel
 
 SEX_1 = date(2026, 9, 4)
@@ -280,7 +285,7 @@ def test_janelas_encerradas_ignora_a_janela_em_curso(conn):
         dia=SEX_1,
         desempenho=_desempenho((10, 1), (11, 0)),
     )
-    assert janelas_encerradas(conn, [10, 11]) == {}  # nenhuma fechou ainda
+    assert janelas_encerradas(conn, [10, 11], ate=date(2030, 1, 1)) == {}  # nenhuma fechou ainda
 
     _acumular(  # o 10 sai
         conn,
@@ -288,7 +293,7 @@ def test_janelas_encerradas_ignora_a_janela_em_curso(conn):
         dia=SEX_2,
         desempenho=_desempenho((11, 0)),
     )
-    encerradas = janelas_encerradas(conn, [10, 11])
+    encerradas = janelas_encerradas(conn, [10, 11], ate=date(2030, 1, 1))
     assert list(encerradas) == [10]
     assert encerradas[10] == (("destaque", 1, SEX_2),)
 
@@ -297,8 +302,8 @@ def test_janelas_encerradas_nao_inventa_ausencia(conn):
     """Imóvel sem janela encerrada some do dicionário — a §6.4 manda distinguir
     'sem histórico' de 'teve janela e não foi penalizado', e um zero aqui apagaria
     a diferença."""
-    assert janelas_encerradas(conn, [999]) == {}
-    assert janelas_encerradas(conn, []) == {}
+    assert janelas_encerradas(conn, [999], ate=date(2030, 1, 1)) == {}
+    assert janelas_encerradas(conn, [], ate=date(2030, 1, 1)) == {}
 
 
 def test_ciclos_conta_so_carga_APROVADA(conn):
@@ -306,19 +311,89 @@ def test_ciclos_conta_so_carga_APROVADA(conn):
     nenhum — fazer o decaimento da penalidade avançar por ela contaria um ciclo que
     não aconteceu. A base é lida ANTES: `ciclos_desde` conta a tabela inteira, e o
     banco local carrega rodadas de outros testes."""
-    base = ciclos_desde(conn, [SEX_1])[SEX_1]
+    base = ciclos_desde(conn, [SEX_1], ate=date(2030, 1, 1))[SEX_1]
     _rodada(conn, "decisao", SEX_2, aprovada=True)
     _rodada(conn, "decisao", SEX_3, aprovada=False)  # não aprovada: não conta
     _rodada(conn, "acompanhamento", SEX_3)  # não é decisão: não conta
 
-    assert ciclos_desde(conn, [SEX_1])[SEX_1] == base + 1
-    assert ciclos_desde(conn, []) == {}
+    assert ciclos_desde(conn, [SEX_1], ate=date(2030, 1, 1))[SEX_1] == base + 1
+    assert ciclos_desde(conn, [], ate=date(2030, 1, 1)) == {}
+
+
+def test_ciclos_NAO_conta_carga_aprovada_depois_do_teto(conn):
+    """O teto é `data_referencia` da rodada. Sem ele, a mesma sexta reprocessada
+    semanas depois contaria as cargas que entraram nesse intervalo, daria outro
+    decaimento e poderia produzir OUTRA lista — enquanto `--hoje` promete fixar o
+    recorte. É o invariante 5 com a entrada mudando sozinha."""
+    base = ciclos_desde(conn, [SEX_1], ate=SEX_2)[SEX_1]
+    _rodada(conn, "decisao", SEX_2, aprovada=True)  # dentro do teto
+    _rodada(conn, "decisao", SEX_3, aprovada=True)  # DEPOIS do teto: não conta
+
+    assert ciclos_desde(conn, [SEX_1], ate=SEX_2)[SEX_1] == base + 1
+    # Sem teto, as duas contariam — é a diferença que o teste existe para prender.
+    assert ciclos_desde(conn, [SEX_1], ate=SEX_3)[SEX_1] == base + 2
 
 
 def test_ciclos_agrega_datas_repetidas_numa_consulta(conn):
     """São ~7 mil imóveis por rodada e a maioria compartilha data de fim: uma
     consulta por imóvel seriam milhares de idas ao banco para a mesma pergunta."""
-    assert ciclos_desde(conn, [SEX_1, SEX_1, SEX_2]).keys() == {SEX_1, SEX_2}
+    assert ciclos_desde(conn, [SEX_1, SEX_1, SEX_2], ate=date(2030, 1, 1)).keys() == {SEX_1, SEX_2}
+
+
+# --- o que a SEXTA consome ----------------------------------------------------
+
+
+def test_historico_para_penalidade_compoe_nivel_leads_e_ciclos(conn):
+    """A leitura que a Spec §5 atribui ao Decisor: por imóvel, cada janela encerrada
+    como (nível, leads acumulados, ciclos desde o encerramento). CRUA — quem julga se
+    atingiu resultado é o domínio, com o limiar nº 14 injetado."""
+    _acumular(
+        conn,
+        carga=_rodada(conn, "decisao", SEX_1),
+        dia=SEX_1,
+        desempenho=_desempenho((10, 4), (11, 0)),
+    )
+    _acumular(  # o 10 sai: a janela dele fecha em SEX_2
+        conn,
+        carga=_rodada(conn, "decisao", SEX_2),
+        dia=SEX_2,
+        desempenho=_desempenho((11, 1)),
+    )
+    ciclos_ate_agora = ciclos_desde(conn, [SEX_2], ate=date(2030, 1, 1))[SEX_2]
+
+    hist = historico_para_penalidade(conn, [10, 11], ate=date(2030, 1, 1))
+
+    assert hist == {10: (("destaque", 4, ciclos_ate_agora),)}
+    assert 11 not in hist  # janela em curso não é julgável
+
+
+def test_janela_encerrada_DEPOIS_do_teto_nao_entra_no_julgamento(conn):
+    """O recorte vale para QUAIS janelas entram, não só para a contagem de ciclos.
+    Sem isto, uma sexta reprocessada com `--hoje` no passado julgaria janelas que
+    encerraram depois da sua data de referência — que não são "janela anterior" —, e
+    todas cairiam em ciclos 0, empatadas. O desempate faria a regra voltar a se
+    comportar como o `any` que a D-023 removeu, em silêncio."""
+    _acumular(
+        conn,
+        carga=_rodada(conn, "decisao", SEX_1),
+        dia=SEX_1,
+        desempenho=_desempenho((10, 4)),
+    )
+    _acumular(  # o 10 sai: a janela dele fecha em SEX_2
+        conn,
+        carga=_rodada(conn, "decisao", SEX_2),
+        dia=SEX_2,
+        desempenho=_desempenho((11, 0)),
+    )
+
+    assert janelas_encerradas(conn, [10], ate=SEX_2) != {}  # fechou EM SEX_2: entra
+    assert janelas_encerradas(conn, [10], ate=SEX_1) == {}  # ainda não tinha fechado
+    assert historico_para_penalidade(conn, [10], ate=SEX_1) == {}
+
+
+def test_historico_para_penalidade_sem_janela_devolve_vazio(conn):
+    assert historico_para_penalidade(conn, [999], ate=date(2030, 1, 1)) == {}
+    assert historico_para_penalidade(conn, [], ate=date(2030, 1, 1)) == {}
 
 
 def test_carga_RETROATIVA_e_recusada_com_mensagem_propria(conn):
