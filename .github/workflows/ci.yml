@@ -76,6 +76,7 @@ jobs:
         run: |
           uv run python -m executar.segunda --help
           uv run python -m executar.sexta --help
+          uv run python -m executar.aprovar --help
       # A sexta precisa RECUSAR a rodada quando falta um parâmetro do dono. O alvo é
       # um arquivo que EXISTE e a que falta uma chave: a primeira versão deste passo
       # apontava para um caminho inexistente, que sai 5 pelo ramo de arquivo ilegível
@@ -95,6 +96,49 @@ jobs:
           uv run python -m executar.sexta --parametros docs/parametros-da-rodada.exemplo.toml \
             || codigo=$?
           test "$codigo" -eq 5 || { echo "esperado 5 (modelo recusado), veio $codigo"; exit 1; }
+      # O carimbo de aprovação é o elo entre a sexta e a segunda, e as duas recusas
+      # abaixo são as que o protegem. Vão ao CI porque só rodam contra um Postgres
+      # real com o esquema aplicado — exatamente a metade que, antes do serviço
+      # acima, nenhum ambiente automatizado exercitava.
+      - name: A aprovação recusa rodada inexistente e RE-carimbo
+        run: |
+          codigo=0
+          uv run python -m executar.aprovar tacita 99999999 || codigo=$?
+          test "$codigo" -eq 4 || { echo "esperado 4 (inexistente), veio $codigo"; exit 1; }
+          # Rodada de decisão JÁ aprovada: re-carimbar deslocaria a janela que a
+          # segunda mede e poderia trocar a carga vigente, sem deixar rastro.
+          id=$(psql "$POSTGRES_URL" -tAqc "INSERT INTO registro.rodada
+            (tipo, inicio, fim, estado, aprovada_em, aprovada_por)
+            VALUES ('decisao', now() - interval '2 hour', now() - interval '90 minute',
+                    'completa', now() - interval '1 hour', 'ci') RETURNING id")
+          codigo=0
+          uv run python -m executar.aprovar tacita "$id" || codigo=$?
+          test "$codigo" -eq 7 || { echo "esperado 7 (ja aprovada), veio $codigo"; exit 1; }
+          por=$(psql "$POSTGRES_URL" -tAqc "SELECT aprovada_por FROM registro.rodada WHERE id = $id")
+          test "$por" = "ci" || { echo "carimbo SOBRESCRITO: $por"; exit 1; }
+      # A ponta positiva: sem ela, os dois testes acima passariam com um comando que
+      # recusa tudo. Aprova uma rodada pendente e confere que ela vira a carga vigente
+      # — que é o efeito pelo qual a fatia inteira existe.
+      - name: A aprovação CARIMBA uma rodada pendente
+        run: |
+          id=$(psql "$POSTGRES_URL" -tAqc "INSERT INTO registro.rodada
+            (tipo, inicio, fim, estado) VALUES ('decisao', now() - interval '2 hour',
+            now() - interval '90 minute', 'completa') RETURNING id")
+          uv run python -m executar.aprovar aprovar "$id" --por ci
+          carimbo=$(psql "$POSTGRES_URL" -tAqc "SELECT aprovada_por FROM registro.rodada WHERE id = $id")
+          test "$carimbo" = "ci" || { echo "nao carimbou: '$carimbo'"; exit 1; }
+      # O `--dry-run` promete "roda todas as guardas e NÃO grava". A promessa
+      # sobrevivia a mutação na suíte E no CI (a fiação de `main` não tinha trava):
+      # bastava fixar `dry_run=False` para o ensaio passar a carimbar em silêncio.
+      - name: O ensaio da aprovação não grava
+        run: |
+          id=$(psql "$POSTGRES_URL" -tAqc "INSERT INTO registro.rodada
+            (tipo, inicio, fim, estado) VALUES ('decisao', now() - interval '2 hour',
+            now() - interval '90 minute', 'completa') RETURNING id")
+          uv run python -m executar.aprovar tacita "$id" --dry-run
+          carimbo=$(psql "$POSTGRES_URL" -tAqc "SELECT coalesce(aprovada_por, 'NULO')
+            FROM registro.rodada WHERE id = $id")
+          test "$carimbo" = "NULO" || { echo "--dry-run GRAVOU: $carimbo"; exit 1; }
       # TODAS as migrações, não só a 001: elas são aplicadas à mão (não há aplicador
       # em ordem — pendência declarada em escrita.py), então um erro de sintaxe numa
       # migração nova só apareceria na hora de aplicar, no banco de quem opera.

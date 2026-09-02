@@ -484,3 +484,63 @@ A etapa `janelas` entrou em `ETAPAS_PARA_COMPLETA`: sem o histórico a rodada é
 As perguntas 3 (o imóvel que nunca sai da carga nunca é julgado) e 4 (limitação de fiação deve mudar o estado da rodada) seguem com o dono, e a 3 mudou de peso com esta decisão: **com "só a última janela", o alcance da §6.4 encolheu**. Antes, o histórico antigo ainda alcançava alguém; agora o imóvel que nunca sai não tem janela encerrada, e o que ele fez em exposições passadas também deixou de contar. A pergunta ficou MAIS relevante depois da D-023, não menos.
 
 Atualização da limitação de fuso registrada antes: desde a D-023, `ciclos_desde` não governa só o decaimento — governa **qual janela é julgada**. Um fuso trocado deixou de significar "decaimento deslocado em um" e passou a poder trocar a janela eleita, mudando quem é penalizado. A decisão de não fixar o fuso no código continua (a hospedagem é uma máquina só, e fixá-lo seria escolher um valor que ninguém definiu), mas o risco é maior do que o texto anterior dizia.
+
+## Carimbo de aprovação: o elo entre a sexta e a segunda (2026-09-02)
+
+O mecanismo de aprovação existia inteiro e testado desde a G2b/G3 — grafo com interrupção que sobrevive a reinício de processo, e `marcar_aprovada` no Registro. **Faltava chamador**: nenhum arquivo do repositório invocava `construir_grafo_aprovacao` fora dos testes. O efeito era silencioso e total: `ultima_carga_aprovada` filtra por `aprovada_em IS NOT NULL`, então enquanto ninguém carimbasse, **toda** rodada de segunda declararia ausência de carga e sairia pelo código de "insumo ausente", que o agendador trata como no-op benigno. A cadência semanal que a D-021 fechou no papel não fechava na prática.
+
+`executar/aprovar.py` é esse chamador. Nenhuma regra de decisão vive nele. As escolhas abaixo são **elaborações declaradas**, não decisões novas do dono — cada uma protege um significado que os documentos já fixaram.
+
+**1. O carimbo é único: re-carimbar é recusado.** Nenhum documento diz "não sobrescreva", porque nenhum documento imaginou que se pudesse. Mas `aprovada_em` carrega dois papéis: é o início da janela de três dias que a segunda mede (Spec §1, via `janela_da_carga`) e é a chave que elege a carga vigente (`ORDER BY aprovada_em DESC`). Sobrescrevê-lo desloca a medição e pode promover uma decisão velha a carga vigente — sem rastro, porque o esquema não guarda o carimbo anterior.
+
+O caminho que produz o carimbo duplo é concreto, não hipotético: reinvocar o grafo com o mesmo `rodada_id` numa thread **já concluída** não é no-op — o LangGraph reinicia do começo, reabre a interrupção, e a retomada seguinte chama o sink outra vez. Verificado, não deduzido. A guarda é dupla: no ponto de entrada (lendo o Registro antes de tocar o grafo) e em `marcar_aprovada` (`aprovada_em IS NULL` no WHERE), que é a que vale quando o chamador for outro — o console, um agendador.
+
+**2. Aprovar fora de ordem é recusado por default, com escape declarado — e são DUAS recusas, não uma.** A eleição da carga vigente é por `(aprovada_em, id)` (`ultima_carga_aprovada`: `ORDER BY aprovada_em DESC, id DESC`), não por id. Logo há dois jeitos opostos de errar a ordem, e ambos fazem a segunda medir a lista errada:
+
+- aprovar uma rodada **antiga** havendo outra mais nova já aprovada — o carimbo novo promove a velha a vigente;
+- carimbar uma rodada **nova** num instante ANTERIOR a um carimbo já existente — a lista nova é aprovada e a vigente continua sendo a outra, em silêncio.
+
+A segunda só é alcançável por causa do `--em` desta mesma fatia, e a primeira versão da guarda não a pegava: ela comparava **ids**, e por id o caso passa (12 > 11). Achado pelo portão de regra. `--fora-de-ordem` libera as duas, e a mensagem diz qual é o caso e o que vai acontecer. Sem as recusas, o caminho destrutivo seria o default silencioso.
+
+**3. O instante do carimbo é o da CARGA, não o do clique.** `aprovada_em` é o proxy que o sistema tem para "a carga entrou no ar" — a carga é manual e o sistema não publica nada (cabeçalho de `registro/janelas.py`). Aprovar na segunda uma carga aplicada na sexta, carimbando "agora", deslocaria em três dias a janela que a segunda mede, sem nada acusar. `--em` deixa declarar o instante real; o default continua sendo agora. Instante no futuro é recusado, e anterior ao fim da própria rodada também — a carga não pode ter entrado no ar antes de a lista existir.
+
+**4. Só rodada `completa` ou `degradada` é aprovável.** É exatamente o filtro que o console usa hoje para montar a fila de pendentes — `console/lib/registro.ts::rodadasAguardandoAprovacao`, `WHERE tipo = 'decisao' AND aprovada_em IS NULL AND estado IN ('completa','degradada')` — então ele nunca oferece um cartão que o comando recusa.
+
+**Declarado: a recusa de ABORTADA é hoje inalcançável pelo caminho de produção.** O nó de persistência do grafo só grava rodadas não-abortadas (consequência de persistência registrada na G2a-wire), então uma rodada abortada não deixa nem o cabeçalho `rodada` — não há id para aprovar. O teste só alcança o caso com `INSERT` direto. A guarda existe porque a pendência do dono sobre gravar cabeçalho de abortada segue aberta e porque `estado` é `NULL`-ável no DDL; o motivo — aprovar uma abortada criaria carga vigente sem imóvel nenhum, e a segunda mediria contra ela — vale para o dia em que o cabeçalho passar a ser gravado. Registro o alcance junto com a guarda, seguindo o precedente da D-023, para não parecer que o cenário é corrente.
+
+**5. Aprovação tácita: o mecanismo existe, o prazo não.** O comando `tacita` grava `aprovada_por = "tácita"`, o "por prazo" da D-001. **Nada aqui calcula prazo**: o parâmetro nº 10 segue nulo, e quem invoca o comando está AFIRMANDO que o prazo decorreu. O carimbo distingue essa afirmação de uma aprovação que o dono deu olhando a lista — que é a razão de a coluna `aprovada_por` existir (migração 004).
+
+### Pergunta ao dono — a reprovação não é representável
+
+`grafo/aprovacao.py` sabe representar um veredito de reprovação, mas `registro.rodada` **não a distingue de "ainda não decidida"**: as duas deixam `aprovada_em` nulo. Por isso o comando `reprovar` NÃO foi exposto — expô-lo daria ao dono a sensação de ter agido, enquanto o console continuaria mostrando "Aprove a rodada N" para sempre e a thread ficaria queimada.
+
+Isso deixa um buraco real, e a formulação precisa importa. **No sistema como está, o silêncio NÃO aprova**: sem carimbo, `ultima_carga_aprovada` devolve `None` e a rodada de segunda declara ausência de carga. Ou seja, hoje o silêncio já é a recusa efetiva — o que falta não é poder recusar, é poder **registrar** a recusa, distinguindo "o dono disse não" de "ninguém olhou".
+
+**E isso é uma divergência com Ferramentas §4, que passo a declarar em vez de deixar implícita.** O documento fixa o default oposto: "se a planilha não for alterada até um horário definido, ela é considerada aprovada como saiu". No sistema, o default é o contrário — nada acontece sem alguém carimbar. A inversão é forçada pelo parâmetro nº 10 (prazo da aprovação tácita) ser **nulo**: aprovar sozinho por decurso de prazo exigiria um prazo que ninguém definiu, e inventá-lo é o que este projeto não faz. É a escolha segura (a carga não é aplicada sem decisão humana), mas é divergência com documento e agora está escrita como tal. Declarado o nº 10, o comando `tacita` é o mecanismo pronto para restaurar o default do documento.
+
+Resolver o registro do "não" exige coluna de estado no esquema (uma migração) e uma decisão sobre o que a reprovação significa para a semana seguinte: a sexta seguinte reprocessa a mesma semana? A lista reprovada some da fila do console? **Vai ao dono.**
+
+### Pergunta ao dono — `aprovada_em` registra o ACEITE ou a entrada da carga no ar?
+
+O `--em` desta fatia expôs uma ambiguidade que já existia e ninguém tinha precisado resolver. Os documentos puxam para os dois lados:
+
+- **aceite**: a D-001 descreve o carimbo como "aprovada em ⟨momento⟩, por prazo", e Ferramentas §4 diz que o prazo "registra o aceite";
+- **entrada no ar**: Spec §1 ancora a janela de três dias na **aplicação da carga**, e o PRD fala em "leads entrados desde a carga de sexta". Estes são hierarquicamente superiores.
+
+Hoje o campo é único e serve aos dois usos: `janelas.py` já o tratava como "o melhor proxy" para a entrada no ar, com o resíduo declarado. O `--em` deixa o dono **absorver** esse resíduo — e ao fazê-lo, o instante do aceite deixa de existir no Registro, que a D-001 chama de fonte da verdade. As duas leituras fiéis são: coluna nova para a aplicação da carga, com `aprovada_em` preservando o aceite; ou emenda à D-001 redefinindo o campo. **Vai ao dono.** Enquanto não decidido, o `--em` é opcional e o default (`agora`) preserva o comportamento anterior.
+
+### Pergunta ao dono — a aprovação tácita deve registrar quem a invocou?
+
+`aprovar` exige `--por`; `tacita` grava só `aprovada_por = "tácita"`. Como nada calcula o prazo (nº 10 nulo), a tácita é hoje uma **afirmação humana sem autor** no Registro. Ferramentas §5 já cataloga o risco de o Registro afirmar aprovação não dada, então não é violação — mas enquanto o prazo for nulo, quem invocou a tácita é informação que existe e não está sendo guardada. **Vai ao dono.**
+
+### Declarado, não perguntado — o veredito digitado tem de ser o que vale
+
+O grafo de aprovação tem QUATRO estados, não três, e a diferença é de correção. Além de "inexistente", "aguardando o dono" e "concluída", existe **"travada no `aplicar`"**: o veredito já foi consumido e o sink levantou. Classificar por "tem próximo nó" — que era o que o ponto de entrada fazia — colapsa a travada com a aguardando, e nela o `Command(resume=...)` **não é consumido**, porque não há interrupção pendente: o nó roda de novo com o veredito ANTERIOR.
+
+O efeito medido: a aprovação tácita falha no sink, o dono roda `aprovar --por olavo`, e o Registro grava `aprovada_por = "tácita"`, com saída 0. Na direção oposta é pior — atribui a uma **pessoa** uma aprovação que ela não deu naquele momento. É exatamente o campo que a D-001 criou para distinguir a tácita da explícita, e exatamente a classe de falha silenciosa que motivou esta fatia. A classificação passa a ser por interrupção pendente, e uma thread já decidida sem carimbo é recusada com código próprio (`9`) em vez de reaplicar o veredito antigo. `--refazer` é a saída: descarta a thread e decide de novo, e só age quando o Registro não tem carimbo.
+
+### Declarado, não perguntado — o impasse dos dois usos do mesmo Postgres
+
+O projeto usa **um único** PostgreSQL para o Registro e para o checkpointer do grafo, por desenho. O `setup()` do `PostgresSaver` roda `CREATE INDEX CONCURRENTLY`, que espera **toda** transação concorrente do banco terminar. Com a conexão do Registro já aberta, o índice espera por ela, ela espera o grafo terminar, e o comando trava para sempre — sem erro, sem timeout. Aconteceu de verdade, e só apareceu ao simular o passo de CI: nenhum teste com checkpointer em memória o alcança, porque o impasse é entre duas conexões do mesmo Postgres.
+
+A correção é de ordem — o checkpointer nasce antes de a conexão do Registro abrir — e tem teste próprio, porque a ordem aqui é correção e não estilo. Fica registrado porque **qualquer fatia futura que abra o checkpointer dentro de uma transação do Registro reintroduz o impasse**, e o sintoma não se parece com um bug de código.
