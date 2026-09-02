@@ -23,7 +23,7 @@ from typing import Annotated, TypedDict
 from dados.coletor_externo import ColetaExterna
 from dominio.auditoria import ResultadoAuditoria
 from dominio.elegibilidade import ImovelCandidato
-from dominio.penalidades import ImovelPenalizavel
+from dominio.penalidades import ImovelPenalizavel, JanelaCrua
 from dominio.perfil import ImovelVendido, PerfilConversao
 from piloto.decisao import ResultadoDecisao
 from piloto.semelhanca import DimensoesImovel
@@ -72,6 +72,14 @@ class EstadoRodada(TypedDict, total=False):
     estado: Estado
     prontos: Annotated[dict[str, bool], _merge_dict]
     degradacoes: Annotated[list[str], operator.add]
+    # Quantas janelas ENCERRADAS o Registro devolveu. `None` = o Registro NÃO foi
+    # consultado (fonte não fiada), que é diferente de consultar e não achar nada —
+    # e a limitação da planilha afirma o segundo. Sem a distinção, uma rodada montada
+    # sem a fonte declararia "o Registro não devolveu janela nenhuma" sem ter
+    # perguntado: a mesma classe de limitação falsa que este projeto já corrigiu duas
+    # vezes. Junto com o limiar nulo, são TRÊS causas distintas para a mesma coluna
+    # 0,0, e a planilha precisa dizer qual.
+    janelas_lidas: int | None
     motivo_aborto: str | None
 
 
@@ -88,13 +96,33 @@ class Fontes:
     # Coletor Externo: lê a saída do raspador (out/*.csv + status.json). None =
     # sem raspagem (esqueleto) → a rodada degrada nesse fator, como antes.
     coletar_externo: Callable[[], ColetaExterna] | None = None
+    # O histórico de janelas do Registro, CRU (nível, leads, ciclos) — o julgamento
+    # "atingiu resultado" é do domínio, com o limiar nº 14 injetado. Fonte separada
+    # das demais porque a Spec §5 a atribui ao DECISOR: "o único agente que lê o
+    # Registro durante a rodada, e o faz para obter o histórico de janelas necessário
+    # ao cálculo da penalidade". None = rodada sem acesso ao Registro (teste, ensaio).
+    coletar_janelas: (
+        Callable[[Sequence[int], date], Mapping[int, tuple[JanelaCrua, ...]]] | None
+    ) = None
 
 
 # Etapas cujo "pronto" precisa valer para a rodada ser COMPLETA (Spec §7.3).
 # O Coletor Externo entra aqui: sem raspagem admitida (ausente/velha/amarração
 # baixa) a rodada é DEGRADADA nesse fator; com a raspagem fresca e amarrada (G4),
 # o "externo" fica pronto e a rodada pode ser COMPLETA.
-ETAPAS_PARA_COMPLETA = ("coletor_interno", "perfil", "externo", "decisor", "crivo", "redator")
+# `janelas` entrou com o consumidor da §6.4 (D-023): sem o histórico do Registro a
+# decisão prossegue com dado parcial — uma das três penalidades não incide —, e a
+# Spec §7.2 chama isso de DEGRADADA, não de rodada completa. Sem a etapa aqui, uma
+# rodada cujo Registro caiu sairia COMPLETA com a penalidade silenciosamente inerte.
+ETAPAS_PARA_COMPLETA = (
+    "coletor_interno",
+    "perfil",
+    "externo",
+    "janelas",
+    "decisor",
+    "crivo",
+    "redator",
+)
 
 
 def estado_final(estado: EstadoRodada) -> Estado:

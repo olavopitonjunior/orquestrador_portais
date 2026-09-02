@@ -19,7 +19,7 @@ import pytest
 
 import executar.sexta as mod
 from config.parametros import carregar
-from dominio.penalidades import ImovelPenalizavel, JanelaAnterior
+from dominio.penalidades import ImovelPenalizavel
 from grafo.estado import Estado
 
 EXEMPLO = Path(__file__).resolve().parent.parent / "docs" / "parametros-da-rodada.exemplo.toml"
@@ -476,39 +476,36 @@ def test_limitacoes_da_fiacao_chegam_ao_MOTIVO_gravado(tmp_path, monkeypatch, pa
     monkeypatch.setattr(mod, "conectar", lambda: _Conn())
     monkeypatch.setattr(mod, "gravar_rodada_decisao", lambda *a, **k: (gravado.update(k), 7)[1])
     registrar, _ = _registrador(parametros, mod._avisar(tmp_path, dry_run=False))
-    registrar(_estado(penalizaveis={1: _penalizavel(1)}))
+    registrar(_estado(janelas_lidas=0))
 
     motivo = gravado["motivo_degradacao"]
     assert "HISTÓRICO DE JANELAS" in motivo
     assert "45,9%" in motivo
 
 
-def test_limitacao_de_janela_le_o_HISTORICO_nao_a_penalidade(parametros):
-    """O predicado é "o produtor entregou algum histórico?", não "alguém foi
-    penalizado". As duas divergem no dia em que o produtor existir e todas as janelas
-    tiverem dado resultado: ali a planilha declararia dado ausente sobre dado
-    presente — a mesma limitação falsa que a degradação incondicional de portal
-    produzia, reintroduzida a prazo."""
-    sem_historico = mod.limitacoes_da_fiacao(parametros, {1: _penalizavel(1)})
-    assert any("HISTÓRICO DE JANELAS" in x for x in sem_historico)
+def test_limitacao_de_janela_le_o_REGISTRO_nao_a_lista_julgada(parametros):
+    """O predicado é "o Registro devolveu alguma janela encerrada?", não "alguém foi
+    penalizado" nem "a lista chegou julgada". As três divergem, e as duas primeiras
+    divergem justamente quando o consumidor passa a funcionar: com histórico presente
+    e todas as janelas tendo dado resultado, a planilha declararia dado ausente sobre
+    dado presente — a limitação falsa que este projeto já corrigiu duas vezes."""
+    assert any("HISTÓRICO DE JANELAS" in x for x in mod.limitacoes_da_fiacao(parametros, 0))
+    assert not any("HISTÓRICO DE JANELAS" in x for x in mod.limitacoes_da_fiacao(parametros, 7))
 
-    # Histórico ENTREGUE, e ainda assim ninguém penalizado (a janela deu resultado):
-    # sob o predicado antigo isto declararia "dado ausente" sobre um dado presente.
-    com_historico = mod.limitacoes_da_fiacao(
-        parametros,
-        {
-            1: _penalizavel(
-                1, (JanelaAnterior(atingiu_resultado=True, ciclos_desde_encerramento=1),)
-            )
-        },
-    )
-    assert not any("HISTÓRICO DE JANELAS" in x for x in com_historico)
+
+def test_sem_limiar_e_sem_historico_sao_limitacoes_DISTINTAS(parametros):
+    """As duas zeram a penalidade §6.4 por motivos opostos — não há régua, ou não há
+    o que julgar. Sob um sinal só, quem lê a planilha não saberia qual das duas
+    corrigir, e a que está sob seu controle é só uma delas."""
+    limitacoes = mod.limitacoes_da_fiacao(parametros, 0)
+    assert any("HISTÓRICO DE JANELAS" in x for x in limitacoes)
+    assert any("LIMIAR DE RESULTADO" in x for x in limitacoes)  # o exemplo não declara o nº 14
 
 
 def test_razao_um_declara_a_divergencia_com_a_spec(tmp_path, parametros):
     """A §6.4 diz que a penalidade decai. Razão 1.0 é aceita como escolha do dono,
     mas a divergência aparece na planilha em vez de o código fingir que não existe."""
-    assert not any("não decai" in x for x in mod.limitacoes_da_fiacao(parametros, {}))
+    assert not any("não decai" in x for x in mod.limitacoes_da_fiacao(parametros, 0))
 
     arquivo = tmp_path / "p.toml"
     arquivo.write_text(
@@ -517,7 +514,7 @@ def test_razao_um_declara_a_divergencia_com_a_spec(tmp_path, parametros):
     sem_decaimento = carregar(arquivo)
     assert any(
         "não decai" in x.lower() or "NÃO\ndecai" in x
-        for x in mod.limitacoes_da_fiacao(sem_decaimento, {})
+        for x in mod.limitacoes_da_fiacao(sem_decaimento, 0)
     )
 
 

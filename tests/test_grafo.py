@@ -6,7 +6,7 @@ aborto. `estado_final` tem testes unitários à parte.
 """
 
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from langgraph.graph import END
 
@@ -17,7 +17,7 @@ from dados.coletor_externo import (
 )
 from dominio.alocacao import Alocacao, PosicaoAlocada
 from dominio.elegibilidade import ImovelCandidato
-from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade
+from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, Penalidade
 from dominio.perfil import Dimensao, ImovelVendido, perfis_de_conversao
 from dominio.ranking import PesosNivel
 from grafo.estado import Estado, Fontes, estado_final
@@ -152,7 +152,13 @@ def _coleta_ok(views_por_id):
 
 def _fontes_com_externo(candidatos, views_por_id):
     fontes = _fontes(candidatos)
-    return replace(fontes, coletar_externo=lambda: _coleta_ok(views_por_id))
+    # COMPLETA exige TODAS as fontes, e as janelas entraram na lista (D-023): sem
+    # elas a rodada é honestamente degradada.
+    return replace(
+        fontes,
+        coletar_externo=lambda: _coleta_ok(views_por_id),
+        coletar_janelas=lambda _ids, _ate: {},
+    )
 
 
 def test_rodada_com_raspagem_fresca_fica_completa():
@@ -245,7 +251,8 @@ def test_mesma_entrada_mesma_saida():
 
 def _prontos_todos():
     return {
-        e: True for e in ("coletor_interno", "perfil", "externo", "decisor", "crivo", "redator")
+        e: True
+        for e in ("coletor_interno", "perfil", "externo", "janelas", "decisor", "crivo", "redator")
     }
 
 
@@ -255,6 +262,14 @@ def test_estado_final_completa_com_tudo_pronto():
 
 def test_estado_final_degradada_sem_externo():
     prontos = _prontos_todos() | {"externo": False}
+    assert estado_final({"prontos": prontos}) == Estado.DEGRADADA
+
+
+def test_estado_final_degradada_sem_o_historico_de_janelas():
+    """Decisão do dono: Registro fora DEGRADA e entrega. Sem `janelas` entre as
+    etapas exigidas, uma rodada cujo Registro caiu sairia COMPLETA com uma das três
+    penalidades da §6.4 silenciosamente inerte."""
+    prontos = _prontos_todos() | {"janelas": False}
     assert estado_final({"prontos": prontos}) == Estado.DEGRADADA
 
 
@@ -373,3 +388,112 @@ def test_rota_pos_finalizar_nao_persiste_no_aborto():
     assert _rota_pos_finalizar({"estado": Estado.ABORTADA}) == END
     assert _rota_pos_finalizar({"estado": Estado.DEGRADADA}) == "registrar"
     assert _rota_pos_finalizar({"estado": Estado.COMPLETA}) == "registrar"
+
+
+# --- consumidor das janelas: a penalidade §6.4 passa a INCIDIR -----------------
+
+
+def _fontes_com_janelas(candidatos, historico):
+    return replace(_fontes(candidatos), coletar_janelas=lambda _ids, _ate: historico)
+
+
+LIMIAR = {"super_destaque": 5, "destaque": 2}
+
+
+def test_penalidade_de_janela_INCIDE_quando_ha_historico_e_limiar():
+    """O que a fatia inteira existe para fazer. Até aqui a coluna saía 0,0 para todo
+    imóvel — não porque ninguém merecesse a penalidade, mas porque nada alimentava o
+    cálculo. O imóvel 1 teve uma janela de destaque com 0 lead contra um limiar de 2:
+    não atingiu o resultado, e é descontado."""
+    fontes = _fontes_com_janelas([_candidato(1)], {1: (("destaque", 0, 0),)})
+    final = construir_grafo(fontes, PARAMS, resultado_esperado=LIMIAR).invoke(_estado_inicial())
+
+    detalhe = final["resultado"].detalhes[1]
+    assert Penalidade.JANELA_SEM_RESULTADO in detalhe.descontos_por_penalidade
+    assert detalhe.descontos_por_penalidade[Penalidade.JANELA_SEM_RESULTADO] > 0
+    assert final["janelas_lidas"] == 1
+
+
+def test_janela_que_ATINGIU_o_resultado_nao_penaliza():
+    """A contraprova. Sem ela, o teste acima passaria mesmo se o código penalizasse
+    toda janela indistintamente — e a §6.4 penaliza a que NÃO atingiu."""
+    fontes = _fontes_com_janelas([_candidato(1)], {1: (("destaque", 9, 0),)})
+    final = construir_grafo(fontes, PARAMS, resultado_esperado=LIMIAR).invoke(_estado_inicial())
+
+    detalhe = final["resultado"].detalhes[1]
+    assert Penalidade.JANELA_SEM_RESULTADO not in detalhe.descontos_por_penalidade
+    assert final["janelas_lidas"] == 1  # leu, e o histórico existe
+
+
+def test_sem_limiar_a_janela_e_LIDA_mas_nao_julgada():
+    """As duas metades separadas: o Registro devolveu histórico (`janelas_lidas` diz
+    quanto), mas o parâmetro nº 14 é nulo, então nada é julgado. Sob um sinal só,
+    isso sairia idêntico a "não há histórico" — e as duas pedem correções opostas."""
+    fontes = _fontes_com_janelas([_candidato(1)], {1: (("destaque", 0, 0),)})
+    final = construir_grafo(fontes, PARAMS).invoke(_estado_inicial())  # sem limiar
+
+    assert final["janelas_lidas"] == 1  # o histórico EXISTE
+    detalhe = final["resultado"].detalhes[1]
+    assert Penalidade.JANELA_SEM_RESULTADO not in detalhe.descontos_por_penalidade
+
+
+def test_registro_fora_DEGRADA_e_entrega_em_vez_de_abortar(capsys):
+    """Decisão do dono. A §7.2 descreve exatamente este caso — "alguma fonte falhou e
+    a decisão prosseguiu com dado parcial" — e a §6.4 é uma das TRÊS penalidades: sem
+    ela ainda há lista para carregar. Abortar deixaria a semana sem vitrine por causa
+    de uma penalidade."""
+
+    def _explode(_ids, _ate):
+        raise ConnectionError("postgres fora, com dado sensível na mensagem")
+
+    fontes = replace(_fontes([_candidato(1)]), coletar_janelas=_explode)
+    final = construir_grafo(fontes, PARAMS, resultado_esperado=LIMIAR).invoke(_estado_inicial())
+
+    assert final["estado"] == Estado.DEGRADADA
+    assert final["resultado"] is not None  # ENTREGOU
+    assert final["prontos"]["janelas"] is False
+    (motivo,) = [d for d in final["degradacoes"] if "HISTÓRICO DE JANELAS" in d]
+    assert "ConnectionError" in motivo  # o TIPO
+    assert "dado sensível" not in motivo  # nunca a mensagem
+
+
+def test_o_REGISTRO_recebe_os_penalizaveis_nao_so_os_elegiveis():
+    """O conjunto certo é toda a população penalizável, incluindo reprovados que o
+    relaxamento pode recuperar — restringir a elegíveis deixaria recuperado sem a
+    penalidade §6.4. Sem esta trava, trocar a lista por `[]` passava na suíte inteira."""
+    recebidos = []
+
+    def _capta(ids, _ate):
+        recebidos.append(list(ids))
+        return {}
+
+    fontes = replace(_fontes([_candidato(1), _candidato(2)]), coletar_janelas=_capta)
+    construir_grafo(fontes, PARAMS).invoke(_estado_inicial())
+
+    assert recebidos == [[1, 2]]
+
+
+def test_o_TETO_da_contagem_de_ciclos_e_a_data_da_RODADA_nao_o_relogio():
+    """A data de referência da rodada, não `date.today()`. Trocar uma pela outra é
+    dependência do relógio corrente DENTRO do caminho da decisão — a forma de
+    não-determinismo que o invariante 5 nomeia — e passava na suíte inteira: o teste
+    dos ids descartava este argumento."""
+    tetos = []
+
+    def _capta(_ids, ate):
+        tetos.append(ate)
+        return {}
+
+    ontem = date.today() - timedelta(days=1)  # garante que difere do relógio
+    fontes = replace(_fontes([_candidato(1)]), coletar_janelas=_capta)
+    construir_grafo(fontes, PARAMS).invoke(_estado_inicial() | {"data_referencia": ontem})
+
+    assert tetos == [ontem]  # a data_referencia do estado, não `date.today()`
+
+
+def test_sem_fonte_de_janelas_o_contador_e_NONE_nao_zero():
+    """`None` = o Registro não foi consultado; `0` = foi consultado e não devolveu
+    nada. As duas zeram a penalidade por motivos diferentes, e a limitação da planilha
+    afirma o segundo — declarar zero aqui seria afirmar uma consulta que não houve."""
+    final = construir_grafo(_fontes([_candidato(1)]), PARAMS).invoke(_estado_inicial())
+    assert final["janelas_lidas"] is None

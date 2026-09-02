@@ -49,9 +49,9 @@ foi extraída em funções puras (`monitor_pronto`, `degradacoes_da_rodada`,
    histórico, que `com_historico` põe nas duas colunas da Spec §4.3. As limitações
    que sobram vêm em `acumulo.limitacoes` e vão à planilha E ao motivo gravado: os leads da
    janela são AMOSTRA (a segunda mede três dias de um ciclo de sete) e a contagem de
-   semanas COMEÇA AGORA, sem o histórico anterior ao produtor. A penalidade §6.4
-   segue sem insumo porque o CONSUMIDOR da sexta ainda não lê a tabela — fatia
-   própria, e é a causa que a limitação da sexta deve declarar.
+   semanas COMEÇA AGORA, sem o histórico anterior ao produtor. O consumidor da
+   sexta já lê a tabela: a penalidade §6.4 incide sobre as janelas ENCERRADAS,
+   desde que o limiar por nível (parâmetro nº 14) tenha sido declarado.
 3. **ABORTADA é reusada para "não há carga aprovada".** A Spec §7.2 define abortada
    como "a coleta interna não ficou pronta" — a CONSEQUÊNCIA casa (não há entrega),
    o gatilho não está previsto para a segunda. Mesmo reuso declarado que a G1 fez
