@@ -69,6 +69,8 @@ Divergência entre código e documento é **bug do código** até prova em contr
 
 `docs/decisoes.md` registra as resoluções do dono da decisão para divergências entre os documentos. Uma decisão registrada lá prevalece sobre o trecho divergente até que uma revisão dos documentos a incorpore.
 
+`docs/perguntas-abertas.md` é o ÍNDICE de tudo que aguarda o dono — parâmetros nulos, divergências, fatos e atos —, com o que cada resposta destrava. É índice, não fonte: o texto integral continua em `docs/decisoes.md` e na tabela abaixo. Quem registrar pendência nova acrescenta a linha lá na mesma mudança; `tests/test_perguntas_abertas.py` falha se os arquivos divergirem.
+
 ## Glossário mínimo
 
 - **Agente do produto**: um dos sete — Orquestrador, Coletor Interno, Coletor Externo, Analista de Perfil de Conversão, Decisor, Redator da Entrega, Monitor Operacional. São nós do grafo LangGraph, escritos em Python, executados em produção às sextas e segundas. **Nunca viram arquivos em `.claude/agents/`.**
