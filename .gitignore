@@ -1,6 +1,10 @@
 # Segredos — .env é GERADO (op inject -i .env.tmpl -o .env), nunca commitado
 .env
 
+# Worktrees de sessão. Escopo deliberado em `.claude/worktrees/`, NUNCA `.claude/`:
+# `agents/` e `skills/` são rastreados e são estrutura do repo (CLAUDE.md).
+.claude/worktrees/
+
 # Python
 __pycache__/
 *.pyc
