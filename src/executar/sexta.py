@@ -9,7 +9,7 @@ saiu de um desses. Aqui a fiação é commitada, reproduzível e auditável.
 
 ## Por que `--parametros` é OBRIGATÓRIO e não tem default
 
-Doze dos treze parâmetros da decisão são NULOS (D-004, D-017) e o CLAUDE.md proíbe
+Treze dos quatorze parâmetros da decisão são NULOS (D-004, D-017) e o CLAUDE.md proíbe
 preenchê-los com valor inventado. A sexta não calcula nada sem eles. A saída não é
 embutir um default "razoável" — seria exatamente o valor inventado que a regra
 proíbe, com o agravante de ficar invisível numa planilha aprovada. É exigir que o
@@ -268,10 +268,21 @@ def limitacoes_da_fiacao(
     limitacoes = []
     if not any(p.janelas_anteriores for p in penalizaveis.values()):
         limitacoes.append(
-            "HISTÓRICO DE JANELAS ausente para todos os imóveis: registro.janela_destaque "
-            "ainda não tem produtor e o Coletor Interno devolve a lista vazia, então a "
-            "penalidade por janela anterior sem resultado (Spec §6.4) não pode incidir. "
-            "A coluna sai 0,0 para todos — não é 'nenhum imóvel penalizado', é dado ausente"
+            "HISTÓRICO DE JANELAS ausente para todos os imóveis: a rodada de segunda já "
+            "acumula registro.janela_destaque (D-021), mas a SEXTA ainda não lê a tabela — "
+            "o Coletor Interno devolve a lista vazia, então a penalidade por janela "
+            "anterior sem resultado (Spec §6.4) não pode incidir. A coluna sai 0,0 para "
+            "todos — não é 'nenhum imóvel penalizado', é dado ausente"
+        )
+    if parametros.resultado_esperado is None:
+        # A outra metade da D-022: "enquanto nulo... a rodada DECLARA 'limiar de
+        # resultado não definido' na planilha. Nunca 0,0 silencioso". Sem esta linha,
+        # a ausência de penalidade por falta de limiar seria indistinguível de uma
+        # janela que passou no critério.
+        limitacoes.append(
+            "LIMIAR DE RESULTADO não definido (parâmetro pendente nº 14, D-022): a §6.4 "
+            "penaliza a janela que não atingiu 'o resultado esperado para o nível', e os "
+            "dois valores seguem nulos. Nenhuma janela é julgada — não é 'todas passaram'"
         )
     if parametros.declarado.get("decaimento_janela", {}).get("razao") == 1.0:
         limitacoes.append(
@@ -462,7 +473,7 @@ def construir_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help="TOML com os parâmetros PROVISÓRIOS da rodada, declarados pelo dono da "
-        "decisão. Obrigatório e sem default: doze dos treze parâmetros são nulos, e "
+        "decisão. Obrigatório e sem default: treze dos quatorze parâmetros são nulos, e "
         "embutir um valor aqui seria inventá-lo. Modelo em docs/.",
     )
     p.add_argument(

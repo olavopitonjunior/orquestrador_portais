@@ -124,7 +124,11 @@ def test_dry_run_nao_abre_conexao_nem_escreve(tmp_path, monkeypatch):
     )
     sinks = mod._sinks(tmp_path, AGORA, dry_run=True)
 
-    assert sinks.registrar(_resultado(), "completa", None, {"monitor": True}) == -1
+    # Em ensaio a janela NÃO é atualizada: histórico e limitações saem vazios, e as
+    # duas colunas da §4.3 ficam declaradas ausentes — a verdade sobre um ensaio, não
+    # os números de uma semana que não foi gravada.
+    rid, acumulo = sinks.registrar(_resultado(), "completa", None, {"monitor": True})
+    assert (rid, acumulo.historico, acumulo.limitacoes) == (-1, {}, ())
     assert sinks.entregar(_resultado(), "completa", []) is None
     assert sinks.declarar_ausencia("sem carga", {"monitor": False}) == -1
     sinks.avisar("aviso em ensaio")

@@ -1,6 +1,6 @@
 # MODELO — os NÚMEROS aqui são ILUSTRATIVOS e NÃO SÃO ADOTADOS.
 #
-# Doze dos treze parâmetros da decisão são NULOS (tabela do CLAUDE.md; D-004, D-017).
+# Treze dos quatorze parâmetros da decisão são NULOS (tabela do CLAUDE.md; D-004, D-017).
 # Este arquivo mostra a FORMA do que o dono da decisão precisa declarar; nenhuma
 # evidência sustenta os valores. Substitua todos.
 #
@@ -101,3 +101,33 @@ idade_maxima_dias = 8
 #                               diferentes medem intenções diferentes.
 [externo.desempenho]
 forma = "visualizacoes"
+
+# --- Resultado esperado por nível (parâmetro pendente nº 14, D-022) -----------
+# SEÇÃO OPCIONAL — a única do arquivo, e a exceção é deliberada.
+#
+# A Spec §6.4 penaliza a janela de destaque que "não atingiu o resultado esperado
+# PARA O NÍVEL", e nenhum documento jamais quantificou isso. Enquanto a seção estiver
+# ausente, o limiar é NULO: nenhuma janela é julgada, e a rodada DECLARA na planilha
+# que o limiar não foi definido — porque não penalizar por falta de régua não é o
+# mesmo que passar no critério.
+#
+# Se você declarar a seção, declare os DOIS níveis: meio-declarado julgaria metade
+# das janelas e deixaria a outra metade sem julgamento, com a planilha dizendo
+# "limiar não definido" numa rodada que penalizou parte do estoque.
+#
+# O valor é a contagem de leads que a janela precisa ter gerado para NÃO ser
+# penalizada. ZERO é aceito e significa "toda janela passa" — decisão legítima, mas
+# indistinguível de um descuido, então declare-a de propósito ou omita a seção.
+#
+# Referência histórica, descritiva e NÃO normativa: 88% das janelas terminaram com
+# zero lead, e a média foi de 0,21 lead por janela. Ressalva de procedência: esses
+# números vêm de uma tabela do Newcore morta desde 27/06/2023 (ver mapa-de-dados) —
+# descrevem um histórico congelado, não o estoque vivo. O histórico próprio do
+# Registro, que a D-021 começou a produzir, é o que vai substituí-los.
+#
+# ATENÇÃO: os leads que a janela acumula são AMOSTRA (a segunda mede três dias de um
+# ciclo de sete), então um limiar calibrado contra o total real penalizaria a mais.
+#
+# [resultado_esperado]
+# super_destaque = 3
+# destaque = 1

@@ -20,7 +20,7 @@ modelagem. A fronteira é EXECUTÁVEL, não só documental: quem fala com modelo
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from enum import StrEnum
 from typing import TypeVar
@@ -362,4 +362,36 @@ def apurar(
         resumo=resumo,
         desempenho=desempenho,
         leads_sem_tratamento=tuple(sorted(linhas_leads, key=lambda x: (x.entrada, x.lead_id))),
+    )
+
+
+def com_historico(
+    resultado: ResultadoAcompanhamento, historico: Mapping[int, tuple[int | None, int | None]]
+) -> ResultadoAcompanhamento:
+    """Preenche as duas colunas da §4.3 num resultado já apurado. PURA.
+
+    Existe por causa de uma ordem que não fecha de outro jeito: o histórico de
+    janelas só sabe as semanas consecutivas DESTA semana depois de a janela ser
+    atualizada, e a janela só é atualizada com os leads que a apuração mediu. Apurar
+    duas vezes resolveria a ordem e criaria um problema pior — duas medições da mesma
+    semana, que podem divergir.
+
+    Então apura-se uma vez, atualiza-se a janela com o que foi medido, e as duas
+    colunas (que não alimentam nenhuma decisão — são relato, Spec §4.3) são
+    preenchidas aqui. Nenhuma medição é recomputada: `leads_gerados` e
+    `leads_sem_tratamento` atravessam intocados.
+
+    Imóvel ausente do histórico mantém `None` nas duas — ausência declarada, nunca
+    zero inventado (D-020).
+    """
+    return replace(
+        resultado,
+        desempenho=tuple(
+            replace(
+                d,
+                semanas_consecutivas=(h := historico.get(d.imovel_id, (None, None)))[0],
+                leads_acumulados_janela=h[1],
+            )
+            for d in resultado.desempenho
+        ),
     )

@@ -303,6 +303,48 @@ def test_ausencia_dentro_de_secao_validada_continua_sendo_ausencia(tmp_path):
         carregar(_arquivo(tmp_path, _sem(("semelhanca", "decaimento"))))
 
 
+# --- parâmetro nº 14 (D-022): a única seção OPCIONAL --------------------------
+
+
+def test_resultado_esperado_ausente_e_nulo_nao_erro(tmp_path):
+    """A D-022 deixou o nº 14 NULO. Exigir a seção obrigaria o dono a inventar os
+    dois números para conseguir rodar — o oposto do que a decisão determinou."""
+    assert carregar(_arquivo(tmp_path, VALIDO)).resultado_esperado is None
+
+
+def test_resultado_esperado_declarado_carrega_os_dois_niveis(tmp_path):
+    dados = copy.deepcopy(VALIDO)
+    dados["resultado_esperado"] = {"super_destaque": 3, "destaque": 1}
+    assert carregar(_arquivo(tmp_path, dados)).resultado_esperado == {
+        "super_destaque": 3,
+        "destaque": 1,
+    }
+
+
+def test_resultado_esperado_MEIO_declarado_e_recusado(tmp_path):
+    """Meio-declarado é pior que nulo: metade das janelas julgada por um limiar e a
+    outra sem julgamento, com a planilha declarando "limiar não definido" numa rodada
+    que penalizou parte do estoque."""
+    dados = copy.deepcopy(VALIDO)
+    dados["resultado_esperado"] = {"super_destaque": 3}
+    with pytest.raises(ParametroAusente, match="nº 14"):
+        carregar(_arquivo(tmp_path, dados))
+
+
+def test_resultado_esperado_negativo_e_recusado(tmp_path):
+    dados = copy.deepcopy(VALIDO)
+    dados["resultado_esperado"] = {"super_destaque": -1, "destaque": 1}
+    with pytest.raises(ParametroInvalido, match="contagem de leads"):
+        carregar(_arquivo(tmp_path, dados))
+
+
+def test_nivel_desconhecido_em_resultado_esperado_e_recusado(tmp_path):
+    dados = copy.deepcopy(VALIDO)
+    dados["resultado_esperado"] = {"super_destaque": 3, "destaque": 1, "vitrine": 9}
+    with pytest.raises(ParametroInvalido, match="vitrine"):
+        carregar(_arquivo(tmp_path, dados))
+
+
 def _anuncio(**kw) -> DesempenhoAnuncio:
     campos = {
         "imovel_id": 1,

@@ -44,11 +44,14 @@ foi extraída em funções puras (`monitor_pronto`, `degradacoes_da_rodada`,
    recorte de três dias de deliberado ("mede o efeito da carga nova sem misturar com
    a anterior"); aqui nada garante isso. Derivar a janela de `aprovada_em` é fatia de
    wiring — e nenhum prazo foi inventado no código (parâmetros nº 8/nº 11 seguem nulos).
-2. **A D-020 continua sem produtor.** `apurar` é chamado SEM `historico=`, então
-   "semanas consecutivas em destaque" e "leads acumulados na janela atual" (Spec §4.3)
-   saem `None` para todas as posições, e ninguém escreve `registro.janela_destaque`.
-   A decisão dizia "vazias e acumulam"; o acúmulo é fatia própria. Efeito colateral: a
-   penalidade §6.4 "janela anterior sem resultado" segue sem insumo.
+2. **A D-020 tem produtor, com duas limitações declaradas.** `gravar_acompanhamento`
+   acumula `registro.janela_destaque` na mesma transação (D-021) e devolve o
+   histórico, que `com_historico` põe nas duas colunas da Spec §4.3. As limitações
+   que sobram vêm em `acumulo.limitacoes` e vão à planilha E ao motivo gravado: os leads da
+   janela são AMOSTRA (a segunda mede três dias de um ciclo de sete) e a contagem de
+   semanas COMEÇA AGORA, sem o histórico anterior ao produtor. A penalidade §6.4
+   segue sem insumo porque o CONSUMIDOR da sexta ainda não lê a tabela — fatia
+   própria, e é a causa que a limitação da sexta deve declarar.
 3. **ABORTADA é reusada para "não há carga aprovada".** A Spec §7.2 define abortada
    como "a coleta interna não ficou pronta" — a CONSEQUÊNCIA casa (não há entrega),
    o gatilho não está previsto para a segunda. Mesmo reuso declarado que a G1 fez
@@ -91,12 +94,14 @@ from typing import Annotated, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from dados.registro.acompanhamento import AcumuloDaJanela
 from dominio.acompanhamento import (
     LeadDoPeriodo,
     PayloadModelo,
     PosicaoPaga,
     ResultadoAcompanhamento,
     apurar,
+    com_historico,
     payload_para_modelo,
 )
 from grafo.estado import Estado, _merge_dict
@@ -144,7 +149,14 @@ class SinksSegunda:
     """
 
     entregar: Callable[[ResultadoAcompanhamento, str, Sequence[str]], object]
-    registrar: Callable[[ResultadoAcompanhamento, str, str | None, Mapping[str, bool]], int]
+    # `registrar` devolve (rodada_id, histórico de janelas). O histórico vem de lá, e
+    # não de uma leitura à parte, porque ele só existe DEPOIS de a mesma transação
+    # atualizar a janela com os leads desta semana (D-021) — uma leitura separada
+    # veria o estado anterior e o relatório diria "2 semanas" na terceira.
+    registrar: Callable[
+        [ResultadoAcompanhamento, str, str | None, Mapping[str, bool]],
+        tuple[int, AcumuloDaJanela],
+    ]
     declarar_ausencia: Callable[[str, Mapping[str, bool]], int]
     avisar: Callable[[str], object]
 
@@ -290,8 +302,20 @@ def no_medir(estado: EstadoSegunda, *, fontes: FontesSegunda, sinks: SinksSegund
     # muda (planilha no Drive, nenhum rastro no Registro, e um rerun duplicando a
     # entrega). A planilha recebe estado e degradações porque a §7.2 exige a
     # limitação visível NELA, não só no Registro.
-    rodada_id = sinks.registrar(resultado, str(estado_final), motivo, prontos)
-    sinks.entregar(resultado, str(estado_final), tuple(todas))
+    rodada_id, acumulo = sinks.registrar(resultado, str(estado_final), motivo, prontos)
+    # As duas colunas da §4.3 (semanas consecutivas, leads acumulados na janela) são
+    # preenchidas AQUI, entre registrar e entregar: antes de registrar elas não
+    # existem (a janela ainda não acumulou esta semana) e depois de entregar seria
+    # tarde. `com_historico` é pura e não recomputa medição nenhuma — só preenche o
+    # que estava declarado ausente.
+    resultado = com_historico(resultado, acumulo.historico)
+    # As limitações do ACÚMULO vão para a planilha, não para `todas`: elas não são
+    # falha de fonte, são o que o produtor de janelas ainda não sabe (amostra de três
+    # dias num ciclo de sete; contagem que começa agora). Somá-las ao estado tornaria
+    # TODA segunda degradada enquanto durarem, e um estado que nunca varia deixa de
+    # informar — mesma razão declarada para as limitações de fiação da sexta, e a
+    # mesma pergunta aberta ao dono em docs/decisoes.md.
+    sinks.entregar(resultado, str(estado_final), (*todas, *acumulo.limitacoes))
 
     return {
         "payload": payload_para_modelo(resultado),  # agregados: o que pode ir a modelo

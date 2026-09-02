@@ -14,10 +14,12 @@ import pytest
 from dominio.acompanhamento import (
     DesempenhoImovel,
     LeadDoPeriodo,
+    Nivel,
     PosicaoPaga,
     ResumoAcompanhamento,
     SemCargaAprovada,
     apurar,
+    com_historico,
     payload_para_modelo,
     sem_tratamento,
 )
@@ -300,3 +302,66 @@ def test_pii_do_lead_viaja_para_a_planilha():
     assert linha.corretor_gestor == "Corretor X"
     assert linha.gestor_distrito == "Gestor Y"
     assert linha.distrito == "Centro"
+
+
+# --- com_historico: preenche as duas colunas da §4.3 sem recomputar medição ----
+
+
+def test_com_historico_preenche_as_duas_colunas():
+    """Existe por causa de uma ordem que não fecha de outro jeito: as semanas
+    consecutivas desta semana só são conhecidas depois de a janela acumular, e a
+    janela só acumula com os leads que a apuração mediu. Apurar duas vezes resolveria
+    a ordem e criaria duas medições da mesma semana."""
+    r = apurar(
+        rodada_decisao_id=1,
+        posicoes=[PosicaoPaga(1, Nivel.DESTAQUE), PosicaoPaga(2, Nivel.DESTAQUE)],
+        leads=[],
+        inicio_periodo=date(2026, 9, 4),
+        fim_periodo=date(2026, 9, 7),
+    )
+    assert all(d.semanas_consecutivas is None for d in r.desempenho)
+
+    cheio = com_historico(r, {1: (3, 12)})
+    por_id = {d.imovel_id: d for d in cheio.desempenho}
+    assert (por_id[1].semanas_consecutivas, por_id[1].leads_acumulados_janela) == (3, 12)
+    # Ausente segue None — ausência declarada, nunca zero inventado (D-020).
+    assert (por_id[2].semanas_consecutivas, por_id[2].leads_acumulados_janela) == (None, None)
+
+
+def test_com_historico_nao_recomputa_medicao_nenhuma():
+    """As duas colunas são RELATO (§4.3), não medição. Se preencher o histórico
+    mexesse em `leads_gerados` ou na lista de sem-tratamento, a planilha passaria a
+    divergir do que o Registro gravou na mesma transação."""
+    r = apurar(
+        rodada_decisao_id=1,
+        posicoes=[PosicaoPaga(1, Nivel.DESTAQUE)],
+        leads=[
+            LeadDoPeriodo(
+                lead_id=9,
+                imovel_id=1,
+                entrada=date(2026, 9, 5),
+                atendimento_registrado=False,
+                contato_registrado=False,
+                distribuicao=date(2026, 9, 5),
+                corretor_gestor="X",
+            )
+        ],
+        inicio_periodo=date(2026, 9, 4),
+        fim_periodo=date(2026, 9, 7),
+    )
+    cheio = com_historico(r, {1: (2, 5)})
+    assert cheio.resumo == r.resumo
+    assert cheio.leads_sem_tratamento == r.leads_sem_tratamento
+    assert cheio.desempenho[0].leads_gerados == r.desempenho[0].leads_gerados
+    assert cheio.desempenho[0].leads_sem_tratamento == r.desempenho[0].leads_sem_tratamento
+
+
+def test_com_historico_vazio_nao_altera_nada():
+    r = apurar(
+        rodada_decisao_id=1,
+        posicoes=[PosicaoPaga(1, Nivel.DESTAQUE)],
+        leads=[],
+        inicio_periodo=date(2026, 9, 4),
+        fim_periodo=date(2026, 9, 7),
+    )
+    assert com_historico(r, {}) == r

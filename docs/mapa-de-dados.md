@@ -219,9 +219,17 @@ definição muda quem é acusado de abandono. **Decisão do dono, registrada em 
 ### Consequência para a Spec §4.3: duas colunas sem fonte
 
 "Semanas consecutivas em destaque" e "leads acumulados na janela atual" viriam de
-`adsrealtyextra_historic`, **morta desde 27/06/2023**. Não há fonte no Newcore. Só o Registro
-próprio (histórico das cargas aprovadas) pode supri-las, e **nas primeiras rodadas ficam
-`None`** — que o domínio já trata como ausência declarada, nunca como zero.
+`adsrealtyextra_historic`, **morta desde 27/06/2023**. Não há fonte no Newcore.
+
+**Passaram a ter fonte no Registro próprio** (D-021, 2026-09-01): `registro.janela_destaque`
+tem produtor — a rodada de segunda acumula por carga aprovada. As colunas se preenchem desde
+a primeira rodada; o que é parcial não é a presença, é a **profundidade** do histórico, e a
+planilha declara isso enquanto houver janela em curso aberta na primeira carga que o produtor
+viu. Duas limitações vão declaradas junto: os leads são amostra de três dias num ciclo de sete
+(a §2.1 pede o acumulado da janela inteira) e as datas são as da APROVAÇÃO da carga, não as da
+aplicação manual na vitrine — que o sistema não observa.
+
+Imóvel fora da carga continua com `None` nas duas: ausência declarada, nunca zero.
 
 ### Outras armadilhas medidas
 
