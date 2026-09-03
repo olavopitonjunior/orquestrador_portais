@@ -38,9 +38,9 @@ jobs:
       - name: Dependências de desenvolvimento
         run: uv sync --group dev
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests scripts
       - name: Formatação
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests scripts
       # Tipos do domínio PURO em modo estrito: é o que sustenta a fronteira de PII
       # do invariante 3 (só `PayloadModelo` chega a modelo). Sem este passo, a
       # fronteira seria honorária — ver comentário em pyproject.toml.
@@ -71,7 +71,10 @@ jobs:
           resumo=$(grep -E "passed|failed|error" /tmp/pytest.txt | tail -n 1)
           case "$resumo" in
             *skipped*)
-              echo "::error::teste PULADO — o Postgres do CI não está sendo usado"
+              echo "::error::teste PULADO. Um skip é indistinguível de um teste que passou."
+              echo "::error::Causas possíveis: o Postgres do CI não está sendo usado, ou uma"
+              echo "::error::dependência de desenvolvimento sumiu e um teste se auto-pulou."
+              grep -E "^SKIPPED" /tmp/pytest.txt || true
               exit 1 ;;
           esac
       # Fumaça do ponto de entrada: prova que o comando DOCUMENTADO roda de fato.
