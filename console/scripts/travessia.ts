@@ -30,7 +30,15 @@ for (const campo of CAMPOS) {
   if (campo.tipo === "escolha") {
     valores.set(campo.caminho, (campo.escolhas ?? [])[0]);
   } else if (campo.caminho.startsWith("pesos.")) {
-    valores.set(campo.caminho, "25"); // os quatro de cada nível somam 100
+    // ASSIMÉTRICAS entre os níveis, e é o ponto todo. Com os oito pesos valendo 25, uma
+    // troca de `pesos.super_destaque` por `pesos.destaque` na serialização produziria
+    // valores IDÊNTICOS no destino errado — o check de valores do CI ficaria verde com
+    // os dois níveis do ranking invertidos, que é a assimetria central do produto.
+    // Medido: com sondas iguais, a troca passava. Cada nível soma 100, em ordem oposta.
+    const ordem = ["semelhanca_perfil", "leads_positivo", "desempenho_proprio", "produtividade_gestor"];
+    const posicao = ordem.indexOf(campo.caminho.split(".")[2]);
+    const escala = campo.caminho.includes("super_destaque") ? [40, 30, 20, 10] : [10, 20, 30, 40];
+    valores.set(campo.caminho, String(escala[posicao]));
   } else if (campo.tipo === "inteiro") {
     valores.set(campo.caminho, String(campo.minimo ?? 1));
   } else {

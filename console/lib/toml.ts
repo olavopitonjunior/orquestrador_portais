@@ -8,7 +8,7 @@
 // Adiantar não é duplicar: as faixas, os tipos e as escolhas vêm todos do contrato
 // gerado do próprio validador, e o CI compara byte a byte. Nada aqui é redigitado.
 
-import { CAMPOS, POR_CAMINHO, REGRAS, campoAtivo, type Campo } from "./contrato";
+import { CAMPOS, POR_CAMINHO, REGRAS, campoAtivo, normalizarEscolha, type Campo } from "./contrato";
 
 export type Valores = ReadonlyMap<string, string>;
 export type Problema = { caminho: string; mensagem: string };
@@ -71,7 +71,7 @@ export function validar(valores: Valores): Problema[] {
       continue;
     }
     if (campo.tipo === "escolha") {
-      if (!(campo.escolhas ?? []).includes(bruto!.trim())) {
+      if (!(campo.escolhas ?? []).includes(normalizarEscolha(bruto))) {
         problemas.push({
           caminho: campo.caminho,
           mensagem: `escolha inválida; aceitas: ${(campo.escolhas ?? []).join(", ")}`,
@@ -124,7 +124,7 @@ function validarRegras(valores: Valores): Problema[] {
 }
 
 function escalar(campo: Campo, bruto: string): string {
-  if (campo.tipo === "escolha") return JSON.stringify(bruto.trim());
+  if (campo.tipo === "escolha") return JSON.stringify(normalizarEscolha(bruto));
   const n = Number(bruto);
   // Inteiro sai SEM casa decimal: `_inteiro` do validador recusa `40.0`, e é assim
   // que a distinção que o JavaScript não tem atravessa para o TOML.
@@ -142,7 +142,15 @@ function escalar(campo: Campo, bruto: string): string {
  *  `paraToml` não pode depender do cuidado do chamador, porque o próximo chamador não
  *  leu esta história. */
 function saoUmaLinha(texto: string): string {
-  return texto.replace(/[\r\n]+/g, " ").slice(0, 200);
+  // Não basta tirar quebra de linha. A gramática do TOML proíbe QUALQUER caractere de
+  // controle dentro de comentário, e um `\x01` no nome faz o arquivo inteiro deixar de
+  // parsear — a rodada morre antes de ler um parâmetro, com o console tendo dito
+  // "Guardado". Mesma classe do defeito da injeção: texto livre entrando num formato
+  // onde certos bytes têm significado. Aqui só passa tabulação e o que é imprimível.
+  return texto
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .slice(0, 200);
 }
 
 /** O TOML que a rodada vai receber. Só chame com `validar()` vazio. */

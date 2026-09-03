@@ -210,3 +210,29 @@ test("inteiro grande demais é RECUSADO em vez de virar notação científica", 
   assert.equal(p.length, 1);
   assert.match(p[0].mensagem, /grande demais/);
 });
+
+
+test("escolha com espaço supérfluo NÃO desativa o campo que ela governa", () => {
+  // Havia DUAS noções de igualdade: `validar` comparava com trim, `campoAtivo` cru.
+  // "cliques_do_tipo " era aceito pela validação E desativava `tipo`, que então não
+  // era exigido nem serializado — o console dizia "Guardado", e a rodada morria com
+  // "falta externo.desempenho.tipo", na única tentativa da semana.
+  const v = preenchimentoValido("cliques_do_tipo");
+  v.set("externo.desempenho.forma", "cliques_do_tipo ");
+  assert.ok(
+    campoAtivo(POR_CAMINHO.get("externo.desempenho.tipo")!, v),
+    "o campo condicional foi desativado por um espaço",
+  );
+  assert.deepEqual(validar(v), [], "e continua válido");
+  assert.match(paraToml(v, "t"), /^tipo = "clique/m, "e o campo condicional é serializado");
+});
+
+test("caractere de controle na procedência não quebra o TOML", () => {
+  // A gramática do TOML proíbe controle dentro de comentário: um caractere de controle
+  // no nome fazia o arquivo INTEIRO deixar de parsear, e a rodada morria antes de ler
+  // um parâmetro — com o console tendo dito "Guardado". Mesma classe da injeção, por um
+  // caractere que a primeira correção não cobria.
+  const toml = paraToml(preenchimentoValido(), "ol\u0001a\u007Fvo");
+  assert.doesNotMatch(toml, /[\u0000-\u0008\u000B-\u001F\u007F]/);
+  assert.ok(toml.split("\n").some((l) => l.startsWith("#") && l.includes("olavo")));
+});

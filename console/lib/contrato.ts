@@ -57,9 +57,23 @@ export function secaoDe(campo: Campo | string): string {
   return partes.length > 2 ? partes.slice(0, 2).join(".") : partes[0];
 }
 
+/** A ÚNICA noção de igualdade para valor de escolha.
+ *
+ *  Existe porque havia duas, e a divergência era explorável: `validar` comparava com
+ *  `.trim()` e `campoAtivo` comparava cru. Um valor com espaço à direita —
+ *  `"cliques_do_tipo "` — era ACEITO pela validação e, ao mesmo tempo, desativava o
+ *  campo condicional que ele governa. O campo deixava de ser exigido, não era
+ *  serializado, o console dizia "Guardado", e a rodada morria com "falta
+ *  externo.desempenho.tipo" — na única tentativa da semana, depois de o dono já ter
+ *  visto sucesso na tela. Duas noções de igualdade para o mesmo par é o defeito; a
+ *  função é a correção. */
+export function normalizarEscolha(valor: string | undefined): string {
+  return (valor ?? "").trim();
+}
+
 /** Um campo condicional só entra quando o campo que o governa tem o valor esperado. */
 export function campoAtivo(campo: Campo, valores: ReadonlyMap<string, string>): boolean {
   if (campo.exige === null) return true;
   const [alvo, esperado] = campo.exige;
-  return valores.get(alvo) === esperado;
+  return normalizarEscolha(valores.get(alvo)) === esperado;
 }

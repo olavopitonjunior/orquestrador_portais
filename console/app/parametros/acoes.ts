@@ -26,10 +26,16 @@ export async function salvarParametros(
   // `\n[resultado_esperado]` definia o parâmetro nº 14, que a D-022 declara nulo.
   // `paraToml` também limpa, por contrato próprio; aqui a recusa é explícita para o
   // dono VER o problema em vez de ter o nome dele silenciosamente encurtado.
-  if (/[\r\n]/.test(por)) {
+  // Qualquer caractere de controle, não só quebra de linha: a gramática do TOML os
+  // proíbe dentro de comentário, e um `\x01` faz o arquivo inteiro deixar de parsear.
+  // `paraToml` também os remove, por contrato próprio; aqui a recusa é explícita para
+  // o dono VER o problema em vez de ter o nome silenciosamente alterado.
+  if (/[\u0000-\u001F\u007F]/.test(por)) {
     return {
       ok: false,
-      problemas: [{ caminho: "por", mensagem: "não pode conter quebra de linha" }],
+      problemas: [
+        { caminho: "por", mensagem: "não pode conter quebra de linha nem caractere de controle" },
+      ],
     };
   }
   if (por.length > 200) {
