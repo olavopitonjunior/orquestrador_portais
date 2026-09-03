@@ -10,6 +10,16 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+
+### Fixed
+
+- **A ponte com o MySQL quebrava com qualquer `%` no texto do SQL — e por isso a coleta interna nunca havia rodado contra a base viva.** `consultar(sql)` sem parâmetros chamava `execute(sql, ())`, e o pymysql aplica `query % args` sempre que `args` não é None: uma tupla vazia não escapa disso, e todo `%` do texto vira especificador de formato. O SQL do Coletor Interno tem dois percentuais em **comentário** — números de medição, `94,8%` e `0,176%` —, então a rodada morria com `TypeError` antes de ler uma linha.
+
+  **O defeito é invisível na revisão porque o SQL está certo: quem erra é a ponte.** E era invisível na suíte porque nenhum teste atravessava o driver — todos param no contrato de conversão. Achado pela **primeira execução real da sexta**, não por leitura. Corrigido passando os parâmetros só quando existem, com teste de regressão que afirma o que a ponte entrega ao driver: um argumento sem parâmetros, dois com.
+
+  Com a correção, a rodada de sexta completou de ponta a ponta contra o Newcore ao vivo pela primeira vez: **64 segundos**, código 0, estado DEGRADADA apenas no fator de portal (sem raspagem), sem gravar nada por ser modo seco.
+
+
 ### Added
 
 - **Contrato dos parâmetros da rodada, exportado em JSON — a fonte única do formulário do console.** O painel precisa saber, por campo do TOML, o tipo, a faixa, as escolhas fechadas, se é obrigatório e de qual parâmetro pendente ele é. Isso existia só espalhado por `src/config/parametros.py` — validadores, dataclasses de domínio, mensagens de erro —, nada que TypeScript leia. Duplicar em TS garantiria divergência silenciosa. `src/config/contrato.py` descreve os **22 campos** e **4 regras cruzadas**; `rodada-contrato` os emite; `console/lib/contrato-parametros.json` é a cópia commitada, travada por um passo de CI que compara byte a byte.
