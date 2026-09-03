@@ -13,6 +13,25 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- **Progresso ao vivo por nó do grafo, e o desfecho da rodada em arquivo — sem instrumentar nó nenhum (F4).** A sexta trocou `invoke` por `stream` com `stream_mode=["updates","values"]`: `updates` diz qual nó terminou, `values` traz o estado acumulado, e o último deles é exatamente o que `invoke` devolvia. **Zero mudança nos nós.** O grafo da decisão não tem checkpointer — o estado carrega objetos de domínio não serializáveis —, então não há de onde LER progresso: ele precisa ser emitido enquanto acontece.
+
+  **Um caminho só, e não dois.** Usar `stream` apenas quando alguém observa deixaria o caminho instrumentado rodando só quando o console dispara, e a versão exercitada em teste divergiria da que roda em produção. O que autoriza o caminho único é um teste que prova estado final idêntico entre `stream` e `invoke`, inclusive sob o fan-out `analista_perfil ∥ coletor_externo`.
+
+  **Dois contratos de ARQUIVO, no idioma que o projeto já usa** (o `status.json` do raspador): `--eventos` escreve uma linha JSON por nó concluído, com `flush`, e sobrevive à morte de quem observa; `--resultado` escreve o desfecho em **todos** os caminhos de saída, inclusive os de falha. É por ele que o `rodada_id` chega a quem disparou — parsear a frase do log seria a alternativa, e faria uma mudança de redação virar defeito de integração. É também o único jeito de contar uma rodada **abortada**, que não deixa nenhuma linha no Registro. O campo de falha carrega só o TIPO da exceção: a mensagem pode ecoar dado do Newcore, e o arquivo é lido por outro processo e mostrado numa tela.
+
+  **Guarda estrutural:** um teste lê o código-fonte de `main` e exige que todo `return` escreva o resultado antes de sair — os caminhos que exigiriam Newcore fora do ar ou crivo vetando não são exercitáveis de outro jeito. Verificado por mutação.
+
+  **Um defeito de defasagem, achado pela primeira execução instrumentada:** o LangGraph emite `updates` antes do `values` do mesmo passo, então anunciar o nó na hora o reportava com o estado de ANTES dele — o `coletor_interno` saía com zero etapas prontas e a tela mostraria sempre um passo atrás. Não aparece em teste de topologia, porque lá ninguém olha os prontos. Os nós passam a esperar o `values` seguinte, e um teste exige progresso monótono.
+
+  **Artefatos de operação saem de `saida/`.** Ficavam em `saida/execucoes/`, ao lado de `saida/sexta/`, que guarda a planilha — o entregável contratual. O comentário do código já dizia "fora de `saida/`" enquanto a constante estava dentro: comentário e código afirmando o oposto, que neste projeto é bug do código. Passaram para `var/execucoes/`, porque expurgo de log não pode alcançar planilha.
+
+  **Três lacunas da mesma classe, fechadas por uma linha cada.** O NDJSON acrescentava sem truncar no arranque — inofensivo enquanto nenhum trabalho roda duas vezes, mas na primeira recuperação de trabalho órfão o log da segunda tentativa concatenaria no da primeira e o progresso andaria **para trás**, contra a monotonicidade que esta mesma fatia exige. O `--hoje` no futuro sai por `SystemExit`, não por `return`, e não escrevia o resultado — o que fazia o nome da guarda estrutural ("todo caminho de saída") mentir. E a chave interna `__interrupt__` do LangGraph seria tratada como nome de nó: `invoke` a retira do estado, este laço não retirava. Nenhuma alcançável hoje; todas travadas por teste e verificadas por mutação.
+
+  Fecha o defeito de `rodada_id` nunca preenchido, registrado em `bug.md` na fatia anterior.
+
+
+### Added
+
 - **A fila de operação e o trabalhador que a executa — o console passa a poder disparar rodadas.** Esquema `operacao` novo (migração 006) com a fila de trabalhos, o log por execução, os parâmetros declarados, as publicações, o batimento do trabalhador e o adiamento de rodada. Mais `src/dados/operacao.py` (camada de acesso) e `rodada-trabalhador` (o processo que executa).
 
   **O console nunca executa processo.** Ele INSERE na fila; um trabalhador separado reivindica e roda. Disparar por `spawn` dentro de uma requisição daria um filho que morre no recarregamento do servidor — ou zumbi, se destacado — e uma linha "executando" eterna, porque não haveria quem observasse a transição. Com o estado no banco, nada precisa sobreviver ao reinício.

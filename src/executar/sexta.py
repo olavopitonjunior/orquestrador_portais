@@ -55,6 +55,7 @@ permanece.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -415,8 +416,15 @@ def executar(
     externo: Path | None = None,
     hoje: date | None = None,
     dry_run: bool = False,
+    ao_terminar_no: Callable[[str, Mapping[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], int | None]:
-    """Roda a sexta de ponta a ponta. Devolve o estado final e o `rodada_id`."""
+    """Roda a sexta de ponta a ponta. Devolve o estado final e o `rodada_id`.
+
+    `ao_terminar_no` é chamado a cada nó concluído, com o nome do nó e o estado
+    acumulado. Serve à tela de acompanhamento: o grafo da decisão não tem
+    checkpointer (o estado carrega objetos de domínio não-serializáveis), então não
+    há de onde ler progresso — ele precisa ser emitido enquanto acontece.
+    """
     hoje = hoje or date.today()
     agora = datetime.now()
 
@@ -436,14 +444,54 @@ def executar(
         resultado_esperado=parametros.resultado_esperado,
         registrar=registrar,
     )
-    final = grafo.invoke(
-        {
-            "data_referencia": hoje,
-            "estado": Estado.EM_ANDAMENTO,
-            "prontos": {},
-            "degradacoes": [],
-        }
-    )
+    # `stream`, não `invoke`, e SEMPRE — não só quando alguém observa.
+    #
+    # O argumento é mais forte do que "os dois convergem": `Pregel.invoke` É este laço.
+    # Por dentro ele chama `self.stream(..., stream_mode=["updates","values"])` e
+    # devolve o último `values`. Não há dois motores a manter em sincronia; há um, e
+    # antes só se descartava o progresso que ele já emitia.
+    #
+    # Uma diferença sobra, e está tratada abaixo: `invoke` retira `__interrupt__` do
+    # fluxo de updates e o funde no retorno. Este laço filtra a chave; fundi-la não é
+    # preciso enquanto o grafo da decisão não tiver checkpointer.
+    #
+    # Zero mudança nos nós: `updates` dá o nome do que terminou, `values` dá o estado
+    # acumulado, e o último deles é o retorno.
+    entrada = {
+        "data_referencia": hoje,
+        "estado": Estado.EM_ANDAMENTO,
+        "prontos": {},
+        "degradacoes": [],
+    }
+    final: dict[str, Any] = {}
+    # Os nós concluídos esperam o `values` seguinte antes de serem anunciados.
+    #
+    # O LangGraph emite `updates` ANTES do `values` do mesmo passo, então anunciar na
+    # hora reportaria cada nó com o estado de ANTES dele — o `coletor_interno` saía com
+    # zero etapas prontas, e a tela mostraria sempre um passo atrás. Medido na primeira
+    # execução instrumentada; a defasagem não aparece em teste de topologia porque lá
+    # ninguém olha os `prontos`.
+    pendentes: list[str] = []
+    for modo, pedaco in grafo.stream(entrada, stream_mode=["updates", "values"]):
+        if modo == "values":
+            final = pedaco
+            if ao_terminar_no is not None:
+                for no in pendentes:
+                    ao_terminar_no(no, final)
+                pendentes.clear()
+        else:
+            # Chaves com `__` não são nós: o LangGraph usa `__interrupt__` para as
+            # interrupções, e `invoke` a retira do estado antes de devolver. Este laço
+            # não a retira, então sem o filtro ela sairia no NDJSON como se um nó
+            # chamado `__interrupt__` tivesse terminado. Não alcançável hoje — o grafo
+            # da decisão não tem checkpointer e não chama `interrupt()`, que vive só no
+            # grafo separado da aprovação —, e é por isso que custa uma linha agora.
+            pendentes.extend(no for no in pedaco if not no.startswith("__"))
+    if ao_terminar_no is not None:
+        # O que sobrar não teve `values` depois — anuncia com o último estado conhecido,
+        # senão o nó final sumiria da tela justamente quando ela é mais consultada.
+        for no in pendentes:
+            ao_terminar_no(no, final)
 
     estado = final.get("estado")
     if estado == Estado.ABORTADA:
@@ -531,6 +579,20 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--destino", type=Path, default=Path("saida/sexta"))
     p.add_argument("--dry-run", action="store_true", help="não grava nem escreve nada")
     p.add_argument(
+        "--eventos",
+        type=Path,
+        help="arquivo NDJSON com uma linha por nó do grafo concluído. Contrato de "
+        "ARQUIVO, no mesmo idioma do status.json do raspador: sobrevive à morte de "
+        "quem observa e é inspecionável à mão.",
+    )
+    p.add_argument(
+        "--resultado",
+        type=Path,
+        help="arquivo JSON com o desfecho da rodada, escrito em TODOS os caminhos de "
+        "saída. É por aqui que o `rodada_id` chega a quem disparou — a alternativa "
+        "seria parsear a prosa do log, que muda sem aviso.",
+    )
+    p.add_argument(
         "--hoje",
         type=date.fromisoformat,
         help="data de referência (AAAA-MM-DD); default é hoje. Governa a regra de "
@@ -542,12 +604,84 @@ def construir_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _emissor_de_eventos(caminho: Path | None) -> Callable[[str, Mapping[str, Any]], None] | None:
+    """Uma linha JSON por nó concluído, com `flush` a cada uma.
+
+    Sem o flush, o buffer só desceria ao fim da rodada — e a tela de acompanhamento
+    existe para mostrar o que acontece AGORA. Só nome do nó, instante e os prontos:
+    nada do estado, que carrega objetos de domínio e dados do Newcore.
+    """
+    if caminho is None:
+        return None
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    # Começa limpo. O arquivo é aberto em modo de acréscimo a cada linha, e o desfecho
+    # (`--resultado`) trunca — assimetria que hoje é inofensiva porque nenhum trabalho
+    # roda duas vezes. Deixa de ser no dia em que houver recuperação de trabalho órfão:
+    # o NDJSON da segunda tentativa concatenaria no da primeira, e o progresso da tela
+    # andaria PARA TRÁS, contra a monotonicidade que um teste desta fatia exige.
+    caminho.unlink(missing_ok=True)
+
+    def emitir(no: str, estado: Mapping[str, Any]) -> None:
+        linha = {
+            "momento": datetime.now().isoformat(timespec="seconds"),
+            "no": no,
+            "prontos": dict(estado.get("prontos") or {}),
+        }
+        with caminho.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(linha, ensure_ascii=False) + "\n")
+            f.flush()
+
+    return emitir
+
+
+def _escrever_resultado(
+    caminho: Path | None,
+    *,
+    codigo: int,
+    estado: object = None,
+    rodada_id: int | None = None,
+    falha: str | None = None,
+) -> None:
+    """O desfecho, em TODOS os caminhos de saída — inclusive os de falha.
+
+    É assim que o `rodada_id` chega a quem disparou. A alternativa seria parsear a
+    frase "rodada de decisão gravada no Registro: id=N" do log, que muda sem aviso e
+    faria uma mudança de redação virar defeito de integração. E é o único jeito de
+    uma rodada ABORTADA ser contada: ela não deixa NENHUMA linha no Registro.
+
+    `falha` carrega só o TIPO da exceção, nunca a mensagem: a mensagem pode ecoar
+    dado do Newcore, e este arquivo é lido por outro processo e mostrado numa tela.
+    """
+    if caminho is None:
+        return
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(
+        json.dumps(
+            {
+                "codigo": codigo,
+                "estado": str(estado) if estado is not None else None,
+                "rodada_id": rodada_id,
+                "falha": falha,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Ambiente do `.env` do diretório CORRENTE — ver o docstring de config.ambiente.
     carregar_env()
     p = construir_parser()
     args = p.parse_args(argv)
     if args.hoje and args.hoje > date.today():
+        # Escreve ANTES do `p.error`, que sai por SystemExit(2) sem passar por nenhum
+        # `return`. Sem isto, a guarda estrutural abaixo ficaria com o nome mentindo:
+        # ela casa `return`, e este caminho não é um. Teste cujo nome afirma mais do
+        # que ele checa é o que deixa a próxima lacuna passar.
+        _escrever_resultado(args.resultado, codigo=2, falha="HojeNoFuturo")
         p.error("--hoje no futuro decidiria sobre um estoque que ainda não existe")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -560,6 +694,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "fora do repositório e substitua os valores antes de rodar.",
             args.parametros,
         )
+        _escrever_resultado(args.resultado, codigo=5, falha="ModeloComoEntrada")
         return 5
 
     try:
@@ -569,9 +704,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         # corrigível em segundos — não é incidente, e tratá-lo como falha de fonte
         # mandaria alguém investigar o Newcore por causa de um typo no TOML.
         log.error("parâmetros da rodada: %s", e)
+        _escrever_resultado(args.resultado, codigo=5, falha=type(e).__name__)
         return 5
     except OSError as e:
         log.error("não foi possível ler %s: %s", args.parametros, e)
+        _escrever_resultado(args.resultado, codigo=5, falha=type(e).__name__)
         return 5
 
     try:
@@ -581,16 +718,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             externo=args.externo,
             hoje=args.hoje,
             dry_run=args.dry_run,
+            ao_terminar_no=_emissor_de_eventos(args.eventos),
         )
     except SinkFalhou as e:
         log.error("%s (detalhe no log do servidor)", e)
         log.debug("causa completa", exc_info=True)
+        _escrever_resultado(args.resultado, codigo=1, falha=type(e).__name__)
         return 1
     except Exception as e:
         # Falha de FONTE (Newcore fora, saída do raspador ilegível) ou incoerência da
         # rodada. Só o tipo para fora: a mensagem pode ecoar dado do banco.
         log.error("falha ao coletar ou decidir: %s (detalhe no log do servidor)", type(e).__name__)
         log.debug("causa completa", exc_info=True)
+        _escrever_resultado(args.resultado, codigo=3, falha=type(e).__name__)
         return 3
 
     estado = final.get("estado")
@@ -607,13 +747,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         # super destaque — invariantes 6 e 7 — e sai com código PRÓPRIO: sob um código
         # só, uma violação de invariante chegaria ao monitoramento com a mesma cara de
         # "não havia imóvel para decidir", e ninguém iria olhar.
-        return 6 if final.get("prontos", {}).get("crivo") is False else 4
+        codigo = 6 if final.get("prontos", {}).get("crivo") is False else 4
+        _escrever_resultado(args.resultado, codigo=codigo, estado=estado)
+        return codigo
     if rodada_id is not None:
         log.info(
             "rodada %s pendente de APROVAÇÃO (D-001) — o prazo da tácita é o parâmetro "
             "nº 10, nulo; quem o define abre o fluxo de aprovação com este id",
             rodada_id,
         )
+    _escrever_resultado(args.resultado, codigo=0, estado=estado, rodada_id=rodada_id)
     return 0
 
 

@@ -20,6 +20,9 @@ __pycache__/
 *.xlsx
 *.csv
 saida/
+# Artefatos de OPERAÇÃO (eventos e desfecho por execução). Separado de `saida/`,
+# que guarda o entregável contratual: expurgo de log não pode alcançar planilha.
+var/
 
 # Node (coletor-externo, TypeScript)
 node_modules/

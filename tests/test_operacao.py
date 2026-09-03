@@ -222,7 +222,8 @@ def test_comando_da_sexta_leva_o_toml_e_roda_da_raiz():
     corrente, e um trabalhador iniciado pelo agendador do sistema faria a rodada
     falhar com "variável ausente" — diagnóstico errado para "rodei do lugar errado"."""
     argv, cwd = comando(_t("sexta", parametros="/tmp/p.toml"))
-    assert argv[1:] == ["-m", "executar.sexta", "--parametros", "/tmp/p.toml"]
+    assert argv[1:4] == ["-m", "executar.sexta", "--parametros"]
+    assert "/tmp/p.toml" in argv
     assert cwd == RAIZ
 
 
@@ -248,6 +249,23 @@ def test_a_segunda_nao_exige_toml():
     para onde ela não vale."""
     argv, cwd = comando(_t("segunda"))
     assert argv[1:] == ["-m", "executar.segunda"] and cwd == RAIZ
+
+
+def test_a_segunda_NAO_recebe_as_opcoes_que_so_a_sexta_tem():
+    """`--eventos` e `--resultado` existem só na sexta. Passá-las à segunda faria o
+    argparse recusar o comando inteiro — e o trabalho falharia por um argumento que
+    ninguém pediu, com mensagem de uso em vez de diagnóstico."""
+    argv, _ = comando(_t("segunda"))
+    assert "--eventos" not in argv and "--resultado" not in argv
+
+
+def test_a_sexta_RECEBE_os_arquivos_de_evento_e_resultado():
+    """É por eles que o progresso chega à tela e o `rodada_id` chega ao Registro de
+    operação — a alternativa seria parsear prosa de log."""
+    argv, _ = comando(_t("sexta", parametros="/tmp/p.toml"))
+    assert "--eventos" in argv and "--resultado" in argv
+    assert any(a.endswith("trabalho-1.ndjson") for a in argv)
+    assert any(a.endswith("trabalho-1.json") for a in argv)
 
 
 @pytest.mark.parametrize(("tipo", "script"), [("canario", "canary"), ("full", "full")])

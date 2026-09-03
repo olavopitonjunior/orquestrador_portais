@@ -88,9 +88,11 @@ modo seco — e aí o acervo do console não consegue dizer qual execução prod
 
 Escapou porque o teste de fumaça foi em modo seco, onde `NULL` é a resposta certa.
 
-Depende da fatia de progresso (F4), que introduz o arquivo de resultado onde o `rodada_id`
-é publicado pelo runner — hoje ele só aparece na prosa do log, e parsear prosa de log é
-justamente o que essa fatia existe para evitar.
+**RESOLVIDO em 2026-09-03, na fatia F4.** O runner passou a escrever um arquivo de
+resultado em TODOS os caminhos de saída (`--resultado`), com o `rodada_id` declarado; o
+trabalhador o lê e o passa a `concluir()`. Parsear a prosa do log era a alternativa, e
+faria uma mudança de redação virar defeito de integração. Uma guarda estrutural exige que
+todo `return` de `main` escreva o arquivo antes de sair — verificada por mutação.
 
 ## `npm` vem do PATH herdado, e sob agendador ele não está lá
 

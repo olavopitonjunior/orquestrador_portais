@@ -30,6 +30,7 @@ guardam a causa em `debug` — em `DEBUG`, um traceback com dado do Newcore cheg
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import subprocess
@@ -51,6 +52,41 @@ log = logging.getLogger("trabalhador")
 # "variável ausente" — diagnóstico errado para "rodei do lugar errado".
 RAIZ = Path(__file__).resolve().parent.parent.parent
 COLETOR = RAIZ / "coletor-externo"
+
+
+# Onde ficam os artefatos de uma execução: FORA de `saida/`, que é do produto.
+#
+# A primeira versão dizia isto no comentário e punha a constante dentro de `saida/`
+# — comentário e código afirmando o oposto, que neste projeto é bug do código. E o
+# incômodo era legítimo: `saida/sexta/` guarda a planilha, que é o entregável
+# contratual, e um expurgo de operação por glob alcançaria justamente ela.
+#
+# Mover agora custa uma linha de `.gitignore`; depois da primeira sexta real custaria
+# mover artefato vivo que o console lê por caminho.
+EXECUCOES = RAIZ / "var" / "execucoes"
+
+
+def eventos_de(trabalho_id: int) -> Path:
+    return EXECUCOES / f"trabalho-{trabalho_id}.ndjson"
+
+
+def resultado_de(trabalho_id: int) -> Path:
+    return EXECUCOES / f"trabalho-{trabalho_id}.json"
+
+
+def ler_resultado(trabalho_id: int) -> dict[str, Any]:
+    """O desfecho que o runner declarou. Vazio quando o arquivo não existe — o que é
+    normal para tipos que não o escrevem (raspagem, aprovação) e para um processo
+    morto antes de chegar ao fim."""
+    caminho = resultado_de(trabalho_id)
+    if not caminho.is_file():
+        return {}
+    try:
+        return dict(json.loads(caminho.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        # Arquivo ilegível não pode derrubar a conclusão do trabalho: o código de
+        # saída do processo continua sendo a verdade sobre o desfecho.
+        return {}
 
 
 class ArgumentosInvalidos(ValueError):
@@ -79,6 +115,21 @@ def comando(trabalho: Trabalho) -> tuple[list[str], Path]:
             argv += ["--parametros", str(toml)]
             if a.get("externo"):
                 argv += ["--externo", str(a["externo"])]
+            # Os dois arquivos de contrato da execução, em caminhos derivados do id
+            # do trabalho: o de eventos alimenta a tela ao vivo, e o de resultado é
+            # por onde o `rodada_id` chega até aqui. Parsear a prosa do log seria a
+            # alternativa, e aí uma mudança de redação viraria defeito de integração.
+            #
+            # Só a SEXTA: a segunda não tem estas opções, e passá-las a ela faria o
+            # argparse recusar o comando inteiro. Quando a segunda as ganhar, esta
+            # linha sobe um nível — e o teste de `comando()` para a segunda é o que
+            # obriga a lembrar disso.
+            argv += [
+                "--eventos",
+                str(eventos_de(trabalho.id)),
+                "--resultado",
+                str(resultado_de(trabalho.id)),
+            ]
         if a.get("destino"):
             argv += ["--destino", str(a["destino"])]
         if a.get("hoje"):
@@ -209,9 +260,15 @@ def _ciclo() -> bool:
         log.exception("trabalho %s falhou", trabalho.id)
         return True
 
+    # Fecha o defeito registrado em bug.md: a coluna existia, com chave estrangeira,
+    # e ninguém a preenchia — o acervo do console nunca ligaria execução a rodada.
+    declarado = ler_resultado(trabalho.id)
+    rodada_id = declarado.get("rodada_id")
     with conectar() as conn:
         conn.autocommit = True
-        concluir(conn, trabalho.id, codigo_saida=codigo)
+        concluir(conn, trabalho.id, codigo_saida=codigo, rodada_id=rodada_id)
+        if rodada_id is not None:
+            evento(conn, trabalho.id, f"rodada {rodada_id} gravada no Registro")
         evento(conn, trabalho.id, f"terminou com código {codigo}")
     return True
 
