@@ -10,6 +10,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Added
+
+- **Contrato dos parâmetros da rodada, exportado em JSON — a fonte única do formulário do console.** O painel precisa saber, por campo do TOML, o tipo, a faixa, as escolhas fechadas, se é obrigatório e de qual parâmetro pendente ele é. Isso existia só espalhado por `src/config/parametros.py` — validadores, dataclasses de domínio, mensagens de erro —, nada que TypeScript leia. Duplicar em TS garantiria divergência silenciosa. `src/config/contrato.py` descreve os **22 campos** e **4 regras cruzadas**; `rodada-contrato` os emite; `console/lib/contrato-parametros.json` é a cópia commitada, travada por um passo de CI que compara byte a byte.
+
+  **A trava tem duas metades, e a primeira versão só tinha uma.** A de **forma** monta um TOML *a partir do contrato* e exige que `carregar()` o aceite — o que prova as duas direções por causa das regras do carregador: contrato que esquece campo cai em "parâmetro ausente"; contrato que inventa campo cai em "chave desconhecida". A de **valor** faltava: a ida e volta visita um ponto interior por campo e não enxerga faixa, tipo nem escolhas. Uma auditoria hostil mutou os quatro atributos e a suíte ficou **verde nas quatro vezes**. Entrou uma bateria de sondas que afirma **aceita E recusa** em cada fronteira, com `nextafter` em vez de delta chutado.
+
+  **O pior dos quatro furos não era a faixa, era o tipo.** O validador aceita `int` e `float` no mesmo campo, então marcar `inteiro` num campo fracionário **não erra em lugar nenhum**: o formulário proibiria 0,35 numa intensidade de penalidade, o dono digitaria 0 ou 1, e a rodada decidiria 6.970 posições pagas com um número que ele não queria mas que o formulário obrigou — exatamente o que `src/config/parametros.py` existe para impedir.
+
+  **Dois defeitos estruturais corrigidos junto.** O rótulo da pendência estava nulo em 10 dos 22 campos, porque a função que o deriva só era chamada no laço dos pesos — o formulário ficaria mudo sobre qual decisão o dono está respondendo. Agora uma fábrica única o aplica sempre, por busca de prefixo em `PENDENTE_DE`, e o defeito é irreproduzível. E as regras cruzadas eram **prosa**: duas delas tinham os mesmos campos e só se distinguiam pelo texto, o que obrigaria o console a reimplementar a semântica em TypeScript a partir de uma string. Ganharam tipo legível por máquina (`soma_igual`, `todos_ou_nenhum`, `maior_que`).
+
+
 ### Fixed
 
 - **O ambiente passa a carregar — `op inject` volta a funcionar e a suíte deixa de depender da ordem dos testes.** Três defeitos encadeados, todos medidos e nenhum onde o registro dizia.

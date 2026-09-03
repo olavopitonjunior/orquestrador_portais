@@ -1,0 +1,329 @@
+{
+  "_gerado_por": "uv run rodada-contrato > console/lib/contrato-parametros.json",
+  "campos": [
+    {
+      "caminho": "semelhanca.desconto_fragil",
+      "tipo": "numero",
+      "ajuda": "Quanto vale um perfil FRÁGIL comparado a um robusto. A Spec §6.2 diz que perfil frágil 'não recebe peso pleno', sem quantificar. Fator que multiplica o número de vendas do perfil frágil: 0 o ignora, 1 o trata como robusto.",
+      "obrigatorio": true,
+      "minimo": 0.0,
+      "maximo": 1.0,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null
+    },
+    {
+      "caminho": "semelhanca.decaimento",
+      "tipo": "numero",
+      "ajuda": "Quanto o peso cai a cada degrau da ordem de dimensões adotada pela D-017 (preço > localização > metragem > dormitórios > vagas). A ORDEM é adotada; só esta magnitude é nula. Precisa ser menor que 1 para a ordem produzir efeito — foi a saturação por uma única dimensão (443 dos 475 super destaques puxados pelo mesmo perfil) que motivou a D-017.",
+      "obrigatorio": true,
+      "minimo": 0.0,
+      "maximo": 1.0,
+      "minimo_aberto": true,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 13 (decaimento do peso por dimensão do F1)"
+    },
+    {
+      "caminho": "intensidades.janela_sem_resultado",
+      "tipo": "numero",
+      "ajuda": "Quanto desconta da nota ter tido janela de destaque anterior sem resultado.",
+      "obrigatorio": true,
+      "minimo": 0.0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 3 (intensidade das três penalidades)"
+    },
+    {
+      "caminho": "intensidades.sem_avaliacao_por_categoria",
+      "tipo": "numero",
+      "ajuda": "Quanto desconta da nota não ter avaliação na categoria.",
+      "obrigatorio": true,
+      "minimo": 0.0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 3 (intensidade das três penalidades)"
+    },
+    {
+      "caminho": "intensidades.sem_lead_180d",
+      "tipo": "numero",
+      "ajuda": "Quanto desconta da nota não ter recebido nenhum lead em 180 dias.",
+      "obrigatorio": true,
+      "minimo": 0.0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 3 (intensidade das três penalidades)"
+    },
+    {
+      "caminho": "decaimento_janela.forma",
+      "tipo": "escolha",
+      "ajuda": "Como a penalidade por janela anterior decai ao longo dos ciclos (Spec §6.4). Uma forma só: geométrica.",
+      "obrigatorio": true,
+      "minimo": null,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": [
+        "geometrica"
+      ],
+      "exige": null,
+      "pendencia": "nº 3 (decaimento da penalidade por janela)"
+    },
+    {
+      "caminho": "decaimento_janela.razao",
+      "tipo": "numero",
+      "ajuda": "Fator por ciclo: o desconto vale razao elevado ao número de ciclos desde a janela sem resultado mais recente. Razão 1 é aceita e significa NÃO decair — o que diverge da Spec §6.4, e a rodada declara essa divergência na planilha em vez de fingir que ela não existe.",
+      "obrigatorio": true,
+      "minimo": 0.0,
+      "maximo": 1.0,
+      "minimo_aberto": true,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 3 (decaimento da penalidade por janela)"
+    },
+    {
+      "caminho": "pesos.super_destaque.semelhanca_perfil",
+      "tipo": "inteiro",
+      "ajuda": "Semelhança com o perfil de conversão (F1). Os quatro pesos do nível somam exatamente 100.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
+    },
+    {
+      "caminho": "pesos.super_destaque.leads_positivo",
+      "tipo": "inteiro",
+      "ajuda": "Leads recebidos (F2). Os quatro pesos do nível somam exatamente 100.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
+    },
+    {
+      "caminho": "pesos.super_destaque.desempenho_proprio",
+      "tipo": "inteiro",
+      "ajuda": "Desempenho de portal observado (F3). Os quatro pesos do nível somam exatamente 100.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
+    },
+    {
+      "caminho": "pesos.super_destaque.produtividade_gestor",
+      "tipo": "inteiro",
+      "ajuda": "Produtividade do gestor do distrito (F4). Os quatro pesos do nível somam exatamente 100.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
+    },
+    {
+      "caminho": "pesos.destaque.semelhanca_perfil",
+      "tipo": "inteiro",
+      "ajuda": "Semelhança com o perfil de conversão (F1). Os quatro pesos do nível somam exatamente 100.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
+    },
+    {
+      "caminho": "pesos.destaque.leads_positivo",
+      "tipo": "inteiro",
+      "ajuda": "Leads recebidos (F2). Os quatro pesos do nível somam exatamente 100.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
+    },
+    {
+      "caminho": "pesos.destaque.desempenho_proprio",
+      "tipo": "inteiro",
+      "ajuda": "Desempenho de portal observado (F3). Os quatro pesos do nível somam exatamente 100.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
+    },
+    {
+      "caminho": "pesos.destaque.produtividade_gestor",
+      "tipo": "inteiro",
+      "ajuda": "Produtividade do gestor do distrito (F4). Os quatro pesos do nível somam exatamente 100.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
+    },
+    {
+      "caminho": "externo.limiar_amarracao",
+      "tipo": "numero",
+      "ajuda": "Fração mínima dos candidatos que precisa ter anúncio correspondente na raspagem para o desempenho de portal ENTRAR no ranking. Abaixo dela o fator não entra e a rodada sai degradada, com o motivo declarado.",
+      "obrigatorio": true,
+      "minimo": 0.0,
+      "maximo": 1.0,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 7 (limiar mínimo de taxa de amarração)"
+    },
+    {
+      "caminho": "externo.idade_maxima_dias",
+      "tipo": "inteiro",
+      "ajuda": "Idade máxima aceitável da coleta externa, em dias, contada da data de referência da rodada. Mais velha que isso, o fator de portal não entra.",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 5 (idade máxima da coleta externa de reserva)"
+    },
+    {
+      "caminho": "externo.desempenho.forma",
+      "tipo": "escolha",
+      "ajuda": "Como o sinal de desempenho é composto a partir do que a raspagem traz por anúncio. Cliques NUNCA são somados entre tipos: tipos diferentes medem intenções diferentes.",
+      "obrigatorio": true,
+      "minimo": null,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": [
+        "visualizacoes",
+        "nota",
+        "cliques_do_tipo"
+      ],
+      "exige": null,
+      "pendencia": null
+    },
+    {
+      "caminho": "externo.desempenho.quando_ausente",
+      "tipo": "numero",
+      "ajuda": "Valor do anúncio SEM nota. Obrigatório quando a forma é 'nota', e a escolha é declarada de propósito: um zero implícito puniria a ausência do dado como se fosse desempenho ruim.",
+      "obrigatorio": true,
+      "minimo": null,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": [
+        "externo.desempenho.forma",
+        "nota"
+      ],
+      "pendencia": null
+    },
+    {
+      "caminho": "externo.desempenho.tipo",
+      "tipo": "escolha",
+      "ajuda": "Qual clique conta como desempenho. Obrigatório quando a forma é 'cliques_do_tipo'.",
+      "obrigatorio": true,
+      "minimo": null,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": [
+        "cliqueAgendamento",
+        "cliqueContato",
+        "cliqueProposta",
+        "cliqueTelefone",
+        "cliqueWhatsapp"
+      ],
+      "exige": [
+        "externo.desempenho.forma",
+        "cliques_do_tipo"
+      ],
+      "pendencia": null
+    },
+    {
+      "caminho": "resultado_esperado.super_destaque",
+      "tipo": "inteiro",
+      "ajuda": "Quantos leads a janela de SUPER DESTAQUE precisa ter gerado para não ser penalizada (Spec §6.4). Seção OPCIONAL: omitida, o limiar é nulo, nenhuma janela é julgada e a planilha declara isso — porque não penalizar por falta de régua não é o mesmo que passar no critério. Se declarar, declare os DOIS níveis, e este precisa ser MAIOR que o de destaque.",
+      "obrigatorio": false,
+      "minimo": 1,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 14 (resultado esperado por nível, §6.4)"
+    },
+    {
+      "caminho": "resultado_esperado.destaque",
+      "tipo": "inteiro",
+      "ajuda": "Quantos leads a janela de DESTAQUE precisa ter gerado para não ser penalizada. Ver a observação do nível acima: os dois, ou nenhum.",
+      "obrigatorio": false,
+      "minimo": 1,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": "nº 14 (resultado esperado por nível, §6.4)"
+    }
+  ],
+  "regras": [
+    {
+      "tipo": "soma_igual",
+      "descricao": "Os quatro pesos de super_destaque somam exatamente 100.",
+      "campos": [
+        "pesos.super_destaque.semelhanca_perfil",
+        "pesos.super_destaque.leads_positivo",
+        "pesos.super_destaque.desempenho_proprio",
+        "pesos.super_destaque.produtividade_gestor"
+      ],
+      "valor": 100
+    },
+    {
+      "tipo": "soma_igual",
+      "descricao": "Os quatro pesos de destaque somam exatamente 100.",
+      "campos": [
+        "pesos.destaque.semelhanca_perfil",
+        "pesos.destaque.leads_positivo",
+        "pesos.destaque.desempenho_proprio",
+        "pesos.destaque.produtividade_gestor"
+      ],
+      "valor": 100
+    },
+    {
+      "tipo": "todos_ou_nenhum",
+      "descricao": "A seção [resultado_esperado] é opcional, mas indivisível: ou os dois níveis, ou nenhum. Meio-declarada julgaria metade das janelas e deixaria a outra metade sem julgamento, com a planilha declarando limiar nulo numa rodada que penalizou parte do estoque.",
+      "campos": [
+        "resultado_esperado.super_destaque",
+        "resultado_esperado.destaque"
+      ],
+      "valor": null
+    },
+    {
+      "tipo": "maior_que",
+      "descricao": "resultado_esperado.super_destaque precisa ser MAIOR que destaque: o PRD fixa que o resultado esperado é proporcional ao nível.",
+      "campos": [
+        "resultado_esperado.super_destaque",
+        "resultado_esperado.destaque"
+      ],
+      "valor": null
+    }
+  ]
+}
