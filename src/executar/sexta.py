@@ -5,7 +5,8 @@ mas quem o invocava era script solto e não versionado — a planilha em `saida/
 saiu de um desses. Aqui a fiação é commitada, reproduzível e auditável.
 
     uv run python -m executar.sexta --parametros ARQUIVO.toml [--externo DIR]
-                                    [--destino DIR] [--dry-run] [--hoje AAAA-MM-DD]
+                                    [--recorte-pela-raspagem] [--destino DIR]
+                                    [--dry-run] [--hoje AAAA-MM-DD]
 
 ## Por que `--parametros` é OBRIGATÓRIO e não tem default
 
@@ -58,7 +59,7 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import date, datetime
 from functools import partial
 from pathlib import Path
@@ -68,7 +69,7 @@ from config.ambiente import carregar_env
 from config.parametros import ParametroAusente, ParametroInvalido, ParametrosDaRodada, carregar
 from config.recorte import DEFINICAO_ATIVO
 from dados.candidatos_perfil import coletar_dimensoes_candidatos
-from dados.coletor_externo import ler_coleta
+from dados.coletor_externo import ColetaExterna, ler_coleta
 from dados.coletor_interno import coletar
 from dados.registro.conexao import conectar
 from dados.registro.escrita import gravar_rodada_decisao
@@ -98,8 +99,68 @@ class SinkFalhou(RuntimeError):
     """Falha de ESCRITA (Registro ou planilha). Distinta de falha de fonte."""
 
 
+class RecorteVazio(RuntimeError):
+    """A raspagem não amarrou imóvel nenhum: não há amostra sobre a qual decidir.
+    Sai com o código de "estoque vazio" (4) — é insumo ausente, não incidente."""
+
+
+def _recorte_da_raspagem(externo: Path) -> tuple[frozenset[int], ColetaExterna]:
+    """Os imóveis que a raspagem AMARROU — o universo da rodada amostral — e a
+    leitura de onde saíram, para o nó do Coletor Externo não parsear o CSV de novo.
+
+    Lido ANTES da coleta interna, de propósito: o recorte é o que define a amostra, e
+    a coleta interna passa a responder só sobre ele (`WHERE Realty_Id IN`). A
+    alternativa — `LIMIT n` na coleta interna — daria uma interseção aleatória com o
+    que foi raspado, e a taxa de amarração (que divide pela lista-alvo inteira)
+    reprovaria a coleta na porta.
+
+    O que o recorte faz com a taxa de amarração precisa ficar dito: todo candidato da
+    rodada amostral está na raspagem POR CONSTRUÇÃO, então a taxa sai 100% e não mede
+    nada — a planilha a imprime, e a limitação AMOSTRAL diz isso ao lado. O número que
+    mede a amostra é outro, `candidatos / recorte` (que fração do raspado é imóvel
+    ativo no Newcore), e é ele que a limitação declara.
+
+    Vazio é erro próprio: o motivo mais provável é o formato do `codigoImovel`, que a
+    porta de amarração vazia já aponta — aqui ele aparece antes de a rodada começar.
+    """
+    coleta = ler_coleta(externo)
+    ids = frozenset(coleta.por_imovel)
+    if not ids:
+        raise RecorteVazio(
+            f"recorte pela raspagem VAZIO: {coleta.total_linhas} linhas lidas em {externo}, "
+            f"{coleta.sem_amarracao} sem código numérico, estado {coleta.estado!r} — nenhum "
+            "imóvel amarrou, não há amostra sobre a qual decidir. Confira o formato do "
+            "codigoImovel (externalId) contra o id do Newcore"
+        )
+    return ids, coleta
+
+
+def _contagem(candidatos: Any) -> int | None:
+    """`len` que distingue AUSENTE de VAZIO: chave que não veio no estado é "não
+    apurado" (None), e a limitação amostral diz isso em vez de imprimir "0 deles (0%)"
+    sobre um dado que não existe."""
+    return None if candidatos is None else len(candidatos)
+
+
+def _estado_da_entrega(estado_do_grafo: Any, *, amostral: bool) -> Any:
+    """Rodada AMOSTRAL nunca é COMPLETA.
+
+    Decisão do RUNNER, não do grafo — como o modo seco: a amostragem é fiação, o grafo
+    não a conhece, e `estado_final` é função só dos prontos. Sem isto, uma amostra em
+    que todas as etapas ficaram prontas chegaria ao Registro como COMPLETA, e uma
+    consulta por estado a tomaria por decisão sobre o estoque.
+    """
+    if amostral and estado_do_grafo == Estado.COMPLETA:
+        return Estado.DEGRADADA
+    return estado_do_grafo
+
+
 def _fontes(
-    externo: Path | None, *, dry_run: bool = False
+    externo: Path | None,
+    *,
+    dry_run: bool = False,
+    recorte: Collection[int] | None = None,
+    coleta: ColetaExterna | None = None,
 ) -> tuple[Fontes, list[tuple[list[ImovelVendido], int]]]:
     """As fontes da sexta, mais o cache das vendas.
 
@@ -117,13 +178,20 @@ def _fontes(
         return cache[0]
 
     fontes = Fontes(
-        # `coletar` recebe a definição de ativo; o grafo espera zero-argumento.
-        coletar_interno=partial(coletar, DEFINICAO_ATIVO),
+        # `coletar` recebe a definição de ativo; o grafo espera zero-argumento. O
+        # recorte amostral vai junto: a coleta interna responde só sobre ele.
+        coletar_interno=partial(coletar, DEFINICAO_ATIVO, recorte=recorte),
         coletar_dimensoes=coletar_dimensoes_candidatos,
         coletar_vendas=vendas_memoizadas,
         # Tudo ou nada: o grafo recusa meia-fiação, e o nó declara a degradação
         # quando não há raspagem — rodada DEGRADADA nesse fator, nunca silenciosa.
-        coletar_externo=(lambda: ler_coleta(externo)) if externo else None,
+        # Na amostral a coleta JÁ foi lida para montar o recorte: reusar a leitura é o
+        # que garante que o nó e o recorte viram o mesmo arquivo.
+        coletar_externo=(
+            (lambda: coleta)
+            if coleta is not None
+            else ((lambda: ler_coleta(externo)) if externo else None)
+        ),
         # A leitura que a Spec §5 atribui ao Decisor. Conexão por chamada, como as
         # demais leituras do Registro no runner: a rodada é curta e a alternativa
         # (segurar conexão aberta atravessando o grafo) traria estado de I/O para
@@ -150,7 +218,11 @@ def _janelas_do_registro(imoveis: Sequence[int], ate: date) -> Mapping[int, tupl
 
 
 def _serializaveis(
-    parametros: ParametrosDaRodada, hoje: date, externo: Path | None
+    parametros: ParametrosDaRodada,
+    hoje: date,
+    externo: Path | None,
+    *,
+    recorte: Collection[int] | None = None,
 ) -> dict[str, object]:
     """O que vai para `parametros_da_rodada` do Registro.
 
@@ -159,8 +231,8 @@ def _serializaveis(
     F3) viram função e não sobrevivem à dataclass: gravar só os números deixaria a
     rodada irreproduzível a partir do Registro.
 
-    Mas o TOML não é a entrada inteira. Três coisas fora dele também mudam a lista e
-    por isso viajam junto:
+    Mas o TOML não é a entrada inteira. Quatro coisas fora dele também mudam a lista e
+    por isso viajam junto (a quarta, o recorte amostral, está comentada no corpo):
 
     - `data_referencia` é entrada da decisão (decide a regra de atualização em 90
       dias) e o Registro não tem coluna para ela. Sem gravá-la, uma rodada feita com
@@ -179,6 +251,11 @@ def _serializaveis(
         "data_referencia": hoje.isoformat(),
         "definicao_ativo_distrito": DEFINICAO_ATIVO.value,
         "coleta_externa": str(externo) if externo else None,
+        # A marca AMOSTRAL, como DADO e não como prosa: é por esta chave que
+        # `rodada-aprovar` recusa promover a amostra a carga — casar o texto do
+        # `motivo_degradacao` soltaria a guarda na primeira reescrita da mensagem. Só a
+        # contagem: os ids são reconstituíveis do CSV cujo caminho está logo acima.
+        "recorte_pela_raspagem": {"imoveis": len(recorte)} if recorte is not None else None,
         **parametros.declarado,
     }
 
@@ -208,6 +285,7 @@ def _registrador(
     *,
     dry_run: bool,
     avisar: Callable[[str], None],
+    recorte: Collection[int] | None = None,
 ) -> tuple[Callable[[EstadoRodada], object], list[int]]:
     """O sink `registrar` do grafo, mais a caixa onde o `rodada_id` é capturado.
 
@@ -233,20 +311,26 @@ def _registrador(
         # nem "distrito a 45,9%". Planilha e Registro precisam dizer a mesma coisa.
         degradacoes = [
             *estado.get("degradacoes", []),
-            *limitacoes_da_fiacao(parametros, estado.get("janelas_lidas")),
+            *limitacoes_da_fiacao(
+                parametros,
+                estado.get("janelas_lidas"),
+                recorte=recorte,
+                candidatos=_contagem(estado.get("candidatos")),
+            ),
         ]
         motivo = "; ".join(degradacoes) or None
+        estado_gravado = _estado_da_entrega(estado.get("estado"), amostral=recorte is not None)
         if dry_run:
-            log.info("[dry-run] rodada NÃO gravada (estado=%s)", estado.get("estado"))
+            log.info("[dry-run] rodada NÃO gravada (estado=%s)", estado_gravado)
             return None
         try:
             with conectar() as conn, conn.transaction():
                 rodada_id = gravar_rodada_decisao(
                     conn,
                     resultado=resultado,
-                    estado=str(estado.get("estado")),
+                    estado=str(estado_gravado),
                     etapas=estado.get("prontos", {}),
-                    parametros=_serializaveis(parametros, hoje, externo),
+                    parametros=_serializaveis(parametros, hoje, externo, recorte=recorte),
                     inicio=agora,
                     fim=datetime.now(),
                     motivo_degradacao=motivo,
@@ -263,7 +347,13 @@ def _registrador(
     return registrar, capturado
 
 
-def limitacoes_da_fiacao(parametros: ParametrosDaRodada, janelas_lidas: int | None) -> list[str]:
+def limitacoes_da_fiacao(
+    parametros: ParametrosDaRodada,
+    janelas_lidas: int | None,
+    *,
+    recorte: Collection[int] | None = None,
+    candidatos: int | None = None,
+) -> list[str]:
     """Limitações que nascem de COMO a rodada foi fiada, não do que o grafo achou.
 
     A §7.2 quer a limitação visível na planilha, e estas três não apareciam em lugar
@@ -290,6 +380,30 @@ def limitacoes_da_fiacao(parametros: ParametrosDaRodada, janelas_lidas: int | No
        manda essa limitação aparecer na aba, e ela não aparecia.
     """
     limitacoes = []
+    if recorte is not None:
+        # PRIMEIRA da lista, sempre: é a que muda a leitura de todas as outras. Quem
+        # abrir a planilha precisa saber antes de qualquer número que ele é sobre uma
+        # amostra, não sobre o estoque.
+        n = len(recorte)
+        # O número que MEDE a amostra: que fração do raspado é imóvel ativo no Newcore.
+        # A taxa de amarração, ao contrário, sai 100% por construção aqui (todo
+        # candidato veio da raspagem) — e a planilha a imprime, então a mesma linha
+        # tem de dizer que ela não mede nada nesta rodada.
+        cobertura = (
+            f"{candidatos} deles ({candidatos / n:.0%}) são imóveis ativos no Newcore — essa é "
+            "a cobertura real da amostra"
+            if candidatos is not None and n
+            else "a cobertura (quantos são imóveis ativos no Newcore) não foi apurada"
+        )
+        limitacoes.append(
+            f"RODADA AMOSTRAL: o universo desta rodada é o recorte de {n} imóveis que a "
+            f"raspagem trouxe — NÃO é decisão sobre o estoque; {cobertura}. A taxa de "
+            "amarração anúncio↔imóvel sai 100% POR CONSTRUÇÃO nesta rodada e não mede nada. "
+            "As cotas contratadas continuam as mesmas, então as posições que a amostra não "
+            "cobre saem VAZIAS, e o relaxamento tenta cobri-las. Esta rodada existe para ver "
+            "a corrente inteira funcionar, com o fator de portal entrando de verdade; ela "
+            "nunca é COMPLETA e `rodada-aprovar` a recusa — não pode virar carga"
+        )
     if janelas_lidas is None:
         limitacoes.append(
             "REGISTRO NÃO CONSULTADO para o histórico de janelas: a rodada correu sem a "
@@ -416,6 +530,7 @@ def executar(
     externo: Path | None = None,
     hoje: date | None = None,
     dry_run: bool = False,
+    recorte_pela_raspagem: bool = False,
     ao_terminar_no: Callable[[str, Mapping[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], int | None]:
     """Roda a sexta de ponta a ponta. Devolve o estado final e o `rodada_id`.
@@ -424,6 +539,9 @@ def executar(
     acumulado. Serve à tela de acompanhamento: o grafo da decisão não tem
     checkpointer (o estado carrega objetos de domínio não-serializáveis), então não
     há de onde ler progresso — ele precisa ser emitido enquanto acontece.
+
+    `recorte_pela_raspagem` faz a rodada AMOSTRAL: o universo passa a ser o que a
+    raspagem em `externo` amarrou (exige `externo`; o parser já recusa sem ele).
     """
     hoje = hoje or date.today()
     agora = datetime.now()
@@ -432,9 +550,15 @@ def executar(
     # planilha é o artefato contratual, o que foi de fato aprovado e carregado.
     destino_da_rodada = destino / f"{hoje:%Y-%m-%d}"
     avisar = _avisar(destino_da_rodada, dry_run=dry_run)
-    fontes, cache_vendas = _fontes(externo, dry_run=dry_run)
+    if recorte_pela_raspagem and externo is None:
+        raise ValueError("recorte pela raspagem exige o diretório da raspagem (externo)")
+    recorte, coleta = (
+        _recorte_da_raspagem(externo) if recorte_pela_raspagem and externo else (None, None)
+    )
+    amostral = recorte is not None
+    fontes, cache_vendas = _fontes(externo, dry_run=dry_run, recorte=recorte, coleta=coleta)
     registrar, capturado = _registrador(
-        parametros, hoje, externo, agora, dry_run=dry_run, avisar=avisar
+        parametros, hoje, externo, agora, dry_run=dry_run, avisar=avisar, recorte=recorte
     )
 
     grafo = construir_grafo(
@@ -475,6 +599,11 @@ def executar(
     for modo, pedaco in grafo.stream(entrada, stream_mode=["updates", "values"]):
         if modo == "values":
             final = pedaco
+            # Rodada AMOSTRAL nunca é COMPLETA — decisão do runner, como o modo seco: a
+            # amostragem é fiação, o grafo não a conhece. Aplicado AQUI, a cada estado
+            # emitido, e não só no fim: quem observa (`ao_terminar_no`) vê o mesmo estado
+            # que o Registro, o log e o arquivo de resultado vão dizer.
+            final["estado"] = _estado_da_entrega(final.get("estado"), amostral=amostral)
             if ao_terminar_no is not None:
                 for no in pendentes:
                     ao_terminar_no(no, final)
@@ -520,7 +649,12 @@ def executar(
                     [
                         *final.get("degradacoes", []),
                         # A MESMA lista que foi para o motivo gravado no Registro.
-                        *limitacoes_da_fiacao(parametros, final.get("janelas_lidas")),
+                        *limitacoes_da_fiacao(
+                            parametros,
+                            final.get("janelas_lidas"),
+                            recorte=recorte,
+                            candidatos=_contagem(final.get("candidatos")),
+                        ),
                     ],
                     data_referencia=hoje,
                     vendas_descartadas=cache_vendas[0][1] if cache_vendas else None,
@@ -575,6 +709,15 @@ def construir_parser() -> argparse.ArgumentParser:
         type=Path,
         help="pasta de saída do raspador (out/). Ausente, o desempenho de portal (F3) "
         "não entra e a rodada sai DEGRADADA nesse fator, com a limitação declarada.",
+    )
+    p.add_argument(
+        "--recorte-pela-raspagem",
+        action="store_true",
+        help="rodada AMOSTRAL: o universo de candidatos passa a ser só o que a raspagem "
+        "em --externo amarrou. Serve para ver a corrente inteira funcionar com poucos "
+        "imóveis e o fator de portal entrando de verdade. A amostra é declarada na "
+        "planilha e no Registro, a rodada nunca sai COMPLETA, e rodada-aprovar a recusa: "
+        "não é decisão sobre o estoque e não pode virar carga. Exige --externo.",
     )
     p.add_argument("--destino", type=Path, default=Path("saida/sexta"))
     p.add_argument("--dry-run", action="store_true", help="não grava nem escreve nada")
@@ -695,6 +838,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         # que ele checa é o que deixa a próxima lacuna passar.
         _escrever_resultado(args.resultado, codigo=2, falha="HojeNoFuturo")
         p.error("--hoje no futuro decidiria sobre um estoque que ainda não existe")
+    if args.recorte_pela_raspagem and args.externo is None:
+        _escrever_resultado(args.resultado, codigo=2, falha="RecorteSemExterno")
+        p.error(
+            "--recorte-pela-raspagem exige --externo: o recorte É a lista de imóveis que a "
+            "raspagem trouxe, e sem a pasta dela não há de onde lê-la"
+        )
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     if args.parametros.resolve() == MODELO_DE_DOCS:
@@ -730,6 +879,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             externo=args.externo,
             hoje=args.hoje,
             dry_run=args.dry_run,
+            recorte_pela_raspagem=args.recorte_pela_raspagem,
             ao_terminar_no=_emissor_de_eventos(args.eventos),
         )
     except SinkFalhou as e:
@@ -737,6 +887,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         log.debug("causa completa", exc_info=True)
         _escrever_resultado(args.resultado, codigo=1, falha=type(e).__name__)
         return 1
+    except RecorteVazio as e:
+        # Mesmo código de "estoque vazio": é insumo ausente, não incidente. A mensagem
+        # é segura para fora — só contagens, estado e o caminho local da raspagem.
+        log.error("%s", e)
+        _escrever_resultado(args.resultado, codigo=4, falha=type(e).__name__)
+        return 4
     except Exception as e:
         # Falha de FONTE (Newcore fora, saída do raspador ilegível) ou incoerência da
         # rodada. Só o tipo para fora: a mensagem pode ecoar dado do banco.

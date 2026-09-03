@@ -122,7 +122,7 @@ def test_agrupar_notas_por_imovel():
 def test_coluna_de_distrito_e_conjunto_fechado():
     # A coluna interpolada vem do enum (valor fixo), nunca de entrada livre.
     for d in DefinicaoAtivoDistrito:
-        sql = _SQL_CANDIDATOS.format(coluna_ativo=d.value)
+        sql = _SQL_CANDIDATOS.format(coluna_ativo=d.value, recorte="")
         assert d.value in sql
         assert d.value in {
             "Brokers",
@@ -206,6 +206,45 @@ def test_removido_NAO_volta_por_relaxamento():
     """Se status fosse relaxável, a correção teria criado um caminho de volta
     para a vitrine PAGA — pior que o defeito que ela conserta."""
     assert Regra.STATUS_ATIVO not in ORDEM_RELAXAMENTO
+
+
+# --- recorte amostral pela raspagem (A2) --------------------------------------
+
+
+def test_recorte_entra_no_sql_como_IN_de_inteiros_ordenados():
+    """Ordenado: o mesmo conjunto produz o mesmo SQL (invariante 5). Antes do ORDER BY."""
+    from dados.coletor_interno import _SQL_CANDIDATOS, _clausula_recorte
+
+    sql = _SQL_CANDIDATOS.format(coluna_ativo="Brokers", recorte=_clausula_recorte({30, 10, 20}))
+    assert "AND f.Realty_Id IN (10, 20, 30)" in sql
+    assert sql.index("IN (10, 20, 30)") < sql.index("ORDER BY f.Realty_Id")
+
+
+def test_sem_recorte_o_sql_e_o_de_sempre():
+    from dados.coletor_interno import _SQL_CANDIDATOS, _clausula_recorte
+
+    assert _clausula_recorte(None) == ""
+    sql = _SQL_CANDIDATOS.format(coluna_ativo="Brokers", recorte="")
+    assert "Realty_Id IN (" not in sql
+
+
+def test_recorte_vazio_e_recusado_antes_de_consultar():
+    from dados.coletor_interno import _clausula_recorte
+
+    with pytest.raises(ValueError, match="VAZIO"):
+        _clausula_recorte(set())
+
+
+def test_recorte_so_aceita_inteiros_e_nao_confunde_bool():
+    """Interpolado no SQL (o texto tem `%` em comentário e não pode ir parametrizado),
+    então a validação é a única barreira: string é recusada, e `True` também — é
+    subclasse de `int` e viraria `1` em silêncio."""
+    from dados.coletor_interno import _clausula_recorte
+
+    with pytest.raises(TypeError):
+        _clausula_recorte({"101"})
+    with pytest.raises(TypeError):
+        _clausula_recorte({True, 2})
 
 
 def test_sql_com_percentual_no_texto_nao_quebra_a_ponte(monkeypatch):

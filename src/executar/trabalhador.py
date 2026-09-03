@@ -135,6 +135,8 @@ def comando(trabalho: Trabalho) -> tuple[list[str], Path]:
             argv += ["--parametros", str(toml)]
             if a.get("externo"):
                 argv += ["--externo", str(a["externo"])]
+            if a.get("recorte_pela_raspagem"):
+                argv.append("--recorte-pela-raspagem")
             # Os dois arquivos de contrato da execução, em caminhos derivados do id
             # do trabalho: o de eventos alimenta a tela ao vivo, e o de resultado é
             # por onde o `rodada_id` chega até aqui. Parsear a prosa do log seria a

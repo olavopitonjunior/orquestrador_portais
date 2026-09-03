@@ -77,12 +77,21 @@ export async function lerRodada(id: number): Promise<RodadaResumo | null> {
 }
 
 /** Rodadas de decisão que ainda aguardam a aprovação do dono (D-001): sem
- * `aprovada_em` e com estado entregável (completa/degradada; abortada não entrega). */
+ * `aprovada_em` e com estado entregável (completa/degradada; abortada não entrega).
+ *
+ * Exclui a rodada AMOSTRAL — a que decidiu sobre o recorte que a raspagem trouxe, não
+ * sobre o estoque. `rodada-aprovar` a recusa (`executar/aprovar.py::rodada_e_amostral`),
+ * e este predicado existe para o console nunca oferecer um cartão que o comando
+ * recusa. A marca é DADO em `parametros_da_rodada` (`->>` devolve NULL de SQL tanto
+ * para chave ausente quanto para `null` do JSON), o mesmo predicado do comando. */
 export async function rodadasAguardandoAprovacao(): Promise<RodadaResumo[]> {
   const { rows } = await db().query<LinhaRodada>(
     `${SELECT_RODADA}
      WHERE r.tipo = 'decisao' AND r.aprovada_em IS NULL
        AND r.estado IN ('completa', 'degradada')
+       AND NOT EXISTS (
+         SELECT 1 FROM registro.parametros_da_rodada p
+         WHERE p.rodada_id = r.id AND p.parametros ->> 'recorte_pela_raspagem' IS NOT NULL)
      GROUP BY r.id ORDER BY r.id DESC`,
   );
   return rows.map(mapRodada);
