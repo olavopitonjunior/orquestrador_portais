@@ -8,8 +8,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  ETAPAS,
   TrabalhoEmVoo,
   criarTrabalho,
+  etapasConcluidas,
+  eventosDoTrabalho,
+  lerTrabalho,
   guardarParametros,
   listarTrabalhos,
   trabalhadorVivo,
@@ -112,4 +116,50 @@ test("trabalhadorVivo repassa a janela em segundos", async () => {
   const { exec, chamadas } = espiao([{ vivo: true }]);
   assert.equal(await trabalhadorVivo(45, exec), true);
   assert.deepEqual(chamadas[0].params, [45]);
+});
+
+test("lerTrabalho devolve null quando não existe", async () => {
+  const { exec } = espiao([]);
+  assert.equal(await lerTrabalho(1, exec), null);
+});
+
+test("eventosDoTrabalho corta o COMEÇO, não o fim", async () => {
+  // O desfecho está no fim. Cortar por `LIMIT` sobre a ordem crescente perderia
+  // justamente a linha que diz como a rodada terminou.
+  const { exec, chamadas } = espiao([]);
+  await eventosDoTrabalho(7, 50, exec);
+  assert.match(chamadas[0].sql, /ORDER BY id DESC LIMIT \$2/);
+  assert.match(chamadas[0].sql, /\) ultimos ORDER BY id/);
+  assert.deepEqual(chamadas[0].params, [7, 50]);
+});
+
+test("as etapas de apresentação são sete e começam pela coleta", () => {
+  // Ordem de LEITURA, não topologia: `analista_perfil` e `coletor_externo` correm em
+  // paralelo, e listá-los em sequência é escolha de apresentação. O `registrar` fica
+  // de fora porque é sink, não etapa da decisão.
+  assert.equal(ETAPAS.length, 7);
+  assert.equal(ETAPAS[0], "coletor_interno");
+  assert.equal(ETAPAS[ETAPAS.length - 1], "finalizar");
+  assert.ok(!ETAPAS.includes("registrar" as never));
+});
+
+test("a contagem de etapas ignora nós que não são etapa da decisão", () => {
+  // A rodada também emite `registrar`, que é sink. Contá-lo produzia "8 de 7
+  // anunciadas" na tela — número que não quer dizer nada, e que nenhum teste via
+  // porque a contagem morava no componente.
+  const anunciados = new Set([...ETAPAS, "registrar"]);
+  const contadas = ETAPAS.filter((e) => anunciados.has(e));
+  assert.equal(contadas.length, ETAPAS.length);
+  assert.ok(contadas.length < anunciados.size, "a fixture precisa ter um nó a mais");
+});
+
+test("as etapas vêm de consulta PRÓPRIA, imune ao tamanho do log", async () => {
+  // Derivar do log estaria errado: `eventosDoTrabalho` corta em 300 linhas pelo COMEÇO
+  // — certo para o log, onde o desfecho está no fim; errado para a contagem. Numa
+  // rodada que imprime muito, as primeiras etapas sairiam da janela e a lista apagaria
+  // PARA TRÁS. Em modo seco a rodada fala pouco e isso nunca apareceria.
+  const { exec, chamadas } = espiao([{ no_grafo: "decisor" }]);
+  assert.deepEqual(await etapasConcluidas(7, exec), ["decisor"]);
+  assert.match(chamadas[0].sql, /SELECT DISTINCT no_grafo/);
+  assert.doesNotMatch(chamadas[0].sql, /LIMIT/);
 });

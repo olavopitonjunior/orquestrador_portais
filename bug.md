@@ -67,8 +67,10 @@ Já aconteceu de forma acidental, e é assim que se sabe que dói: seis linhas d
 vazaram para o banco vigente em 03/09 (um `conn.transaction()` que, sendo o mais externo,
 commitava) e travaram a fila de cinco tipos até serem removidas manualmente.
 
-O material para consertar já existe e está ocioso: `'cancelado'` está no CHECK e nenhum
-código o escreve; `operacao.trabalhador.visto_em` é escrito e nunca lido. Falta a peça que
+O material para consertar já existe e está parcialmente ocioso: `'cancelado'` está no CHECK
+e nenhum código o escreve. O `visto_em` **deixou de ser ocioso em 03/09** — o console o lê
+para avisar que o trabalhador não está no ar —, mas ninguém o usa para RECUPERAR trabalho
+órfão, que é a metade que falta. Falta a peça que
 os liga — algo que, ao arrancar, marque como `cancelado` o que está `executando` sob um
 `pid` que não existe mais, ou cujo batimento envelheceu além de um limite.
 
@@ -107,3 +109,43 @@ na versão errada sem erro nenhum.
 **Mitigado, não resolvido:** a mensagem de erro passou a NOMEAR o executável ausente e a
 apontar o PATH mínimo do agendador — antes dizia só `FileNotFoundError`, verdadeiro e
 inútil. Falta resolver o binário no arranque e fixar node no `mise.toml`.
+
+## A lista de etapas do console é cópia manual do grafo, sem vínculo
+
+**Agente:** — (console) · **Aberto em:** 2026-09-03 · **Afetou carga publicada?** não
+
+`console/lib/operacao.ts` declara as sete etapas do grafo à mão, e `src/grafo/fluxo.py` as
+define. Os nomes batem hoje — conferidos um a um —, mas **nada os prende**: um nó renomeado
+no Python passa limpo pelo teste do console, que trava tamanho, primeiro e último, não os
+nomes do meio. O sintoma seria uma etapa que nunca acende, sem erro nenhum.
+
+É a mesma classe do "8 de 7 anunciadas" que esta fatia consertou, e da divergência que a
+F5 resolveu no formulário — lá a correção foi **gerar** o contrato a partir do validador,
+com um passo de CI comparando byte a byte. O mesmo caminho serve aqui: o grafo pode emitir
+sua topologia, e o console consumir a cópia travada.
+
+**Não corrigido nesta fatia** por escopo: a F6 entrega o disparo e o acompanhamento, e
+acrescentar um segundo contrato gerado misturaria duas mudanças com riscos diferentes.
+
+## A ação que dispara a rodada é um endpoint sem autenticação
+
+**Agente:** — (console) · **Aberto em:** 2026-09-03 · **Afetou carga publicada?** não
+
+`"use server"` faz de `dispararSexta` um endpoint HTTP alcançável por qualquer página aberta
+no navegador do dono — sem origem confiável, sem autenticação —, e `por` é autodeclarado (a
+própria tela diz isso). Até a F5 o pior desfecho era gravar uma linha de parâmetros
+provisórios. **A partir da F6 é disparar rodada real**, que grava no Registro e escreve a
+planilha.
+
+O que limita o estrago hoje: o console escuta só em `127.0.0.1`, roda na máquina do gestor,
+a fila recusa dois trabalhos do mesmo tipo em voo, e a rodada revalida os parâmetros ao
+carregar. É aceitável enquanto essas quatro condições valerem — e nenhuma delas é
+verificada por código.
+
+**Fica registrado em vez de implícito.** Qualquer exposição de rede exige autenticação
+antes; e o dia em que o console deixar de ser local, este item vira bloqueio.
+
+**Alcance ampliado em 03/09:** a guarda que impede disparar com uma declaração de
+parâmetros diferente da que o dono viu depende de o cliente informar qual viu. Contra a
+corrida real — outra aba, outra pessoa — funciona; contra um POST direto, não, porque
+quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra porta.

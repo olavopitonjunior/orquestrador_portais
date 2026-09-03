@@ -12,6 +12,32 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- **O botão que dispara a rodada, e a tela que a acompanha ao vivo (F6).** `/rodada/nova` enfileira a sexta com a última declaração de parâmetros; `/trabalho/[id]` mostra as sete etapas acendendo uma a uma, o log da execução e o desfecho traduzido. O console **enfileira e nada mais** — quem executa é o trabalhador, num processo separado, porque disparar por `spawn` dentro de uma requisição daria um filho que morre no recarregamento do servidor e uma linha "executando" eterna.
+
+  **Vai o ID da declaração, não o caminho de um arquivo.** O trabalhador materializa o TOML na hora de rodar, com o id do trabalho no nome, e a `origem` que viaja para a planilha e para o Registro passa a dizer de qual declaração a rodada saiu — reconstituível mesmo se o arquivo sumir, e sobretudo quando a rodada **aborta**, que não deixa linha nenhuma no Registro.
+
+  **O progresso é ao vivo de verdade, e isso exigiu um leitor concorrente.** A F4 já emitia um NDJSON por nó concluído, mas ninguém o lia: as etapas ficariam apagadas até o fim. Lê-lo ao terminar daria o mesmo conteúdo e nenhuma serventia — seria relatório, não acompanhamento. O trabalhador segue o arquivo numa linha de execução paralela à drenagem da saída, com duas guardas: linha pela metade não avança o cursor (o escritor pode estar no meio dela), e falha ali não derruba a rodada, porque progresso é conveniência e a rodada é o trabalho.
+
+  **Os códigos de saída viraram frase.** Os seis desfechos da rodada têm tradução própria, e a mais importante é a distinção entre os dois abortos: estoque vazio é ausência de insumo, veto do crivo é violação de invariante. Sob um texto só, uma violação chegaria com a mesma cara de "não havia imóvel para decidir" e ninguém iria olhar. Código desconhecido é traduzido como **grave**, não ignorado.
+
+  **Dois defeitos vistos na tela.** As etapas mostravam "8 de 7 anunciadas", porque a rodada também emite o `registrar`, que é sink e não etapa — número que não quer dizer nada, e que nenhum teste via porque a contagem morava no componente. E o aviso de trabalhador fora do ar precisou nascer junto: sem ele, clicar em "rodar" com o processo parado não produz nada nem explicação.
+
+  **Um defeito que teria aparecido em TODA rodada real, e em nenhuma de teste.** O batimento do trabalhador era dado uma vez, antes de a rodada começar; uma sexta leva minutos, e a tela considera morto quem não bate há trinta segundos. Meio minuto depois do disparo, o acompanhamento passaria a dizer **"o trabalhador não está no ar"** — falso, e justamente na tela feita para tranquilizar quem acabou de disparar. Pior: esse alarme é o que mais provavelmente faria alguém matar o processo no meio, arriscando a rodada duplicada que a fila existe para impedir. O batimento passou para a mesma linha de execução que segue o progresso, e vale para todo tipo de trabalho — a raspagem também leva minutos.
+
+  **E a tradução dos códigos de saída passou a exigir o TIPO.** Eles são o contrato da sexta, e outros tipos reusam os mesmos números com significados diferentes: na segunda, o código 4 quer dizer "sem carga aprovada", nada a ver com "a coleta interna veio vazia". Traduzir sem olhar o tipo faria a tela afirmar, com confiança e por escrito, algo simplesmente falso.
+
+  **A declaração que dispara passou a ser a que o dono VIU.** A tela lê os parâmetros uma vez e mostra "vai rodar com a declaração nº X"; a ação lia de novo no clique, e podia enfileirar a nº X+1 submetida no intervalo. A rodada citaria fielmente a nº X+1 como declarada, e a aprovação humana que a tela existe para capturar nunca teria acontecido para aquele conteúdo — o "peso inventado numa planilha aprovada", mudado de arquivo para versão. Agora recusa, em vez de substituir em silêncio.
+
+  **A resiliência que o texto afirmava era mais forte que o código, e isso foi corrigido.** A conexão do acompanhamento era aberta FORA do laço: se falhasse no arranque, a thread morria calada e a rodada inteira ficava sem batimento — o alarme falso pelo tempo todo; e se morresse no meio, o psycopg não reconecta, então tudo levantava e o laço girava falhando. O teste provava só o caso leve, com erro na escrita e a conexão viva. Agora a conexão renasce dentro do laço, e um teste **mata a conexão no meio e exige que o batimento volte** — o único que prova a frase.
+
+  **O batimento ganhou período próprio.** Bater junto com a sondagem de meio segundo daria ~7.200 escritas por hora numa linha só, e a raspagem dura horas. Cinco segundos contra um prazo de trinta: seis vezes de folga com um décimo da escrita.
+
+  **`docs/prazos.md` (novo): o inventário de todo prazo do sistema, com quem o renova e com que período.** O defeito acima não escapou por a execução ser curta — a fumaça roda 60 segundos e o prazo é 30, então o alarme falso estava **dentro da janela observável**. Escapou porque nada afirmava nada sobre a cadência, e a validação era um humano olhando a tela. O documento separa os prazos nossos (só um é par prazo × renovador, e é onde o defeito nasceu) dos que não são — sessão do Canal Pro, `wait_timeout` do MySQL, token do Drive —, que é o que esta classe vira quando a sexta real passar a durar horas.
+
+  Provado ponta a ponta pela interface: rodada disparada por clique, executada pelo trabalhador contra o MySQL do Newcore, progresso aparecendo etapa a etapa, e desfecho lido na tela.
+
+
+
 - **O formulário de parâmetros: o console passa a ESCREVER, e o bloqueio dos catorze nulos vira tela (F5).** `/parametros` renderiza os 20 campos obrigatórios a partir do contrato gerado do próprio validador — tipo, faixa, escolhas fechadas, campos condicionais e o rótulo da pendência que cada um responde. **Nenhum campo nasce preenchido**, e o texto de apoio dentro do campo é "a definir", nunca um número: um exemplo numérico ali é como um valor que ninguém escolheu entra numa planilha aprovada.
 
   **A validação adianta a recusa que o Python faria, sem duplicá-la.** As faixas, os tipos e as escolhas vêm todos do contrato travado por CI; nada é redigitado em TypeScript. O que o formulário faz é deixar o dono corrigir enquanto digita, em vez de descobrir pelo código de saída 5 depois de a rodada ser enfileirada e morrer. A distinção entre limite **aberto** e **fechado** aparece na tela: `decaimento = 0` é recusado com "precisa ser MAIOR que 0", `desconto_fragil = 0` passa.

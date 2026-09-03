@@ -231,6 +231,38 @@ def bater_ponto(conn: psycopg.Connection, nome: str = "principal") -> None:
         )
 
 
+def ler_parametros(conn: psycopg.Connection, declaracao_id: int) -> str | None:
+    """O TOML declarado, verbatim. None se a declaração não existe.
+
+    O console guarda TEXTO, não caminho: o arquivo é materializado pelo trabalhador
+    na hora de rodar. Assim a `origem` que viaja para a planilha e para o Registro
+    carrega o id do trabalho, e o texto sobrevive mesmo se o arquivo sumir — o que
+    importa num caso concreto, porque **rodada abortada não persiste nada**, nem
+    cabeçalho, e sem esta tabela os parâmetros de um aborto se perderiam por completo.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT toml FROM operacao.parametros_declarados WHERE id = %s", (declaracao_id,)
+        )
+        linha = cur.fetchone()
+    return str(linha[0]) if linha is not None else None
+
+
+def ligar_declaracao(conn: psycopg.Connection, declaracao_id: int, trabalho_id: int) -> None:
+    """Marca o ÚLTIMO trabalho que usou esta declaração. Rastreabilidade, não guarda.
+
+    Último, e não "o" trabalho: o fluxo normal — declarar uma vez, rodar seco, rodar
+    real — reusa a mesma declaração e esta escrita sobrepõe a anterior. Não há perda,
+    porque a direção autoritativa é a outra: `trabalho.argumentos` guarda de qual
+    declaração cada rodada saiu, e é ela que sustenta a `origem` que viaja para a
+    planilha e para o Registro. Esta coluna é atalho de leitura, não fonte."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE operacao.parametros_declarados SET trabalho_id = %s WHERE id = %s",
+            (trabalho_id, declaracao_id),
+        )
+
+
 def ler_trabalho(conn: psycopg.Connection, trabalho_id: int) -> Trabalho | None:
     with conn.cursor() as cur:
         cur.execute(f"SELECT {_COLUNAS} FROM operacao.trabalho WHERE id = %s", (trabalho_id,))

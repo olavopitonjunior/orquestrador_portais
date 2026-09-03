@@ -35,13 +35,26 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import psycopg
+
 from config.ambiente import carregar_env
-from dados.operacao import Trabalho, bater_ponto, concluir, criar, evento, reivindicar
+from dados.operacao import (
+    Trabalho,
+    bater_ponto,
+    concluir,
+    criar,
+    evento,
+    ler_parametros,
+    ligar_declaracao,
+    reivindicar,
+)
 from dados.registro.conexao import conectar
 
 log = logging.getLogger("trabalhador")
@@ -50,6 +63,13 @@ log = logging.getLogger("trabalhador")
 # de herdado: `carregar_env` procura o `.env` no diretório CORRENTE, e um trabalhador
 # iniciado pelo agendador do sistema (cujo cwd é qualquer um) faria a rodada falhar com
 # "variável ausente" — diagnóstico errado para "rodei do lugar errado".
+# Dois períodos, e a distinção importa. A sondagem precisa ser curta para o progresso
+# parecer ao vivo; o batimento não — ele só precisa caber com folga no prazo que a tela
+# usa para declarar o trabalhador morto (30s). Iguais, uma raspagem de horas faria
+# ~7.200 escritas por hora numa linha só, com o autovacuum girando por nada.
+SONDAGEM = 0.5
+BATIMENTO = 5.0
+
 RAIZ = Path(__file__).resolve().parent.parent.parent
 COLETOR = RAIZ / "coletor-externo"
 
@@ -179,6 +199,112 @@ def _drenar(processo: subprocess.Popen[str], trabalho_id: int) -> None:
             evento(conn, trabalho_id, texto[:4000], nivel=nivel)
 
 
+def _acompanhar(caminho: Path | None, trabalho_id: int, parar: threading.Event) -> None:
+    """Bate o ponto e lê o progresso ENQUANTO a rodada corre. Uma thread, duas tarefas.
+
+    **O batimento precisa acontecer aqui, e não só no começo do ciclo.** Ele era dado
+    uma vez, antes de a rodada começar; uma sexta real leva MINUTOS, e a tela considera
+    morto um trabalhador sem batimento há 30 segundos. Resultado medido: em toda rodada
+    de verdade, meio minuto depois, o acompanhamento passaria a dizer "o trabalhador
+    não está no ar" — falso, e justamente na tela feita para tranquilizar quem acabou de
+    disparar. E o alarme falso é o que mais provavelmente faria alguém matar o processo
+    no meio, o que arrisca a rodada duplicada que a fila existe para impedir.
+
+    Vale para TODO tipo de trabalho, com ou sem arquivo de progresso: a raspagem também
+    leva minutos, e o batimento não é do NDJSON, é do processo.
+
+    Precisa ser concorrente. A alternativa — ler o arquivo ao fim — daria o mesmo
+    conteúdo e nenhuma serventia: a tela de acompanhamento existe para mostrar em que
+    etapa a rodada está AGORA, e um progresso que só aparece depois de terminar é um
+    relatório, não um acompanhamento.
+
+    Sondagem, não notificação de sistema de arquivos: a rodada leva minutos e emite
+    oito linhas: meio segundo de latência é imperceptível, e depender de `inotify` ou
+    `FSEvents` traria uma dependência por plataforma para resolver o que uma leitura
+    barata resolve.
+
+    Falha aqui NÃO derruba a rodada. Progresso é conveniência; a rodada é o trabalho.
+    """
+    lidas = 0
+    falhas = 0
+    ultimo_ponto = 0.0
+    conn: psycopg.Connection | None = None
+    try:
+        while True:
+            terminou = parar.wait(SONDAGEM)
+            try:
+                # A conexão nasce e RENASCE dentro do try. Estava aberta fora dele, e
+                # isso produzia duas versões do mesmo defeito que este acompanhamento
+                # existe para evitar: se `conectar()` falhasse no arranque, a thread
+                # morria calada e a rodada inteira ficava SEM batimento — o alarme falso
+                # de "trabalhador morto" pelo tempo todo; e se a conexão morresse no
+                # meio, o psycopg não reconecta, então todo comando seguinte levantava e
+                # o laço girava falhando até o fim. O CHANGELOG dizia resistir a "um
+                # soluço na conexão", e o teste provava só o caso leve, com a conexão
+                # viva. Agora resiste ao que a frase nomeia.
+                if conn is None or conn.closed:
+                    conn = conectar()
+                    conn.autocommit = True
+
+                agora = time.monotonic()
+                if agora - ultimo_ponto >= BATIMENTO:
+                    # Período PRÓPRIO, maior que o da sondagem. Batendo a cada meia
+                    # segundo seriam ~7.200 escritas por hora numa linha só — e a
+                    # raspagem dura horas. O prazo que a tela usa é de 30s; 5s dá
+                    # margem de seis vezes com 1/10 da escrita.
+                    bater_ponto(conn)
+                    ultimo_ponto = agora
+
+                if caminho is not None and caminho.is_file():
+                    linhas = caminho.read_text(encoding="utf-8").splitlines()
+                    novas = linhas[lidas:]
+                    for posicao, linha in enumerate(novas):
+                        try:
+                            dado = json.loads(linha)
+                        except ValueError:
+                            if posicao == len(novas) - 1:
+                                # ÚLTIMA linha da leitura: o escritor pode estar no meio
+                                # dela. Não avança o cursor, e a próxima volta relê.
+                                break
+                            # No MEIO do arquivo é outra coisa — escrita truncada, um
+                            # glitch — e parar aqui travaria o seguidor no mesmo ponto
+                            # para sempre, fazendo TODAS as etapas seguintes sumirem em
+                            # silêncio. Avança e avisa.
+                            log.warning("linha ilegível no progresso do trabalho %s", trabalho_id)
+                            lidas += 1
+                            continue
+                        evento(
+                            conn,
+                            trabalho_id,
+                            f"etapa concluída: {dado.get('no', '?')}",
+                            no_grafo=str(dado.get("no") or ""),
+                        )
+                        lidas += 1
+            except Exception:  # noqa: BLE001 — acompanhar é conveniência; a rodada é o trabalho
+                # `OSError` sozinho não bastava: `evento()` levanta `psycopg.Error`, que
+                # não é `OSError`, e a thread morria calada — as etapas paravam sem uma
+                # palavra na tela. "Não derruba a rodada" não é o mesmo que "avisa".
+                #
+                # E desistir na primeira falha era compromisso mais forte do que a
+                # intenção pedia: um soluço momentâneo na conexão congelaria o painel
+                # pelo resto de uma rodada de minutos, com o batimento junto — e aí a
+                # tela passaria a mentir que o trabalhador morreu. Segue tentando; só
+                # desiste quando o processo termina.
+                falhas += 1
+                if falhas in (1, 10, 100):
+                    log.warning(
+                        "acompanhamento do trabalho %s falhou (%dª vez)",
+                        trabalho_id,
+                        falhas,
+                        exc_info=True,
+                    )
+            if terminou:
+                return
+    finally:
+        if conn is not None and not conn.closed:
+            conn.close()
+
+
 def executar_trabalho(trabalho: Trabalho) -> int:
     """Roda o trabalho e devolve o código de saída do processo filho."""
     argv, cwd = comando(trabalho)
@@ -198,6 +324,20 @@ def executar_trabalho(trabalho: Trabalho) -> int:
         text=True,
         bufsize=1,
     )
+    # O seguidor do NDJSON roda em paralelo com a drenagem da saída: são duas fontes
+    # independentes (o arquivo traz os nós do grafo, a saída traz o log humano), e
+    # esperar uma para ler a outra perderia a razão de existir de ambas.
+    parar = threading.Event()
+    eventos = trabalho.argumentos.get("eventos_ndjson")
+    # SEMPRE, e não só quando há progresso a ler: o batimento é do processo, não do
+    # arquivo, e sem ele a tela declara morto um trabalhador que está trabalhando.
+    seguidor = threading.Thread(
+        target=_acompanhar,
+        args=(Path(str(eventos)) if eventos else None, trabalho.id, parar),
+        daemon=True,
+    )
+    seguidor.start()
+
     try:
         _drenar(processo, trabalho.id)
     except BaseException:
@@ -209,7 +349,48 @@ def executar_trabalho(trabalho: Trabalho) -> int:
         processo.kill()
         processo.wait()
         raise
+    finally:
+        # Sinaliza DEPOIS da drenagem: o seguidor faz mais uma passada antes de sair,
+        # senão as últimas etapas — justamente as que dizem como terminou — ficariam
+        # de fora por uma corrida de meio segundo.
+        parar.set()
+        seguidor.join(timeout=5)
+        if seguidor.is_alive():
+            # Só acontece com a conexão do acompanhamento pendurada. É `daemon`, então
+            # não segura a saída do processo — mas fica com uma conexão aberta, e sem
+            # esta linha a única pista seria o número de conexões subindo.
+            log.warning("o acompanhamento do trabalho %s não encerrou em 5s", trabalho.id)
     return processo.wait()
+
+
+def materializar_parametros(trabalho: Trabalho) -> Trabalho:
+    """Escreve em disco o TOML que o console declarou, e devolve o trabalho apontando
+    para ele.
+
+    O console guarda TEXTO no banco, não caminho — e é o certo: `origem` viaja para a
+    planilha e para o Registro, então ela precisa dizer de QUAL declaração a rodada
+    saiu, não de um arquivo qualquer que alguém pode ter mexido. O nome carrega o id do
+    trabalho pela mesma razão.
+
+    Quem já manda `parametros` direto (a linha de comando, o teste de fumaça) não passa
+    por aqui: os dois caminhos convivem, e o do console é o que precisa da tradução.
+    """
+    declaracao = trabalho.argumentos.get("parametros_declarados_id")
+    if declaracao is None:
+        return trabalho
+    with conectar() as conn:
+        conn.autocommit = True
+        toml = ler_parametros(conn, int(declaracao))
+        if toml is None:
+            raise ArgumentosInvalidos(
+                f"a declaração de parâmetros {declaracao} não existe — o trabalho foi "
+                "enfileirado apontando para algo que sumiu do Registro de operação"
+            )
+        ligar_declaracao(conn, int(declaracao), trabalho.id)
+    destino = EXECUCOES / f"rodada-{trabalho.id}.toml"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(toml, encoding="utf-8")
+    return replace(trabalho, argumentos={**trabalho.argumentos, "parametros": str(destino)})
 
 
 def _ciclo() -> bool:
@@ -223,7 +404,15 @@ def _ciclo() -> bool:
 
     log.info("trabalho %s (%s) reivindicado", trabalho.id, trabalho.tipo)
     try:
-        codigo = executar_trabalho(trabalho)
+        pronto = materializar_parametros(trabalho)
+        # O caminho do NDJSON é o mesmo que `comando()` passa à rodada — declarado aqui
+        # para o seguidor não ter de recalculá-lo e as duas metades não divergirem.
+        if pronto.tipo == "sexta":
+            pronto = replace(
+                pronto,
+                argumentos={**pronto.argumentos, "eventos_ndjson": str(eventos_de(pronto.id))},
+            )
+        codigo = executar_trabalho(pronto)
     except ArgumentosInvalidos as e:
         # Argumento inválido é falha do PEDIDO, não da execução: o código 5 é o mesmo
         # que o runner usaria para parâmetro impossível, e a mensagem vai para a tela.
