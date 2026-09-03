@@ -35,13 +35,24 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from config.ambiente import carregar_env
-from dados.operacao import Trabalho, bater_ponto, concluir, criar, evento, reivindicar
+from dados.operacao import (
+    Trabalho,
+    bater_ponto,
+    concluir,
+    criar,
+    evento,
+    ler_parametros,
+    ligar_declaracao,
+    reivindicar,
+)
 from dados.registro.conexao import conectar
 
 log = logging.getLogger("trabalhador")
@@ -179,6 +190,62 @@ def _drenar(processo: subprocess.Popen[str], trabalho_id: int) -> None:
             evento(conn, trabalho_id, texto[:4000], nivel=nivel)
 
 
+def _seguir_eventos(caminho: Path, trabalho_id: int, parar: threading.Event) -> None:
+    """Lê o NDJSON de progresso ENQUANTO a rodada corre, e vira evento com o nó.
+
+    Precisa ser concorrente. A alternativa — ler o arquivo ao fim — daria o mesmo
+    conteúdo e nenhuma serventia: a tela de acompanhamento existe para mostrar em que
+    etapa a rodada está AGORA, e um progresso que só aparece depois de terminar é um
+    relatório, não um acompanhamento.
+
+    Sondagem, não notificação de sistema de arquivos: a rodada leva minutos e emite
+    oito linhas: meio segundo de latência é imperceptível, e depender de `inotify` ou
+    `FSEvents` traria uma dependência por plataforma para resolver o que uma leitura
+    barata resolve.
+
+    Falha aqui NÃO derruba a rodada. Progresso é conveniência; a rodada é o trabalho.
+    """
+    lidas = 0
+    with conectar() as conn:
+        conn.autocommit = True
+        while True:
+            terminou = parar.wait(0.5)
+            try:
+                if caminho.is_file():
+                    linhas = caminho.read_text(encoding="utf-8").splitlines()
+                    novas = linhas[lidas:]
+                    for posicao, linha in enumerate(novas):
+                        try:
+                            dado = json.loads(linha)
+                        except ValueError:
+                            if posicao == len(novas) - 1:
+                                # ÚLTIMA linha da leitura: o escritor pode estar no meio
+                                # dela. Não avança o cursor, e a próxima volta relê.
+                                break
+                            # No MEIO do arquivo é outra coisa — escrita truncada, um
+                            # glitch — e parar aqui travaria o seguidor no mesmo ponto
+                            # para sempre, fazendo TODAS as etapas seguintes sumirem em
+                            # silêncio. Avança e avisa.
+                            log.warning("linha ilegível no progresso do trabalho %s", trabalho_id)
+                            lidas += 1
+                            continue
+                        evento(
+                            conn,
+                            trabalho_id,
+                            f"etapa concluída: {dado.get('no', '?')}",
+                            no_grafo=str(dado.get("no") or ""),
+                        )
+                        lidas += 1
+            except Exception:  # noqa: BLE001 — progresso é conveniência; a rodada é o trabalho
+                # `OSError` sozinho não bastava: `evento()` levanta `psycopg.Error`, que
+                # não é `OSError`, e a thread morria calada — as etapas paravam sem uma
+                # palavra na tela. "Não derruba a rodada" não é o mesmo que "avisa".
+                log.warning("o acompanhamento do trabalho %s parou", trabalho_id, exc_info=True)
+                return
+            if terminou:
+                return
+
+
 def executar_trabalho(trabalho: Trabalho) -> int:
     """Roda o trabalho e devolve o código de saída do processo filho."""
     argv, cwd = comando(trabalho)
@@ -198,6 +265,18 @@ def executar_trabalho(trabalho: Trabalho) -> int:
         text=True,
         bufsize=1,
     )
+    # O seguidor do NDJSON roda em paralelo com a drenagem da saída: são duas fontes
+    # independentes (o arquivo traz os nós do grafo, a saída traz o log humano), e
+    # esperar uma para ler a outra perderia a razão de existir de ambas.
+    parar = threading.Event()
+    seguidor: threading.Thread | None = None
+    eventos = trabalho.argumentos.get("eventos_ndjson")
+    if eventos:
+        seguidor = threading.Thread(
+            target=_seguir_eventos, args=(Path(str(eventos)), trabalho.id, parar), daemon=True
+        )
+        seguidor.start()
+
     try:
         _drenar(processo, trabalho.id)
     except BaseException:
@@ -209,7 +288,44 @@ def executar_trabalho(trabalho: Trabalho) -> int:
         processo.kill()
         processo.wait()
         raise
+    finally:
+        # Sinaliza DEPOIS da drenagem: o seguidor faz mais uma passada antes de sair,
+        # senão as últimas etapas — justamente as que dizem como terminou — ficariam
+        # de fora por uma corrida de meio segundo.
+        parar.set()
+        if seguidor is not None:
+            seguidor.join(timeout=5)
     return processo.wait()
+
+
+def materializar_parametros(trabalho: Trabalho) -> Trabalho:
+    """Escreve em disco o TOML que o console declarou, e devolve o trabalho apontando
+    para ele.
+
+    O console guarda TEXTO no banco, não caminho — e é o certo: `origem` viaja para a
+    planilha e para o Registro, então ela precisa dizer de QUAL declaração a rodada
+    saiu, não de um arquivo qualquer que alguém pode ter mexido. O nome carrega o id do
+    trabalho pela mesma razão.
+
+    Quem já manda `parametros` direto (a linha de comando, o teste de fumaça) não passa
+    por aqui: os dois caminhos convivem, e o do console é o que precisa da tradução.
+    """
+    declaracao = trabalho.argumentos.get("parametros_declarados_id")
+    if declaracao is None:
+        return trabalho
+    with conectar() as conn:
+        conn.autocommit = True
+        toml = ler_parametros(conn, int(declaracao))
+        if toml is None:
+            raise ArgumentosInvalidos(
+                f"a declaração de parâmetros {declaracao} não existe — o trabalho foi "
+                "enfileirado apontando para algo que sumiu do Registro de operação"
+            )
+        ligar_declaracao(conn, int(declaracao), trabalho.id)
+    destino = EXECUCOES / f"rodada-{trabalho.id}.toml"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(toml, encoding="utf-8")
+    return replace(trabalho, argumentos={**trabalho.argumentos, "parametros": str(destino)})
 
 
 def _ciclo() -> bool:
@@ -223,7 +339,15 @@ def _ciclo() -> bool:
 
     log.info("trabalho %s (%s) reivindicado", trabalho.id, trabalho.tipo)
     try:
-        codigo = executar_trabalho(trabalho)
+        pronto = materializar_parametros(trabalho)
+        # O caminho do NDJSON é o mesmo que `comando()` passa à rodada — declarado aqui
+        # para o seguidor não ter de recalculá-lo e as duas metades não divergirem.
+        if pronto.tipo == "sexta":
+            pronto = replace(
+                pronto,
+                argumentos={**pronto.argumentos, "eventos_ndjson": str(eventos_de(pronto.id))},
+            )
+        codigo = executar_trabalho(pronto)
     except ArgumentosInvalidos as e:
         # Argumento inválido é falha do PEDIDO, não da execução: o código 5 é o mesmo
         # que o runner usaria para parâmetro impossível, e a mensagem vai para a tela.

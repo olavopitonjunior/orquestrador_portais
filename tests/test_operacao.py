@@ -9,6 +9,8 @@ morder.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from dados.operacao import (
@@ -20,7 +22,9 @@ from dados.operacao import (
     criar,
     evento,
     guardar_parametros,
+    ler_parametros,
     ler_trabalho,
+    ligar_declaracao,
     listar_trabalhos,
     reivindicar,
 )
@@ -344,3 +348,135 @@ def test_cancelado_COM_hora_e_aceito(conn):
         )
     t = ler_trabalho(conn, tid)
     assert t is not None and t.estado == "cancelado" and t.codigo_saida is None
+
+
+# ------------------------------------------- materialização do TOML declarado
+
+
+def test_ler_parametros_devolve_o_texto_verbatim(conn):
+    tid = guardar_parametros(conn, "razao = 0.5\n# comentário\n", por="olavo")
+    assert ler_parametros(conn, tid) == "razao = 0.5\n# comentário\n"
+
+
+def test_ler_parametros_inexistente_devolve_None(conn):
+    assert ler_parametros(conn, 999_999_999) is None
+
+
+def test_ligar_declaracao_marca_de_qual_trabalho_ela_saiu(conn):
+    declaracao = guardar_parametros(conn, "x = 1\n")
+    trabalho = criar(conn, "sexta")
+    ligar_declaracao(conn, declaracao, trabalho)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT trabalho_id FROM operacao.parametros_declarados WHERE id = %s", (declaracao,)
+        )
+        assert cur.fetchone()[0] == trabalho
+
+
+def test_materializar_escreve_o_toml_e_aponta_o_comando_para_ele(conn, tmp_path, monkeypatch):
+    """O console guarda TEXTO, não caminho — e é o certo: `origem` viaja para a planilha
+    e para o Registro, então precisa dizer de QUAL declaração a rodada saiu, não de um
+    arquivo que alguém pode ter mexido."""
+    from executar import trabalhador as tr
+
+    monkeypatch.setattr(tr, "EXECUCOES", tmp_path)
+    # Precisa estar COMMITADO: `materializar_parametros` abre a própria conexão, então
+    # não enxerga a transação deste teste. E por isso a limpeza abaixo é obrigatória —
+    # um trabalho `pendente` esquecido segura o índice parcial e TRAVA a fila daquele
+    # tipo, que já aconteceu uma vez nesta suíte (ver tests/README.md).
+    declaracao = guardar_parametros(conn, "razao = 0.5\n")
+    trabalho_id = criar(conn, "publicar", pedido_por="teste-materializacao")
+    conn.commit()
+    try:
+        trabalho = Trabalho(
+            id=trabalho_id,
+            tipo="sexta",
+            estado="executando",
+            pedido_em=datetime.now(UTC),
+            pedido_por="olavo",
+            argumentos={"parametros_declarados_id": declaracao},
+        )
+        pronto = tr.materializar_parametros(trabalho)
+        caminho = Path(str(pronto.argumentos["parametros"]))
+        assert caminho.read_text(encoding="utf-8") == "razao = 0.5\n"
+        assert str(trabalho_id) in caminho.name, "o nome precisa carregar o id do trabalho"
+        argv, _ = tr.comando(pronto)
+        assert str(caminho) in argv
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM operacao.parametros_declarados WHERE id = %s", (declaracao,))
+            cur.execute("DELETE FROM operacao.trabalho WHERE id = %s", (trabalho_id,))
+        conn.commit()
+
+
+def test_materializar_sem_declaracao_deixa_o_trabalho_intacto():
+    """Quem manda `parametros` direto — a linha de comando, o teste de fumaça — não
+    passa pela tradução. Os dois caminhos convivem."""
+    from executar import trabalhador as tr
+
+    t = Trabalho(
+        id=1,
+        tipo="sexta",
+        estado="executando",
+        pedido_em=datetime.now(UTC),
+        pedido_por=None,
+        argumentos={"parametros": "/tmp/p.toml"},
+    )
+    assert tr.materializar_parametros(t) is t
+
+
+def test_materializar_declaracao_inexistente_e_recusado(conn, monkeypatch, tmp_path):
+    """Falha do PEDIDO, não da execução: o trabalho aponta para algo que sumiu."""
+    from executar import trabalhador as tr
+
+    monkeypatch.setattr(tr, "EXECUCOES", tmp_path)
+    t = Trabalho(
+        id=1,
+        tipo="sexta",
+        estado="executando",
+        pedido_em=datetime.now(UTC),
+        pedido_por=None,
+        argumentos={"parametros_declarados_id": 999_999_999},
+    )
+    with pytest.raises(tr.ArgumentosInvalidos, match="não existe"):
+        tr.materializar_parametros(t)
+
+
+def test_o_seguidor_nao_TRAVA_numa_linha_ilegivel_no_meio(tmp_path, monkeypatch, conn):
+    """Parar na linha ruim é certo só quando ela é a ÚLTIMA — o escritor pode estar no
+    meio dela. No MEIO do arquivo, parar travaria o seguidor no mesmo ponto para
+    sempre, e TODAS as etapas seguintes sumiriam em silêncio."""
+    import json as _json
+    import threading
+
+    from executar import trabalhador as tr
+
+    trabalho_id = criar(conn, "publicar", pedido_por="teste-seguidor")
+    conn.commit()
+    try:
+        arquivo = tmp_path / "e.ndjson"
+        arquivo.write_text(
+            _json.dumps({"no": "coletor_interno"})
+            + "\n"
+            + "{ isto não é json\n"
+            + _json.dumps({"no": "decisor"})
+            + "\n",
+            encoding="utf-8",
+        )
+        parar = threading.Event()
+        parar.set()  # uma passada só
+        tr._seguir_eventos(arquivo, trabalho_id, parar)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT no_grafo FROM operacao.trabalho_evento WHERE trabalho_id=%s "
+                "AND no_grafo <> '' ORDER BY id",
+                (trabalho_id,),
+            )
+            vistos = [linha[0] for linha in cur.fetchall()]
+        assert vistos == ["coletor_interno", "decisor"], (
+            f"a linha ilegível no meio travou o seguidor: {vistos}"
+        )
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM operacao.trabalho WHERE id = %s", (trabalho_id,))
+        conn.commit()
