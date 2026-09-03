@@ -1,7 +1,10 @@
+import Link from "next/link";
+
 import { montarAcoes, type Acao } from "@/lib/acoes";
 import { outDirPublico, saudeColeta, type SaudeColeta } from "@/lib/coletor";
 import { PARAMETROS, PARAMETROS_PENDENTES } from "@/lib/parametros";
 import {
+  limitacoesDe,
   listarRodadas,
   rodadasAguardandoAprovacao,
   type RodadaResumo,
@@ -155,13 +158,16 @@ export default async function Page() {
                   <th scope="col" className="num">Super</th>
                   <th scope="col" className="num">Destaque</th>
                   <th scope="col" className="num">Vazias</th>
+                  <th scope="col">Declarou</th>
                   <th scope="col">Aprovação</th>
                 </tr>
               </thead>
               <tbody>
                 {rodadas.map((r) => (
                   <tr key={r.id}>
-                    <td className="id">{r.id}</td>
+                    <td className="id">
+                      <Link href={`/rodada/${r.id}`}>{r.id}</Link>
+                    </td>
                     <td>{r.tipo === "decisao" ? "decisão" : "acompanhamento"}</td>
                     <td>
                       <PilulaEstado estado={r.estado} />
@@ -170,6 +176,13 @@ export default async function Page() {
                     <td className="num">{r.superDestaque.toLocaleString("pt-BR")}</td>
                     <td className="num">{r.destaque.toLocaleString("pt-BR")}</td>
                     <td className="num">{r.posicoesVaziasDestaque.toLocaleString("pt-BR")}</td>
+                    {/* O motivo era lido e jogado fora: a rodada declarava limitações e a tela
+                        não as mostrava. Contagem aqui, texto inteiro em /rodada/[id]. */}
+                    <td title={r.motivoDegradacao ?? undefined}>
+                      {limitacoesDe(r.motivoDegradacao).length === 0
+                        ? "—"
+                        : `${limitacoesDe(r.motivoDegradacao).length} limitação(ões)`}
+                    </td>
                     <td>
                       {r.aprovadaEm ? (
                         <span className="aprov">

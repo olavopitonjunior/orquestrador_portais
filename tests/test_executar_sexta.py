@@ -503,6 +503,9 @@ def test_limitacoes_da_fiacao_chegam_ao_MOTIVO_gravado(tmp_path, monkeypatch, pa
     motivo = gravado["motivo_degradacao"]
     assert "HISTÓRICO DE JANELAS" in motivo
     assert "45,9%" in motivo
+    # UMA limitação por LINHA: o console divide por `\n`, e as próprias limitações têm
+    # "; " no meio — reverter o join para "; " partiria uma ao meio em toda rodada.
+    assert motivo.splitlines() == mod.limitacoes_da_fiacao(parametros, 0)
 
 
 # --- rodada AMOSTRAL: recorte pela raspagem (A2) ------------------------------

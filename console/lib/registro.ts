@@ -96,3 +96,26 @@ export async function rodadasAguardandoAprovacao(): Promise<RodadaResumo[]> {
   );
   return rows.map(mapRodada);
 }
+
+/** O que a rodada gravou como seus parâmetros: o TOML declarado, verbatim, mais as
+ *  entradas fora dele (data de referência, definição de ativo, coleta, recorte). É
+ *  jsonb; o console mostra, não interpreta. `null` se a rodada não gravou (abortada
+ *  não deixa nem cabeçalho; rodadas antigas podem não ter a linha). */
+export async function parametrosDaRodada(id: number): Promise<Record<string, unknown> | null> {
+  const { rows } = await db().query<{ parametros: Record<string, unknown> }>(
+    "SELECT parametros FROM registro.parametros_da_rodada WHERE rodada_id = $1",
+    [id],
+  );
+  return rows.length ? rows[0].parametros : null;
+}
+
+/** As limitações gravadas no motivo, uma por LINHA — o separador que `executar/sexta.py`
+ *  e `grafo/segunda.py` usam ao juntar. `"; "` NÃO serve: as próprias limitações o
+ *  contêm (a da definição de gestor ativo, incondicional), e dividir por ele partia
+ *  uma ao meio em toda rodada. Rodadas gravadas antes desta regra (juntadas por `"; "`)
+ *  não têm `\n` e ficam como bloco único — contar errado é pior que não contar. Prosa,
+ *  não dado: a marca AMOSTRAL é lida de `parametros_da_rodada`, não daqui. */
+export function limitacoesDe(motivo: string | null): string[] {
+  if (!motivo) return [];
+  return motivo.split("\n").map((x) => x.trim()).filter((x) => x.length > 0);
+}

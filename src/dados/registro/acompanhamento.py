@@ -231,7 +231,7 @@ def gravar_acompanhamento(
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE registro.rodada SET motivo_degradacao = %s WHERE id = %s",
-            ("; ".join(motivos) or None, rodada_id),
+            ("\n".join(motivos) or None, rodada_id),
         )
     return rodada_id, AcumuloDaJanela(historico=acumulo, limitacoes=limitacoes)
 

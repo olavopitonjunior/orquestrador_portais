@@ -241,6 +241,18 @@ def test_lead_sem_responsavel_degrada_e_nao_fica_pronto():
     assert estado == Estado.DEGRADADA and motivo  # o Registro recebe o motivo
 
 
+def test_motivo_gravado_tem_UMA_degradacao_por_linha():
+    """O console lista as limitações dividindo por `\n`; as próprias mensagens contêm
+    "; ", então juntar por "; " (como era) partia uma ao meio. Duas degradações aqui,
+    para o teste distinguir os dois separadores."""
+    s = _Sinks()
+    fontes = _fontes(leads=[_lead(100, 1, gestor=None)], descartados=5)
+    final = construir_grafo_segunda(fontes, s.como_sinks()).invoke(_inicial())
+    assert len(final["degradacoes"]) >= 2
+    _r, _estado, motivo, _p = s.registrados[0]
+    assert motivo.splitlines() == list(final["degradacoes"])
+
+
 def test_descartados_sem_imovel_viram_degradacao_declarada():
     s = _Sinks()
     final = construir_grafo_segunda(_fontes(descartados=5), s.como_sinks()).invoke(_inicial())

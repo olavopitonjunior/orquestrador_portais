@@ -286,7 +286,7 @@ def no_medir(estado: EstadoSegunda, *, fontes: FontesSegunda, sinks: SinksSegund
     # só `novas`, porque o reducer soma; aos sinks vai a lista COMPLETA.
     todas = [*estado.get("degradacoes", []), *novas]
     estado_final = estado_terminal(todas)
-    motivo = "; ".join(todas) or None
+    motivo = "\n".join(todas) or None  # uma por linha — ver `executar/sexta.py`
 
     # `prontos` é derivado UMA vez, aqui, e viaja para o Registro junto — para não
     # existirem duas derivações independentes da mesma regra (a do grafo e a da

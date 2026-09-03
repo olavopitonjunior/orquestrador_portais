@@ -181,6 +181,14 @@ def test_pronto_do_monitor_e_derivado_nao_afirmado(conn):
         etapas = cur.fetchone()[0]
     assert etapas["monitor"] is False  # pronto não cumprido, e o Registro diz isso
     assert "redator" not in etapas  # não se afirma etapa de quem não rodou
+    # O UPDATE junta o motivo às limitações do acúmulo UMA por LINHA — o console divide
+    # por `\n`, e "; " (como era) fundia a última degradação com as limitações.
+    with conn.cursor() as cur:
+        cur.execute("SELECT motivo_degradacao FROM registro.rodada WHERE id = %s", (rid,))
+        motivo = cur.fetchone()[0]
+    linhas = motivo.splitlines()
+    assert linhas[0] == "lead sem responsável nomeado (PRD: pronto não cumprido)"
+    assert len(linhas) >= 3  # mais as limitações do acúmulo (2 ou 3), cada uma na sua linha
 
 
 def test_autocommit_e_recusado(conn):

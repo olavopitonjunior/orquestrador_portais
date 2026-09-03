@@ -234,3 +234,15 @@ export async function resumosDoTrabalho(
   );
   return new Map(rows.map((l) => [l.no_grafo, l.resumo]));
 }
+
+/** O trabalho que gravou esta rodada — o elo entre a tela da rodada e a do log. */
+export async function trabalhoDaRodada(
+  rodadaId: number,
+  exec: Consulta = padrao,
+): Promise<number | null> {
+  const { rows } = await exec<{ id: string }>(
+    "SELECT id FROM operacao.trabalho WHERE rodada_id = $1 ORDER BY id DESC LIMIT 1",
+    [rodadaId],
+  );
+  return rows.length ? Number(rows[0].id) : null;
+}
