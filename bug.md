@@ -179,3 +179,13 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Ocorrido**: nas configurações padrão os três resolvem para `<raiz>/coletor-externo/out`. Quem definir `OUT_DIR` ou `COLETOR_OUT_DIR` passa a ter a tela olhando um diretório e a rodada lendo outro, sem aviso — a literal do disparo ignora as duas variáveis. Achado do `revisor-de-codigo` e do `orchestrator` na fatia A4.
 - **Afetou carga publicada?**: não.
 - **Situação**: **aberto, declarado** em comentário no `acoes.ts`. Correção: uma única fonte (variável lida pelo trabalhador ao montar `--externo`, e a mesma pelo console), com teste que os três resolvem igual. Fatia própria.
+
+## Duas rodadas morreram no Coletor Interno por prazo de cliente — a fonte estava viva
+
+**Data**: 2026-09-03 · **Severidade**: média (rodada abortada com a fonte disponível) · **Onde**: `src/dados/newcore.py`, `read_timeout` do pymysql (120 s); a consulta `_SQL_CANDIDATOS` do Coletor Interno
+
+- **Esperado**: uma base mais lenta que o normal alonga a rodada; não a mata.
+- **Ocorrido**: os trabalhos 2349 e 2416 (sextas em modo seco, disparadas pelo trabalhador à noite) saíram com código 3 e `OperationalError` no Coletor Interno. `SELECT 1` respondia em 0,2 s; a consulta de candidatos, medida em seguida, levou **109 s** — contra 62 s de rodada inteira pela manhã. O teto de 120 s por consulta estava a um soluço da variância normal da base.
+- **Afetou carga publicada?**: não — modo seco, e a rodada abortou antes de qualquer entrega.
+- **Estado da rodada no momento**: ABORTADA por falha de fonte (código 3), nas duas.
+- **Situação**: **mitigado** neste fix: `read_timeout` de 120 s para 600 s por consulta (`LEITURA_MYSQL_S`, `docs/prazos.md` atualizado) — a causa (base carregada, consulta de 109 s) não muda; o teto foi alargado. O que o fix NÃO faz: o teto efetivo passa a ser do lado de lá — `max_execution_time` do MySQL ou o idle-TCP de proxy/NAT no caminho, além de `wait_timeout`/`net_write_timeout` —, **nenhum medido**; se algum for menor que 600 s, a falha muda de forma (conexão perdida em vez de estouro de leitura), com o mesmo código 3. E a forma da falha **não é observável hoje**: a sexta loga só `type(e).__name__`, então "caíram no teto de 120 s" é inferência (109 s medidos, errno nunca logado). O que fecha a pendência: logar `e.args[0]` quando for `pymysql.err.MySQLError` — é um inteiro (2013/2006), não ecoa dado do banco. Fatia própria.
