@@ -84,7 +84,8 @@ def no_coletor_externo(
 
     Sem `coletar_externo`/`parametros_externo` injetados (esqueleto), continua
     STUB: sem raspagem, rodada DEGRADADA nesse fator. Com eles, `avaliar_coleta`
-    aplica as portas (estado ok, amarração ≥ limiar nº 7, idade ≤ máxima nº 5) e,
+    aplica as portas (estado ok, ao menos um imóvel-alvo amarrado, amarração ≥
+    limiar nº 7, idade ≤ máxima nº 5) e,
     passando, compõe o sinal F3 por imóvel; falhando qualquer porta, o desempenho
     não entra e a degradação é declarada com o motivo — a rodada não é COMPLETA."""
     if fontes.coletar_externo is None or parametros_externo is None:

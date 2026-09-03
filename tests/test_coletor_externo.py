@@ -249,6 +249,57 @@ def test_avaliar_amarracao_baixa_nao_entra(tmp_path):
     assert r.taxa_amarracao == 0.25
 
 
+def _params_de_piloto():
+    """O que um piloto DECLARARIA para ver a raspagem entrar: limiar zero."""
+    return ParametrosExterno(
+        limiar_amarracao=0.0, idade_maxima_dias=8, compor_desempenho=lambda a: a.visualizacoes
+    )
+
+
+def test_amarracao_vazia_nao_entra_mesmo_com_limiar_zero(tmp_path):
+    """Mutação que este teste apanha: sem a porta de zero casados, `0.0 < 0.0` é
+    falso, a coleta passa, e a rodada sai COMPLETA com F3 = 0 para todos — a falha
+    mais provável da primeira raspagem real, porque o formato do codigoImovel nunca
+    foi visto."""
+    coleta = _coleta_fresca(tmp_path, [_anuncio("1", "IMOVEL-0001"), _anuncio("2", "IMOVEL-0002")])
+    assert coleta.por_imovel == {}  # nada amarrou
+    r = avaliar_coleta(coleta, [101, 202], _params_de_piloto(), HOJE)
+    assert r.entra is False
+    assert "NENHUMA amarrou" in r.motivo
+    assert r.desempenho_por_imovel == {}
+    assert r.taxa_amarracao == 0.0
+
+
+def test_amarracao_disjunta_da_lista_alvo_nao_entra(tmp_path):
+    """Linhas amarradas a imóveis que NÃO são candidatos: a composição do F3 hoje
+    percorre `por_imovel` inteiro, então sem a porta o resultado seria `entra=True`
+    com desempenho só para quem não está na lista — e zero para todos os alvos."""
+    coleta = _coleta_fresca(tmp_path, [_anuncio("1", "101", visualizacoes=300)])
+    r = avaliar_coleta(coleta, [202, 303], _params_de_piloto(), HOJE)
+    assert r.entra is False
+    assert "NENHUMA amarrou" in r.motivo
+    assert r.desempenho_por_imovel == {}
+
+
+def test_csv_vazio_com_status_ok_nao_entra(tmp_path):
+    coleta = _coleta_fresca(tmp_path, [])
+    assert coleta.estado == "ok"
+    assert coleta.total_linhas == 0
+    r = avaliar_coleta(coleta, [101], _params_de_piloto(), HOJE)
+    assert r.entra is False
+    assert "0 linhas" in r.motivo
+
+
+def test_um_casado_ja_passa_a_porta_de_vazio_e_cai_na_de_limiar(tmp_path):
+    """As duas portas são distintas: um único casado sai da primeira e é julgado
+    pela segunda, com a mensagem da segunda."""
+    coleta = _coleta_fresca(tmp_path, [_anuncio("1", "101")])
+    r = avaliar_coleta(coleta, [101, 202, 303, 404], PARAMS_EXT, HOJE)  # 25% < 50%
+    assert r.entra is False
+    assert "NENHUMA" not in r.motivo
+    assert "limiar" in r.motivo
+
+
 def test_avaliar_coleta_velha_nao_entra(tmp_path):
     coleta = _coleta_fresca(tmp_path, [_anuncio("1", "101")], dias_atras=30)  # > 8 dias
     r = avaliar_coleta(coleta, [101], PARAMS_EXT, HOJE)

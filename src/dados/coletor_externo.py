@@ -205,6 +205,13 @@ def ler_coleta(out_dir: Path, portal: str = "canalpro") -> ColetaExterna:
     )
 
 
+def casados(coleta: ColetaExterna, imoveis_alvo: Collection[int]) -> int:
+    """Quantos imóveis da lista-alvo a raspagem casou a um anúncio. É a contagem
+    por trás da taxa, exposta porque a admissão precisa dela CRUA: zero casados é
+    um caso próprio, que a taxa (0.0) não distingue de um limiar 0.0."""
+    return sum(1 for i in set(imoveis_alvo) if i in coleta.por_imovel)
+
+
 def taxa_amarracao(coleta: ColetaExterna, imoveis_alvo: Collection[int]) -> float:
     """Fração da lista-alvo do Coletor Interno que a raspagem casou a um anúncio
     (Spec §5). 0.0 se a lista-alvo é vazia. É o número que o limiar nº 7 (nulo)
@@ -212,8 +219,7 @@ def taxa_amarracao(coleta: ColetaExterna, imoveis_alvo: Collection[int]) -> floa
     alvo = set(imoveis_alvo)
     if not alvo:
         return 0.0
-    casados = sum(1 for i in alvo if i in coleta.por_imovel)
-    return casados / len(alvo)
+    return casados(coleta, alvo) / len(alvo)
 
 
 @dataclass(frozen=True)
@@ -249,17 +255,28 @@ def avaliar_coleta(
 ) -> ResultadoExterno:
     """Decide se a coleta entra no cálculo e, se sim, compõe o sinal F3 por imóvel.
     Determinístico (invariante 5): idade sai de `data_referencia` (input) menos o
-    `coletado_em` do arquivo — nunca do relógio. Portas, na ordem da Spec §7.3:
+    `coletado_em` do arquivo — nunca do relógio. Portas, na ordem da Spec §7.3, mais
+    a porta 2, própria desta implementação (mais estrita que a Spec, não menos):
 
     1. coleta não-"ok" (blocked/ausente/error) → não entra;
-    2. taxa de amarração < limiar (nº 7) → performance externa NÃO entra, sinaliza;
-    3. idade > máxima (nº 5) → fora da janela aceitável → não entra (a "reserva"
+    2. NENHUM imóvel da lista-alvo amarrou → não entra, seja qual for o limiar.
+       Porta própria porque a de baixo não a cobre: com zero casados a taxa é 0.0,
+       e `0.0 < 0.0` é falso — um limiar 0.0 (o que um piloto declararia) deixaria
+       passar uma raspagem que não amarrou nada, e a rodada sairia COMPLETA com F3
+       = 0 para todos, indistinguível de "todos empatados". O `codigoImovel` real do
+       Canal Pro nunca foi visto (a fixture do raspador é sintética e não-numérica),
+       então esta é exatamente a falha mais provável da primeira rodada com
+       raspagem, e ela precisa sair DECLARADA;
+    3. taxa de amarração < limiar (nº 7) → performance externa NÃO entra, sinaliza;
+    4. idade > máxima (nº 5) → fora da janela aceitável → não entra (a "reserva"
        da Spec §7.3 — reusar a última coleta válida — é fatia futura; aqui só se
        declara a idade e degrada).
 
-    Passando as três, F3 = `compor_desempenho` por imóvel amarrado (o resto do
+    Passando as quatro, F3 = `compor_desempenho` por imóvel amarrado (o resto do
     ranking normaliza min-max entre a população)."""
-    taxa = taxa_amarracao(coleta, imoveis_alvo)
+    alvo = set(imoveis_alvo)  # uma vez: a taxa e a porta 2 contam sobre o mesmo conjunto
+    n_casados = casados(coleta, alvo)
+    taxa = n_casados / len(alvo) if alvo else 0.0
     idade = (data_referencia - coleta.coletado_em.date()).days if coleta.coletado_em else None
 
     def _nao(motivo: str) -> ResultadoExterno:
@@ -267,6 +284,13 @@ def avaliar_coleta(
 
     if coleta.estado != "ok":
         return _nao(f"coleta externa {coleta.estado} — sem performance de portal")
+    if n_casados == 0:
+        return _nao(
+            f"raspagem lida ({coleta.total_linhas} linhas, {coleta.sem_amarracao} sem "
+            "código numérico), mas NENHUMA amarrou com a lista-alvo — performance externa "
+            "não entra. Não é 'todos iguais': é dado ausente. Confira o formato do "
+            "codigoImovel (externalId) contra o id do Newcore"
+        )
     if taxa < params.limiar_amarracao:
         return _nao(
             f"taxa de amarração {taxa:.0%} < limiar {params.limiar_amarracao:.0%} (nº 7) "
