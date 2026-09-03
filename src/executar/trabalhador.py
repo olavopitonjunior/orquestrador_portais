@@ -33,6 +33,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -307,14 +308,48 @@ def _acompanhar(caminho: Path | None, trabalho_id: int, parar: threading.Event) 
             conn.close()
 
 
+# Gramática de CANARY_STEPS: inteiros separados por vírgula. É a mesma que o console
+# valida antes de enfileirar; aqui de novo porque `argumentos` também pode ser escrito
+# à mão em SQL, e o que vai para o ambiente de um processo filho não pode ser texto
+# livre.
+# `[0-9]` e `fullmatch`, não `\d` e `$`: `\d` casa dígito Unicode (`١`, `１`) e `$`
+# casa antes de um `\n` final — o console recusa os dois, e "a mesma gramática" tem
+# de ser verdade, não intenção.
+_PASSOS_DO_CANARIO = re.compile(r"[0-9]+(,[0-9]+)*")
+
+
+def ambiente_do_trabalho(trabalho: Trabalho) -> dict[str, str]:
+    """As variáveis de ambiente que um trabalho pode acrescentar ao filho. FUNÇÃO PURA.
+
+    Lista BRANCA, não passagem: só `canary_steps` (→ `CANARY_STEPS`, só no canário) é
+    aceito. Deixar `argumentos` virar ambiente livre seria dar a quem escreve na fila
+    controle sobre `PATH`, `OUT_DIR` ou `CDP_PORT` do raspador.
+    """
+    a: Mapping[str, Any] = trabalho.argumentos
+    passos = a.get("canary_steps")
+    if passos is None:
+        return {}
+    if trabalho.tipo != "canario":
+        raise ArgumentosInvalidos("`canary_steps` só faz sentido no canário")
+    if not isinstance(passos, str) or not _PASSOS_DO_CANARIO.fullmatch(passos):
+        raise ArgumentosInvalidos(
+            f"`canary_steps` precisa ser inteiros separados por vírgula, veio {passos!r}"
+        )
+    return {"CANARY_STEPS": passos}
+
+
 def executar_trabalho(trabalho: Trabalho) -> int:
     """Roda o trabalho e devolve o código de saída do processo filho."""
     argv, cwd = comando(trabalho)
+    # Antes do evento que grava o comando: um argumento recusado aqui não pode deixar no
+    # log um "$ npm run canary" que nunca rodou.
+    extra = ambiente_do_trabalho(trabalho)
     with conectar() as conn:
         conn.autocommit = True
         evento(conn, trabalho.id, f"$ {' '.join(argv)}  (em {cwd})")
 
     ambiente = dict(os.environ)
+    ambiente.update(extra)
     # INFO, nunca DEBUG: ver o cabeçalho do módulo.
     ambiente.setdefault("PYTHONUNBUFFERED", "1")
     processo = subprocess.Popen(  # noqa: S603 — argv é montado por `comando`, nunca por shell

@@ -149,3 +149,24 @@ antes; e o dia em que o console deixar de ser local, este item vira bloqueio.
 parâmetros diferente da que o dono viu depende de o cliente informar qual viu. Contra a
 corrida real — outra aba, outra pessoa — funciona; contra um POST direto, não, porque
 quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra porta.
+
+## O canário e a coleta completa escrevem no mesmo CSV, sem limpeza — a sonda da amarração mede o acúmulo
+
+**Data**: 2026-09-03 · **Severidade**: média (diagnóstico enganoso; não gasta posição) · **Onde**: Coletor Externo — `coletor-externo/src/run.ts` (o `CsvWriter` de `canalpro.csv` é append-only e o mesmo nos dois modos); a medição em `console/lib/coletor.ts::amarracaoDoCsv`
+
+- **Esperado**: a sonda "quantas linhas têm `codigoImovel` numérico" descreve o que o ÚLTIMO canário trouxe, para decidir em segundos se vale raspar em volume.
+- **Ocorrido**: descreve `out/canalpro.csv` inteiro — uma coleta completa antiga de 55 mil linhas mais N canários repetidos. Um formato antigo numérico pode mascarar um novo não-numérico (o portão da coleta completa abriria indevidamente), e três canários de 100 viram "300 linhas". Achado do `revisor-de-codigo` na fatia A3.
+- **Afetou carga publicada?**: não — a medição é diagnóstico do console; a rodada lê o CSV com dedupe por `idPortal` e aplica as portas de amarração e idade por conta própria.
+- **Estado da rodada no momento**: fora de rodada.
+- **Situação**: **mitigado, não resolvido.** A tela declara que o número é do arquivo acumulado e instrui a apagar o CSV antes de uma sonda limpa (com o aviso de que isso apaga também uma coleta completa anterior). A tela não afirma mais "o canário mostrou".
+
+**O que resolve:** o raspador escrever o canário em arquivo próprio (`canalpro.canario.csv`, truncado a cada corrida) e o `status.json` dizer de qual modo é. Mudança no `coletor-externo`, com o leitor Python (`dados/coletor_externo.py::ler_coleta`) e a medição do console apontando para o arquivo certo. Fatia própria.
+
+## "Numérico" tem duas definições — `str.isdigit()` na rodada é mais frouxo que `/^\d+$/` no console
+
+**Data**: 2026-09-03 · **Severidade**: baixa · **Onde**: `src/dados/coletor_externo.py::_imovel_id_de` (`codigo.isdigit()` seguido de `int(codigo)`) vs `console/lib/coletor.ts::amarracaoDoCsv` (`/^\d+$/`, ASCII)
+
+- **Esperado**: as duas leituras concordam sobre quais `codigoImovel` amarram.
+- **Ocorrido**: `str.isdigit()` aceita dígitos Unicode como `"²"` e `"١"`; para `"²"`, `int()` levanta `ValueError` e derruba a leitura do CSV inteira (falha ruidosa, não silenciosa); para `"١"`, `int()` converte e amarra um id que o console conta como não-numérico. Achado do `auditor-de-invariantes` (A2) e do `revisor-de-codigo` (A3).
+- **Afetou carga publicada?**: não — nenhum CSV real foi lido ainda.
+- **Situação**: **aberto.** Correção mínima: `re.fullmatch(r"[0-9]+", codigo)` em `_imovel_id_de`, com teste para `"²"` e `"١"`. Entra na fatia que tocar `coletor_externo.py` em seguida, ou sozinha.

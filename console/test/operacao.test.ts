@@ -17,6 +17,7 @@ import {
   guardarParametros,
   listarTrabalhos,
   trabalhadorVivo,
+  ultimoCanarioOk,
   ultimosParametros,
   type Consulta,
 } from "../lib/operacao";
@@ -162,4 +163,19 @@ test("as etapas vêm de consulta PRÓPRIA, imune ao tamanho do log", async () =>
   assert.deepEqual(await etapasConcluidas(7, exec), ["decisor"]);
   assert.match(chamadas[0].sql, /SELECT DISTINCT no_grafo/);
   assert.doesNotMatch(chamadas[0].sql, /LIMIT/);
+});
+
+test("ultimoCanarioOk pede só canário concluído com saída 0, o mais recente", async () => {
+  const { exec, chamadas } = espiao([{ id: "12", terminado_em: new Date("2026-09-04T10:00:00Z") }]);
+  const r = await ultimoCanarioOk(exec);
+  assert.deepEqual(r, { id: 12, terminado_em: "2026-09-04T10:00:00.000Z" });
+  assert.match(chamadas[0].sql, /tipo = 'canario'/);
+  assert.match(chamadas[0].sql, /estado = 'ok'/);
+  assert.match(chamadas[0].sql, /codigo_saida = 0/);
+  assert.match(chamadas[0].sql, /ORDER BY terminado_em DESC/);
+});
+
+test("ultimoCanarioOk sem canário → null", async () => {
+  const { exec } = espiao([]);
+  assert.equal(await ultimoCanarioOk(exec), null);
 });

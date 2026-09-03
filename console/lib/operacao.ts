@@ -199,3 +199,16 @@ export async function trabalhadorVivo(
   );
   return rows[0]?.vivo ?? false;
 }
+
+/** O último canário que terminou bem — o portão da coleta completa. */
+export async function ultimoCanarioOk(
+  exec: Consulta = padrao,
+): Promise<{ id: number; terminado_em: string } | null> {
+  const { rows } = await exec<{ id: string; terminado_em: Date }>(
+    "SELECT id, terminado_em FROM operacao.trabalho " +
+      "WHERE tipo = 'canario' AND estado = 'ok' AND codigo_saida = 0 " +
+      "ORDER BY terminado_em DESC, id DESC LIMIT 1",
+  );
+  if (rows.length === 0) return null;
+  return { id: Number(rows[0].id), terminado_em: rows[0].terminado_em.toISOString() };
+}

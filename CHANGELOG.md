@@ -18,6 +18,14 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- **A tela da coleta — o console conduz a raspagem (A3).** `/coleta` confere a pré-condição em vez de instruí-la: a porta de depuração do Chrome responde? há uma aba do painel aberta? há pedido de re-login (`NEEDS_WARM.flag`)? Só booleanos saem dessa leitura — a lista de abas traz URLs completas, que podem carregar identificador de sessão, e a UI nunca as recebe. E a tela diz o que isso **não** prova: que a sessão está autenticada. Só uma requisição ao portal prova, e é o canário quem a faz.
+
+  **A medição da amarração vira botão.** A tela lê `out/canalpro.csv` e conta quantas linhas têm `codigoImovel` numérico — a condição que o leitor da rodada exige para casar com `realties.Id` — com exemplos do campo para o operador ver o formato. Sem ler o Newcore (invariante 1): casar de fato com um imóvel ativo só a rodada confere. É a sonda que decide horas de raspagem em segundos: se nada for numérico, raspar em volume não conserta. **Medido sobre o arquivo acumulado**, e a tela diz isso: canário e coleta completa escrevem no mesmo CSV sem limpeza (o raspador não separa os dois — pendência registrada em `bug.md`), então uma sonda limpa exige apagar o arquivo antes.
+
+  **O canário vira portão.** "Coleta completa" só habilita com o Chrome no ar, a última coleta `ok`, um canário concluído com saída 0 pelo console, e um CSV presente com pelo menos um código numérico — ausente ou vazio também fecham a porta. Cada recusa diz o motivo.
+
+  **`CANARY_STEPS` chega ao raspador por lista branca.** O trabalhador aceita `canary_steps` nos argumentos do canário e o exporta como ambiente — só essa variável, só nesse tipo, só na gramática `[0-9]+(,[0-9]+)*`. Deixar `argumentos` virar ambiente livre daria a quem escreve na fila controle sobre `PATH`, `OUT_DIR` ou `CDP_PORT` do processo filho.
+
 - **Rodada AMOSTRAL, recortada pela raspagem (A2).** `--recorte-pela-raspagem` faz o universo da rodada ser **só o que a raspagem em `--externo` amarrou**: a coleta interna passa a responder sobre esses ids (`WHERE Realty_Id IN`, ordenado — mesmo conjunto, mesmo SQL) e o F3 é avaliado sobre eles. É o que permite ver a corrente inteira funcionar, com o fator de portal entrando de fato, sem raspar 55 mil anúncios.
 
   A alternativa óbvia, `LIMIT n` na coleta interna, foi descartada: a interseção com o raspado seria aleatória e a taxa de amarração — que divide pela lista-alvo inteira — reprovaria a coleta na porta.

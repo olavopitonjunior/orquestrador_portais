@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <nav className="nav">
             <a href="/">Painel</a>
         <a href="/parametros">Parâmetros</a>
+        <a href="/coleta">Coleta</a>
         <a href="/rodada/nova">Rodar</a>
           </nav>
         </header>
