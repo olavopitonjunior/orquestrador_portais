@@ -29,6 +29,14 @@ from typing import Any
 import pymysql
 import pymysql.cursors
 
+# Prazos de operação isolada (`docs/prazos.md`), constantes de módulo para um teste
+# poder afirmá-los. `read_timeout` é por leitura do socket — na prática, por consulta
+# (SELECT com ORDER BY materializa antes de enviar). A sexta faz ≥4 consultas: o pior
+# caso com a fonte viva-mas-travada é N × LEITURA_MYSQL_S antes do código 3, com o
+# batimento do trabalhador vivo o tempo todo (thread própria) — sem alarme falso.
+LEITURA_MYSQL_S = 600
+CONEXAO_MYSQL_S = 30
+
 
 def _config() -> dict[str, Any]:
     """Lê a configuração de conexão do ambiente (gerado por op inject)."""
@@ -78,8 +86,14 @@ def conectar(database: str | None = None) -> Iterator[pymysql.connections.Connec
         cursorclass=pymysql.cursors.DictCursor,
         # sem autocommit: irrelevante para leitura, e não é a defesa do
         # invariante 1 (a credencial read-only é). Deixado no default.
-        read_timeout=120,
-        connect_timeout=30,
+        # Por CONSULTA, não por rodada. Medido em 03/09/2026 à noite: a consulta de
+        # candidatos levou 109 s numa base carregada (62 s a rodada inteira de manhã),
+        # e duas execuções pelo trabalhador caíram em `OperationalError` neste teto —
+        # a rodada abortava por prazo de driver, com a fonte viva. 600 s é teto de
+        # operação isolada (`docs/prazos.md`): estourar continua sendo falha ruidosa
+        # de fonte; só deixa de ser falha por variância normal da base.
+        read_timeout=LEITURA_MYSQL_S,
+        connect_timeout=CONEXAO_MYSQL_S,
     )
     try:
         yield conn

@@ -36,7 +36,7 @@ sistemática em vez de sorte.
 | Consulta do console | `console/lib/db.ts` — `statement_timeout` 15 s | — | — | — |
 | `lock_timeout` do checkpointer | `executar/aprovar.py` — 30 s | — | — | — |
 | `statement_timeout` do checkpointer | `executar/aprovar.py` — 120 s | — | — | — |
-| Leitura do MySQL | `dados/newcore.py` — `read_timeout` 120 s | — | — | — |
+| Leitura do MySQL | `dados/newcore.py` — `LEITURA_MYSQL_S` 600 s por consulta (era 120; a consulta de candidatos mediu 109 s em 03/09/2026 e duas rodadas caíram no teto). A sexta faz ≥4 consultas: pior caso ~40 min em `executando` antes do código 3, com batimento vivo | — | — | — |
 | Conexão ao MySQL | `dados/newcore.py` — `connect_timeout` 30 s | — | — | — |
 
 **O único par prazo × renovador do sistema é o primeiro**, e foi exatamente onde o
@@ -53,6 +53,7 @@ sexta real, com raspagem, passar a durar horas.
 |---|---|---|
 | Sessão autenticada do Canal Pro | portal | **Duração desconhecida e nunca medida.** A sessão é capturada uma vez no início e reusada nas ~551 requisições. Se expirar na página 300, o resultado é falha com o CSV meio cheio. Registrado no mapa de dados |
 | `wait_timeout` do MySQL do Newcore | Newcore | Não medido. A conexão é aberta pela coleta e a rodada segue por minutos depois |
+| `max_execution_time` do MySQL do Newcore e o idle-TCP de proxy/NAT no caminho | Newcore / rede | **Não medidos.** Com `LEITURA_MYSQL_S` em 600 s, são eles que passam a cortar uma consulta longa — falha com a mesma cara (`OperationalError`, código 3) |
 | Token do Google Drive | Google | Ainda não existe — chega com a publicação da planilha (`[P-11]`) |
 | Cadência do espelho `FT_RealtyRelation` | Newcore | Atrasa **mais de 24 h**; registrado em `bug.md` e parcialmente corrigido |
 
