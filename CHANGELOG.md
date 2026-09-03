@@ -10,6 +10,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Changed
+
+- **A regra de status passa a ver a fonte transacional — as oito regras de elegibilidade voltam a operar como oito.** Muda o universo de candidatos, e por isso é mudança em regra de decisão. A coluna `publicacao_ativa` da coleta interna era `(f.RealtyStatus = 'Ativo')` sobre o espelho `newcore_bi.FT_RealtyRelation`, e o `WHERE` já filtrava por isso — ou seja, era **tautologicamente verdadeira**, e `Regra.STATUS_ATIVO` (que existe em `dominio/elegibilidade.py` e tem teste próprio) **nunca disparava**. Passa a exigir as duas fontes: `(f.RealtyStatus = 'Ativo' AND COALESCE(r.PublishStatus_Id, 0) = 1)`.
+
+  **O defeito que isso corrige custa posição contratada.** O espelho é mantido incrementalmente e atrasa **~13,5 h** (`MAX(RealtyUpdate)` 07:30 contra `MAX(realties.UpdatedAt)` 21:05, medido em 02/09/2026): dava como ativo imóvel já removido no transacional, e a rodada de sexta podia propor destaque **pago** para anúncio fora do ar. Registrado em `bug.md`, causa 1, agora **resolvida**.
+
+  **Por que a correção NÃO foi filtrar mais forte.** Acrescentar `AND r.PublishStatus_Id = 1` ao `WHERE` faria o imóvel sumir do universo **sem linha na aba de excluídos** — a patologia que o critério `:489` ("cada exclusão registra o motivo") existe para impedir, e deixaria `Regra.STATUS_ATIVO` como código morto com um teste verde provando comportamento que nunca ocorre. Um teste que mente é pior que o defeito. Do jeito adotado, o defasado entra como candidato e **reprova com motivo registrado**; e não volta por relaxamento, porque status não é regra relaxável.
+
+  **Custo medido em 02/09**, com os dois cenários saindo da mesma query no mesmo instante: reprova **86** imóveis (0,176% do recorte ativo), **todos** com status `3/Removido` e **todos** saídos do ar nas últimas 24 h — nenhum estado ambíguo entre eles. No funil: **−12 elegíveis e −2 candidatos ao super destaque** na definição de distrito adotada (`PRODUTIVOS`); −24 e −9 na mais permissiva. Ordem de grandeza muito abaixo da deriva de base já registrada, que é de milhares. **As tabelas de números de referência não são tocadas aqui** — sua atualização é a fatia de incorporação da deriva, que agora tem duas causas para medir de uma vez.
+
+  **Limitação declarada:** conserta **um** lado da defasagem. O inverso — **54** imóveis publicados que o espelho ainda não viu — segue invisível, porque sem linha no espelho não há distrito nem gestor para avaliar. Não gasta posição paga (é oportunidade perdida, não desperdício), e fica como fatia própria. O `COALESCE` entra pela nulidade de esquema da coluna (79 nulos na base, nenhum no recorte), com a escolha **nulo = não publicado** declarada — sem ele o nulo reprovaria pelo mesmo efeito, mas por acidente da lógica de três valores do SQL.
+
 ### Added
 
 - **Rotação (§6.7): o enquadramento fica registrado e o "relevante" de preço vira o parâmetro pendente nº 15.** A §6.7 tem duas metades; a primeira ("A lista é recalculada integralmente a cada rodada de sexta. Não há permanência automática.") já vale, e a segunda ("saída imediata, fora do ciclo") **não é construível hoje** — esta entrada registra por quê, **sem tocar o caminho da decisão** — `src/` fica intacto. Nenhuma regra muda de comportamento.
