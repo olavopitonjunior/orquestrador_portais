@@ -319,7 +319,10 @@ def _registrador(
                 candidatos=_contagem(estado.get("candidatos")),
             ),
         ]
-        motivo = "; ".join(degradacoes) or None
+        # Uma por LINHA, não "; ": as próprias limitações têm "; " no meio (a da definição
+        # de gestor ativo, incondicional), e o console lista uma por linha. Prosa, nunca
+        # parseada pelo caminho da decisão — `aprovar.py` se recusa a casar este texto.
+        motivo = "\n".join(degradacoes) or None
         estado_gravado = _estado_da_entrega(estado.get("estado"), amostral=recorte is not None)
         if dry_run:
             log.info("[dry-run] rodada NÃO gravada (estado=%s)", estado_gravado)
