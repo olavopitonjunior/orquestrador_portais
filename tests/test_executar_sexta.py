@@ -813,3 +813,36 @@ def test_hoje_no_futuro_ESCREVE_o_resultado_antes_de_sair(tmp_path):
         )
     assert e.value.code == 2
     assert json.loads(alvo.read_text(encoding="utf-8"))["codigo"] == 2
+
+
+def test_nos_do_MESMO_superstep_saem_juntos_e_com_o_estado_de_ambos(
+    tmp_path, monkeypatch, parametros
+):
+    """Trava o comportamento do fan-out, que era implícito.
+
+    `analista_perfil` e `coletor_externo` terminam no mesmo superstep do LangGraph, e
+    o estado acumulado só chega depois dos dois. Os `prontos` reportados são reais —
+    ambos terminaram —, mas o `momento` é o do MAIS LENTO, atribuído igualmente ao
+    mais rápido. É limitação documentada no emissor, não defeito; este teste existe
+    para que uma mudança futura no laço não a altere sem que alguém decida.
+    """
+
+    class _GrafoComFanOut:
+        def stream(self, _estado, stream_mode=None):
+            yield "updates", {"analista_perfil": {}, "coletor_externo": {}}
+            yield "values", {"prontos": {"analista_perfil": True, "coletor_externo": True}}
+            yield "values", {"estado": Estado.ABORTADA, "motivo_aborto": "fim do teste"}
+
+    monkeypatch.setattr(mod, "construir_grafo", lambda *a, **k: _GrafoComFanOut())
+    vistos: list[tuple[str, dict]] = []
+    mod.executar(
+        tmp_path,
+        parametros,
+        hoje=HOJE,
+        dry_run=True,
+        ao_terminar_no=lambda no, estado: vistos.append((no, dict(estado.get("prontos") or {}))),
+    )
+    assert [no for no, _ in vistos] == ["analista_perfil", "coletor_externo"]
+    # Os DOIS recebem o estado de depois de ambos — é o que a limitação descreve.
+    for _, prontos in vistos:
+        assert prontos == {"analista_perfil": True, "coletor_externo": True}

@@ -610,6 +610,18 @@ def _emissor_de_eventos(caminho: Path | None) -> Callable[[str, Mapping[str, Any
     Sem o flush, o buffer só desceria ao fim da rodada — e a tela de acompanhamento
     existe para mostrar o que acontece AGORA. Só nome do nó, instante e os prontos:
     nada do estado, que carrega objetos de domínio e dados do Newcore.
+
+    **Limitação em fan-out, e ela é do `momento`, não dos `prontos`.**
+    `analista_perfil` e `coletor_externo` terminam no MESMO superstep do LangGraph, e
+    o estado acumulado só chega depois dos dois. Os `prontos` reportados são reais —
+    ambos terminaram mesmo —, mas o `momento` é o instante em que o MAIS LENTO
+    terminou, atribuído igualmente ao mais rápido. Hoje os dois são rápidos (o coletor
+    externo apenas LÊ um arquivo já raspado; a raspagem acontece fora da rodada), então
+    o efeito é imperceptível. Deixa de ser se um deles ficar lento: o rápido apareceria
+    como não-pronto durante toda a espera do outro, e os dois saltariam juntos — o
+    oposto de "ao vivo". Emitir por nó exigiria `stream_mode="updates"` sozinho e
+    reconstruir o estado à mão, o que troca uma imprecisão de carimbo por uma segunda
+    fonte de verdade sobre os prontos. Fica assim, e escrito.
     """
     if caminho is None:
         return None

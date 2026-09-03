@@ -115,6 +115,12 @@ def criar(
     #
     # Em autocommit não há savepoint a fazer — cada comando é sua própria transação, e
     # a violação não envenena nada. É o modo do trabalhador.
+    #
+    # Fronteira deliberadamente estreita: só `UniqueViolation` é desfeita. Qualquer
+    # outra exceção do INSERT (queda de conexão, outro CHECK) propaga com a transação
+    # do chamador abortada, como ficaria sem savepoint nenhum. Não é regressão — é que
+    # essas são falhas de verdade, e engoli-las daria ao chamador uma conexão de
+    # aparência sã sobre um erro que ninguém tratou.
     marcador = "criar_trabalho"
     with conn.cursor() as cur:
         if not conn.autocommit:

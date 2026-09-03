@@ -57,6 +57,20 @@ CREATE TABLE IF NOT EXISTS operacao.trabalho (
         OR (estado NOT IN ('ok', 'falhou') AND codigo_saida IS NULL))
 );
 
+-- `cancelado` é terminal e precisa ter HORA, mesmo sem código de saída.
+--
+-- O CHECK acima nasceu amarrando só `ok` e `falhou`, e `cancelado` caía no ramo
+-- não-terminal: seria representável um trabalho cancelado SEM `terminado_em`,
+-- indistinguível de `executando` para quem olha os tempos. Ninguém escreve
+-- `cancelado` ainda — falta o recuperador de trabalho órfão, registrado em `bug.md` —
+-- e é justamente por isso que a guarda entra agora: quando esse código for escrito,
+-- o estado inconsistente já não é representável. Cancelado não tem código de saída
+-- porque não houve saída: o processo não chegou a terminar.
+ALTER TABLE operacao.trabalho DROP CONSTRAINT IF EXISTS trabalho_cancelado_tem_hora;
+ALTER TABLE operacao.trabalho
+    ADD CONSTRAINT trabalho_cancelado_tem_hora CHECK (
+        estado <> 'cancelado' OR (terminado_em IS NOT NULL AND codigo_saida IS NULL));
+
 -- A GUARDA CENTRAL: um trabalho em voo por tipo.
 --
 -- `gravar_rodada_decisao` não tem chave natural de deduplicação — duas chamadas

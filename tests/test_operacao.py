@@ -315,3 +315,32 @@ def test_depois_do_TrabalhoEmVoo_a_conexao_CONTINUA_utilizavel(conn):
     assert any(t.id == primeiro for t in em_voo)
     # E a conexão continua boa para escrever, não só para ler.
     evento(conn, primeiro, "console explicou ao operador")
+
+
+def test_cancelado_SEM_hora_e_recusado_pelo_banco(conn):
+    """`cancelado` é terminal e precisa ter hora, mesmo sem código de saída.
+
+    Ninguém escreve `cancelado` ainda — falta o recuperador de trabalho órfão,
+    registrado em `bug.md`. A guarda entra agora justamente por isso: quando esse
+    código for escrito, um cancelado SEM `terminado_em` — indistinguível de
+    `executando` para quem olha os tempos — já não é representável.
+    """
+    tid = criar(conn, "sexta")
+    reivindicar(conn)
+    with pytest.raises(Exception):  # noqa: B017 — a guarda é do banco, não desta camada
+        with conn.cursor() as cur:
+            cur.execute("UPDATE operacao.trabalho SET estado='cancelado' WHERE id=%s", (tid,))
+
+
+def test_cancelado_COM_hora_e_aceito(conn):
+    """E o caminho que o recuperador vai usar precisa passar — senão a guarda acima
+    impediria justamente o conserto que ela existe para viabilizar."""
+    tid = criar(conn, "sexta")
+    reivindicar(conn)
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE operacao.trabalho SET estado='cancelado', terminado_em=now() WHERE id=%s",
+            (tid,),
+        )
+    t = ler_trabalho(conn, tid)
+    assert t is not None and t.estado == "cancelado" and t.codigo_saida is None
