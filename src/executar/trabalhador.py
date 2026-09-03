@@ -47,7 +47,9 @@ import psycopg
 
 from config.ambiente import carregar_env
 from dados.operacao import (
+    TIPOS,
     Trabalho,
+    TrabalhoEmVoo,
     bater_ponto,
     concluir,
     criar,
@@ -338,6 +340,76 @@ def ambiente_do_trabalho(trabalho: Trabalho) -> dict[str, str]:
     return {"CANARY_STEPS": passos}
 
 
+def proximo_encadeado(trabalho: Trabalho) -> tuple[str, dict[str, Any]] | None:
+    """O trabalho que este deve enfileirar ao terminar BEM. FUNÇÃO PURA.
+
+    `argumentos.encadear = {"tipo": ..., "argumentos": {...}}` é o "um clique" do
+    console: raspar e, se a raspagem terminar com 0, decidir apontando para o `out/`.
+    Validado ANTES de o pai rodar: um encadeado malformado descoberto depois de horas
+    de raspagem seria a pior hora de descobrir. Um só nível — o encadeado não pode
+    encadear outro, senão um pedido escrito à mão poderia programar a fila inteira.
+    """
+    enc = trabalho.argumentos.get("encadear")
+    if enc is None:
+        return None
+    if not isinstance(enc, Mapping) or not isinstance(enc.get("tipo"), str):
+        raise ArgumentosInvalidos("`encadear` precisa ser {tipo: str, argumentos: {...}}")
+    tipo = enc["tipo"]
+    if tipo not in TIPOS:
+        raise ArgumentosInvalidos(f"`encadear.tipo` desconhecido: {tipo!r}")
+    argumentos = enc.get("argumentos")
+    if argumentos is None:
+        argumentos = {}
+    elif not isinstance(argumentos, Mapping):
+        raise ArgumentosInvalidos("`encadear.argumentos` precisa ser um objeto")
+    if "encadear" in argumentos:
+        raise ArgumentosInvalidos("encadeamento tem um nível só: o encadeado não encadeia")
+    return tipo, dict(argumentos)
+
+
+def encadear(conn: psycopg.Connection, trabalho: Trabalho, codigo: int) -> int | None:
+    """Enfileira o encadeado se o pai terminou com 0; senão, diz por que não.
+
+    Chamado DEPOIS de `concluir` do pai, na mesma conexão: o encadeado nasce com o
+    pai já terminal, então nunca disputa o índice de "um por tipo em voo" com ele.
+    `TrabalhoEmVoo` (já há um do tipo encadeado) vira evento de erro no pai, não
+    exceção — o pai terminou bem, e isso não muda.
+    """
+    try:
+        proximo = proximo_encadeado(trabalho)
+    except ArgumentosInvalidos as e:
+        # Chamado de DENTRO de um `except` do laço: levantar aqui mataria o trabalhador
+        # inteiro por um pedido malformado. O pai já está terminal; só se diz por quê.
+        evento(conn, trabalho.id, f"encadeamento inválido, ignorado: {e}", nivel="erro")
+        return None
+    if proximo is None:
+        return None
+    tipo, argumentos = proximo
+    if codigo != 0:
+        evento(
+            conn,
+            trabalho.id,
+            f"encadeamento CANCELADO: este trabalho terminou com código {codigo}, então o "
+            f"'{tipo}' encadeado não foi enfileirado",
+            nivel="aviso",
+        )
+        return None
+    try:
+        # Quem clicou continua no rastro do filho; o pai vai junto, para o log dizer
+        # de onde o pedido veio.
+        novo = criar(
+            conn,
+            tipo,
+            pedido_por=f"{trabalho.pedido_por or '?'} (via trabalho {trabalho.id})",
+            argumentos=argumentos,
+        )
+    except TrabalhoEmVoo as e:
+        evento(conn, trabalho.id, f"encadeamento não enfileirado: {e}", nivel="erro")
+        return None
+    evento(conn, trabalho.id, f"enfileirou o trabalho {novo} ({tipo}) encadeado")
+    return novo
+
+
 def executar_trabalho(trabalho: Trabalho) -> int:
     """Roda o trabalho e devolve o código de saída do processo filho."""
     argv, cwd = comando(trabalho)
@@ -449,6 +521,9 @@ def _ciclo() -> bool:
                 pronto,
                 argumentos={**pronto.argumentos, "eventos_ndjson": str(eventos_de(pronto.id))},
             )
+        # Falha rápido: um encadeado malformado descoberto DEPOIS de horas de raspagem
+        # seria a pior hora de descobrir.
+        proximo_encadeado(pronto)
         codigo = executar_trabalho(pronto)
     except ArgumentosInvalidos as e:
         # Argumento inválido é falha do PEDIDO, não da execução: o código 5 é o mesmo
@@ -457,6 +532,7 @@ def _ciclo() -> bool:
             conn.autocommit = True
             evento(conn, trabalho.id, str(e), nivel="erro")
             concluir(conn, trabalho.id, codigo_saida=5)
+            encadear(conn, trabalho, 5)
         return True
     except FileNotFoundError as e:
         # Caso especial porque o genérico abaixo apagaria o diagnóstico. Sob o
@@ -476,6 +552,7 @@ def _ciclo() -> bool:
                 nivel="erro",
             )
             concluir(conn, trabalho.id, codigo_saida=1)
+            encadear(conn, trabalho, 1)
         log.error("trabalho %s: %s ausente do PATH", trabalho.id, faltando)
         return True
     except Exception as e:  # noqa: BLE001 — o laço não pode morrer por um trabalho ruim
@@ -483,6 +560,7 @@ def _ciclo() -> bool:
             conn.autocommit = True
             evento(conn, trabalho.id, f"falha ao executar: {type(e).__name__}", nivel="erro")
             concluir(conn, trabalho.id, codigo_saida=1)
+            encadear(conn, trabalho, 1)
         log.exception("trabalho %s falhou", trabalho.id)
         return True
 
@@ -496,6 +574,8 @@ def _ciclo() -> bool:
         if rodada_id is not None:
             evento(conn, trabalho.id, f"rodada {rodada_id} gravada no Registro")
         evento(conn, trabalho.id, f"terminou com código {codigo}")
+        # O "um clique" do console: só depois de o pai estar terminal, na mesma conexão.
+        encadear(conn, trabalho, codigo)
     return True
 
 

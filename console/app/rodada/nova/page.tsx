@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { saudeChrome } from "@/lib/chrome";
+import { saudeColeta } from "@/lib/coletor";
 import { trabalhadorVivo, ultimosParametros } from "@/lib/operacao";
 
 import { Disparo } from "./disparo";
@@ -7,9 +9,11 @@ import { Disparo } from "./disparo";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const [declaracao, vivo] = await Promise.all([
+  const [declaracao, vivo, saude, chrome] = await Promise.all([
     ultimosParametros().catch(() => null),
     trabalhadorVivo().catch(() => false),
+    saudeColeta().catch(() => null),
+    saudeChrome().catch(() => null),
   ]);
 
   return (
@@ -43,7 +47,12 @@ export default async function Page() {
         </div>
       ) : null}
 
-      <Disparo podeDisparar={declaracao !== null} declaracaoVista={declaracao?.id ?? null} />
+      <Disparo
+        podeDisparar={declaracao !== null}
+        declaracaoVista={declaracao?.id ?? null}
+        coletaOk={saude?.estado === "ok"}
+        chromeNoAr={chrome?.noAr === true}
+      />
     </>
   );
 }

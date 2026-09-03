@@ -18,6 +18,14 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- **Rodada completa — trabalhos encadeados (A4).** Um clique em `/rodada/nova`, modo *rodada completa*: enfileira o canário e, **se** ele terminar com código 0, o trabalhador enfileira a decisão apontando para `coletor-externo/out`, recortada pela raspagem — a rodada AMOSTRAL da A2, agora alcançável pelo console. Você vê os dois logs, um atrás do outro.
+
+  **O encadeado é validado antes de o pai rodar.** `argumentos.encadear = {tipo, argumentos}` é conferido na reivindicação: tipo desconhecido, forma errada ou encadeado que encadeia (um nível só — senão um pedido escrito à mão programaria a fila inteira) saem com código 5 na hora, não depois de horas de raspagem. **Só nasce com o pai terminal e com código 0**; qualquer outro desfecho grava *"encadeamento CANCELADO: este trabalho terminou com código N"* no log do pai, inclusive nos caminhos de argumento inválido e de executável ausente. Já haver um trabalho do tipo encadeado em voo vira evento de erro no pai, não exceção — o pai terminou bem, e isso não muda.
+
+  **Sobre "simultânea".** Raspar e decidir são sequenciais por necessidade — o F3 só pode ser avaliado depois que o CSV existe — e o trabalhador executa um trabalho por vez. A simultaneidade real da rodada continua dentro do grafo, no fan-out perfil ∥ coleta externa. O que o clique elimina é a mão humana entre os dois.
+
+  O disparo simples também ganhou o interruptor **"usar a coleta em `coletor-externo/out`"**, habilitado só com a última coleta `ok` — é a linha que faltava para o F3 chegar à rodada disparada pelo console.
+
 - **A tela da coleta — o console conduz a raspagem (A3).** `/coleta` confere a pré-condição em vez de instruí-la: a porta de depuração do Chrome responde? há uma aba do painel aberta? há pedido de re-login (`NEEDS_WARM.flag`)? Só booleanos saem dessa leitura — a lista de abas traz URLs completas, que podem carregar identificador de sessão, e a UI nunca as recebe. E a tela diz o que isso **não** prova: que a sessão está autenticada. Só uma requisição ao portal prova, e é o canário quem a faz.
 
   **A medição da amarração vira botão.** A tela lê `out/canalpro.csv` e conta quantas linhas têm `codigoImovel` numérico — a condição que o leitor da rodada exige para casar com `realties.Id` — com exemplos do campo para o operador ver o formato. Sem ler o Newcore (invariante 1): casar de fato com um imóvel ativo só a rodada confere. É a sonda que decide horas de raspagem em segundos: se nada for numérico, raspar em volume não conserta. **Medido sobre o arquivo acumulado**, e a tela diz isso: canário e coleta completa escrevem no mesmo CSV sem limpeza (o raspador não separa os dois — pendência registrada em `bug.md`), então uma sonda limpa exige apagar o arquivo antes.

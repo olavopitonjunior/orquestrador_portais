@@ -654,3 +654,83 @@ def test_canary_steps_fora_da_gramatica_e_recusado(ruim):
 
     with pytest.raises(ArgumentosInvalidos):
         ambiente_do_trabalho(_t("canario", canary_steps=ruim))
+
+
+def test_encadeado_e_validado_antes_de_rodar():
+    from executar.trabalhador import proximo_encadeado
+
+    assert proximo_encadeado(_t("canario")) is None
+    assert proximo_encadeado(
+        _t("canario", encadear={"tipo": "sexta", "argumentos": {"dry_run": True}})
+    ) == ("sexta", {"dry_run": True})
+    assert proximo_encadeado(_t("canario", encadear={"tipo": "sexta"})) == ("sexta", {})
+
+
+@pytest.mark.parametrize(
+    "ruim",
+    [
+        "sexta",
+        {"argumentos": {}},
+        {"tipo": "inventado"},
+        {"tipo": "sexta", "argumentos": "x"},
+        {"tipo": "sexta", "argumentos": []},
+        {"tipo": "sexta", "argumentos": {"encadear": {"tipo": "segunda"}}},
+    ],
+)
+def test_encadeado_malformado_e_recusado(ruim):
+    from executar.trabalhador import proximo_encadeado
+
+    with pytest.raises(ArgumentosInvalidos):
+        proximo_encadeado(_t("canario", encadear=ruim))
+
+
+def test_encadear_enfileira_so_quando_o_pai_terminou_com_zero(conn):
+    from executar.trabalhador import encadear
+
+    pai = criar(conn, "canario", argumentos={"encadear": {"tipo": "sexta", "argumentos": {"x": 1}}})
+    reivindicar(conn)
+    concluir(conn, pai, codigo_saida=0)
+    novo = encadear(conn, ler_trabalho(conn, pai), 0)
+    assert novo is not None
+    t = ler_trabalho(conn, novo)
+    assert t is not None and t.tipo == "sexta" and t.argumentos == {"x": 1}
+    assert t.pedido_por == f"? (via trabalho {pai})"
+
+
+def test_encadear_com_pai_falho_NAO_enfileira_e_diz_por_que(conn):
+    from executar.trabalhador import encadear
+
+    pai = criar(conn, "canario", argumentos={"encadear": {"tipo": "sexta"}})
+    reivindicar(conn)
+    concluir(conn, pai, codigo_saida=3)
+    assert encadear(conn, ler_trabalho(conn, pai), 3) is None
+    with conn.cursor() as cur:
+        cur.execute("SELECT texto FROM operacao.trabalho_evento WHERE trabalho_id=%s", (pai,))
+        textos = [linha[0] for linha in cur.fetchall()]
+    assert any("CANCELADO" in x and "código 3" in x for x in textos)
+    # Nenhuma sexta NOVA (o banco vivo tem sextas históricas; a fixture não trunca).
+    assert not [t for t in listar_trabalhos(conn) if t.tipo == "sexta" and t.id > pai]
+
+
+def test_encadear_com_tipo_em_voo_vira_evento_nao_excecao(conn):
+    from executar.trabalhador import encadear
+
+    criar(conn, "sexta")  # já há uma sexta em voo
+    pai = criar(conn, "canario", argumentos={"encadear": {"tipo": "sexta"}})
+    reivindicar(conn, ["canario"])
+    concluir(conn, pai, codigo_saida=0)
+    assert encadear(conn, ler_trabalho(conn, pai), 0) is None  # não levanta
+
+
+def test_encadear_com_encadeado_malformado_NAO_levanta(conn):
+    """`encadear` roda dentro dos `except` do laço: se levantasse, o trabalhador
+    morreria por um pedido malformado. O pai já é terminal; só se registra."""
+    from executar.trabalhador import encadear
+
+    pai = criar(conn, "canario", argumentos={"encadear": {"tipo": "inventado"}})
+    reivindicar(conn)
+    concluir(conn, pai, codigo_saida=5)
+    assert encadear(conn, ler_trabalho(conn, pai), 5) is None  # não levanta
+    with conn.cursor() as cur:
+        cur.execute("SELECT texto FROM operacao.trabalho_evento WHERE trabalho_id=%s", (pai,))
+        assert any("inválido" in linha[0] for linha in cur.fetchall())
