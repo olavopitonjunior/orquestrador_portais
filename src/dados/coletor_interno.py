@@ -48,7 +48,29 @@ class DefinicaoAtivoDistrito(StrEnum):
 _SQL_CANDIDATOS = """
 SELECT
   f.Realty_Id                                   AS imovel_id,
-  (f.RealtyStatus = 'Ativo')                    AS publicacao_ativa,
+  -- STATUS: as DUAS fontes, e a redundância é deliberada. O espelho
+  -- `FT_RealtyRelation` é mantido incrementalmente e atrasa ~13,5 h (medido
+  -- 02/09/2026); sozinho, ele dá como ativo imóvel já removido no transacional.
+  -- O primeiro termo repete o WHERE de propósito: a coluna documenta as duas
+  -- fontes que definem "publicado", e quem apagar metade precisa ver qual.
+  -- A redundância só é inócua ENQUANTO o WHERE continuar `= 'Ativo'`: se um dia
+  -- ele admitir outro status para capturar mais candidatos, o primeiro termo
+  -- deixa de ser tautológico e passa a fazer trabalho real — desejável, mas
+  -- invisível para quem olhar a coluna isolada.
+  -- Medido em 02/09/2026: 86 imóveis (0,176% do recorte) reprovam aqui, TODOS
+  -- com status 3/Removido e TODOS saídos do ar nas últimas 24 h. Eles entram
+  -- como candidatos e reprovam em `Regra.STATUS_ATIVO`, com motivo registrado
+  -- na aba de excluídos — em vez de sumir em silêncio, que é o que um filtro
+  -- no WHERE faria. Não voltam por relaxamento: status não é regra relaxável.
+  -- NÃO conserta o caminho inverso: 54 imóveis publicados que o espelho ainda
+  -- não viu seguem invisíveis, porque sem linha no espelho não há distrito nem
+  -- gestor para avaliar. Limitação declarada, fatia própria.
+  -- COALESCE porque a coluna é NULL-able por schema (79 nulos na base, nenhum
+  -- no recorte): a escolha declarada é **nulo = não publicado**. Sem ele,
+  -- `NULL = 1` devolve NULL, vira None e depois False — reprovaria pelo mesmo
+  -- efeito, mas por acidente da linguagem em vez de decisão registrada.
+  (f.RealtyStatus = 'Ativo'
+     AND COALESCE(r.PublishStatus_Id, 0) = 1)   AS publicacao_ativa,
   cat.Description                               AS categoria,
   r.Price                                       AS preco,
   COALESCE(img.cnt, 0)                          AS qtd_fotos,

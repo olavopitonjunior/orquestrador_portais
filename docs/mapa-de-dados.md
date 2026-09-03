@@ -286,3 +286,16 @@ Levantamento somente-leitura feito antes de qualquer implementação depender de
 ### Deriva do universo ativo
 
 Ativos em 02/09: **48.881**, contra 48.985 em 31/08 e 48.989 em 29/08. O total da tabela (`Ativo` + `Removido` = **405.053**) também subiu contra os 404.680 do cabeçalho deste mapa — 373 linhas em cinco dias, crescimento normal do estoque. Ordem de grandeza compatível; nenhuma divergência material com o restante deste mapa.
+
+## Coluna de status do transacional e as duas direções da defasagem (medição 02/09/2026, 21:00–21:07)
+
+Medição feita para corrigir o defeito do espelho registrado em `bug.md`. Os dois cenários do funil saíram de **uma query só, num único instante** — a diferença entre eles é apenas o predicado.
+
+- **`newcore.realties.PublishStatus_Id`** é a coluna de status do transacional: `int`, **`NULL`-able** (default NULL), indexada (`MUL`). `Id = 1` é o **único** status com `Description = 'Ativo'`.
+  **Exige `COALESCE`**: há 79 nulos na base (todos criados entre 2018 e 2020, todos **fora** do espelho, zero no recorte ativo). Sem ele, `NULL = 1` devolve `NULL`, que vira `None` e depois `False` — reprovaria pelo mesmo efeito, mas por acidente da lógica de três valores, não por decisão. A escolha declarada é **nulo = não publicado**.
+- **`newcore.publishstatus` é catálogo COMPARTILHADO, não catálogo de imóvel**: 51 status, a maioria de lead/proposta (`Atendimento`, `Em Assinatura`, `Boleto Emitido`…). `realties` usa 12 valores mais `NULL`, e 99,9% do estoque está em três deles (3 Removido 389.446 · 1 Ativo 48.849 · 6 Ficha 39.908).
+- **Não existe segundo status "no ar".** No recorte espelho-`Ativo` só aparecem `PublishStatus_Id` 1 (48.795) e 3 (86) — nenhum 6, 7, 43 ou 4. Entre os imóveis que receberam lead em 7 dias, nenhum dos que têm status ≠ 1 está no recorte ativo. Portanto o predicado é `= 1`, **não** um `IN (...)`: qualquer status a mais só admitiria famílias que já não chegam ao recorte.
+- **A defasagem tem DUAS direções**, medidas no mesmo instante: **86** imóveis `Ativo` no espelho já `Removido` no transacional (todos com saída do ar nas últimas 24 h) e **54** publicados que o espelho ainda não viu (53 ausentes + 1 marcado `Removido`; 51 criados nas últimas 24 h, 44 com preço ≥ R$ 300.000). Latência no instante: `MAX(FT_RealtyRelation.RealtyUpdate)` 07:30 contra `MAX(realties.UpdatedAt)` 21:05 — **~13,5 h**.
+- **Integridade referencial `FT_RealtyRelation → realties` é total**: **0 órfãos** em 405.053 linhas, e 0 no recorte ativo. Os ~36 mil Ids deletados de `realties` nunca chegam ao espelho, então os dois `INNER JOIN` da coleta não perdem candidato hoje. É integridade **observada**, não constraint de esquema — se o espelho passar a materializar Ids removidos, a coleta voltaria a perder linha em silêncio.
+
+**Armadilha operacional:** a senha do Newcore contém **metacaractere de shell**. Carregar o ambiente com `set -a; . arquivo` faz o **shell expandir a senha** e produz um `Access denied` indistinguível de credencial errada. Leia o arquivo dentro do Python, literalmente. *(Este repositório é público — D-012: caractere de credencial não se documenta, nem um.)*

@@ -6,6 +6,8 @@ O que se testa é a montagem dos contratos do domínio a partir de linhas-fixtur
 interpolação fechada da coluna de distrito.
 """
 
+import re
+import sqlite3
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -20,7 +22,7 @@ from dados.coletor_interno import (
     linha_para_candidato,
     linha_para_penalizavel,
 )
-from dominio.elegibilidade import elegivel
+from dominio.elegibilidade import ORDEM_RELAXAMENTO, Regra, elegivel, regras_reprovadas
 
 LINHA = {
     "imovel_id": 101,
@@ -142,3 +144,65 @@ def test_consultar_recusa_escrita():
     ):
         with pytest.raises(ValueError, match="só aceita SELECT"):
             newcore.consultar(sql)
+
+
+# --- A regra de status passa a VER a fonte transacional (bug do espelho defasado) ---
+#
+# O espelho `FT_RealtyRelation` atrasa ~13,5 h e dá como Ativo imóvel já removido
+# no transacional. Antes desta correção a coluna era `(f.RealtyStatus = 'Ativo')`,
+# tautologicamente True sob o WHERE — a regra existia, era testada, e nunca mordia.
+
+
+def test_status_do_espelho_sozinho_NAO_decide_mais_a_publicacao():
+    """A coluna tem de exigir as DUAS fontes. Este teste morre se alguém apagar
+    o termo do transacional e voltar a confiar só no espelho — que é exatamente
+    o defeito corrigido, e a metade fácil de apagar sem perceber."""
+    sql = _SQL_CANDIDATOS
+    assert "COALESCE(r.PublishStatus_Id, 0) = 1" in sql
+    assert "f.RealtyStatus = 'Ativo'\n     AND COALESCE" in sql
+    # E o recorte do WHERE continua no espelho: é ele que traz distrito e gestor.
+    assert "WHERE f.RealtyStatus = 'Ativo'" in sql
+
+
+def test_a_expressao_REAL_de_publicacao_ativa_se_comporta_como_declarado():
+    """Teste de COMPORTAMENTO, não de texto — e amarrado ao SQL de verdade.
+
+    A expressão é ANSI padrão, então roda no sqlite sem banco nem credencial.
+    O ponto crítico: ela é EXTRAÍDA de `_SQL_CANDIDATOS`, não reescrita aqui.
+    Um teste que copiasse a expressão continuaria verde depois de alguém
+    reverter o coletor — validaria a própria cópia, não o código."""
+    m = re.search(r"\(f\.RealtyStatus.*?\)\s*AS publicacao_ativa", _SQL_CANDIDATOS, re.S)
+    assert m, "não achei a expressão de publicacao_ativa no SQL do coletor"
+    expr = m.group(0).replace("AS publicacao_ativa", "").replace("f.", "").replace("r.", "")
+
+    con = sqlite3.connect(":memory:")
+    con.execute("CREATE TABLE t (RealtyStatus TEXT, PublishStatus_Id INT)")
+    con.executemany(
+        "INSERT INTO t VALUES (?,?)",
+        [("Ativo", 1), ("Ativo", 3), ("Ativo", None)],
+    )
+    # O WHERE do coletor entra junto: é ele que garante que o primeiro termo do
+    # AND é sempre verdadeiro, e portanto que a expressão nunca devolve NULL.
+    obtido = [r[0] for r in con.execute(f"SELECT {expr} FROM t WHERE RealtyStatus = 'Ativo'")]
+
+    assert obtido == [1, 0, 0], "publicado passa; removido reprova; nulo = não publicado"
+    assert None not in obtido, "a coluna nunca pode chegar ao Python como None"
+
+
+def test_imovel_removido_no_transacional_REPROVA_com_motivo_registrado():
+    """O ponto da correção: o defasado entra como candidato e é reprovado com
+    motivo, em vez de sumir do universo sem deixar linha (critério `:489`)."""
+    c = linha_para_candidato({**LINHA, "publicacao_ativa": 0}, {})
+    assert c.publicacao_ativa is False
+
+    # `atualizado_em` da fixture é 30/08/2026; a referência mantém o imóvel
+    # dentro dos 90 dias, para o teste falar SÓ de status.
+    ref = date(2026, 9, 2)
+    assert Regra.STATUS_ATIVO in regras_reprovadas(c, ref)
+    assert not elegivel(c, ref)
+
+
+def test_removido_NAO_volta_por_relaxamento():
+    """Se status fosse relaxável, a correção teria criado um caminho de volta
+    para a vitrine PAGA — pior que o defeito que ela conserta."""
+    assert Regra.STATUS_ATIVO not in ORDEM_RELAXAMENTO
