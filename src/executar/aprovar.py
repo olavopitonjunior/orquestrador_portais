@@ -132,6 +132,25 @@ def rodada_aprovada_mais_nova(conn: psycopg.Connection, rodada_id: int) -> int |
     return None if linha[0] is None else int(linha[0])
 
 
+def rodada_e_amostral(conn: psycopg.Connection, rodada_id: int) -> bool:
+    """A rodada decidiu sobre o recorte que a raspagem trouxe, não sobre o estoque.
+
+    A marca é DADO em `parametros_da_rodada` (`recorte_pela_raspagem`, gravado por
+    `executar/sexta.py::_serializaveis`), não a prosa do `motivo_degradacao`: casar
+    texto é o jeito de a guarda se soltar na primeira reescrita da mensagem. `->>` e não
+    `->`: a chave é gravada SEMPRE, nula quando não há recorte, e `->` devolveria o
+    `null` do JSON como valor não-nulo do SQL."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT EXISTS (SELECT 1 FROM registro.parametros_da_rodada "
+            "WHERE rodada_id = %s AND parametros ->> 'recorte_pela_raspagem' IS NOT NULL)",
+            (rodada_id,),
+        )
+        linha = cur.fetchone()
+    assert linha is not None
+    return bool(linha[0])
+
+
 def carga_que_seguiria_vigente(
     conn: psycopg.Connection, rodada_id: int, quando: datetime
 ) -> int | None:
@@ -171,7 +190,8 @@ def conferir(
     causa real. Os estados aceitos são exatamente os que o console usa para montar a
     fila de pendentes hoje — `console/lib/registro.ts::rodadasAguardandoAprovacao`,
     `WHERE tipo = 'decisao' AND aprovada_em IS NULL AND estado IN ('completa',
-    'degradada')` — para que ele nunca ofereça um cartão que este comando recusa.
+    'degradada')`, mais a exclusão da rodada AMOSTRAL pelo mesmo predicado de
+    `rodada_e_amostral` — para que ele nunca ofereça um cartão que este comando recusa.
 
     Nota sobre a recusa de ABORTADA: ela é hoje **inalcançável pelo caminho de
     produção**. O nó de persistência do grafo só grava rodadas não-abortadas, então
@@ -202,6 +222,15 @@ def conferir(
             f"rodada {rodada_id} está {resumo['estado']!r}: não produziu lista para "
             "carregar. Aprová-la criaria uma carga vigente sem imóvel nenhum, e a "
             "segunda mediria contra ela",
+        )
+    if rodada_e_amostral(conn, rodada_id):
+        raise Recusa(
+            NAO_APROVAVEL,
+            f"rodada {rodada_id} é AMOSTRAL: decidiu sobre o recorte de imóveis que a "
+            "raspagem trouxe, não sobre o estoque. Aprová-la faria a amostra virar a carga "
+            "vigente da semana, com milhares de posições vazias — e a segunda mediria "
+            "contra ela. Rodada amostral existe para ver a corrente inteira funcionar, "
+            "nunca para carregar",
         )
     quando = conferir_instante(em, agora=agora, fim=resumo["fim"], rodada_id=rodada_id)
     if fora_de_ordem:

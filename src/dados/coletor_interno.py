@@ -16,6 +16,7 @@ Registro (na primeira rodada/piloto, não há histórico: tupla vazia).
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -100,8 +101,35 @@ LEFT JOIN (
   GROUP BY m.Realty_Id
 ) img ON img.Realty_Id = f.Realty_Id
 WHERE f.RealtyStatus = 'Ativo'
+{recorte}
 ORDER BY f.Realty_Id
 """
+
+
+def _clausula_recorte(recorte: Collection[int] | None) -> str:
+    """`AND f.Realty_Id IN (...)` da rodada AMOSTRAL, ou vazio quando não há recorte.
+
+    Interpolado, não parametrizado, e de propósito. `consultar` não pode receber
+    parâmetros com este SQL: ele tem `%` em COMENTÁRIO (`0,176% do recorte`), e
+    `% d` é especificador válido para o pymysql — a regressão está registrada em
+    `test_sql_com_percentual_no_texto_nao_quebra_a_ponte`. Interpolar é seguro aqui
+    porque o que entra não é texto de usuário: são ids já convertidos por `int()` na
+    leitura do CSV, e a validação abaixo recusa qualquer outra coisa (`bool` inclusive,
+    que é subclasse de `int` e viraria `1`/`0` em silêncio).
+
+    Ordenado: o mesmo conjunto produz o mesmo SQL (invariante 5), e o log de uma rodada
+    amostral fica comparável ao de outra.
+    """
+    if recorte is None:
+        return ""
+    for i in recorte:
+        if not isinstance(i, int) or isinstance(i, bool):
+            raise TypeError(f"recorte pela raspagem só aceita ids inteiros, veio {i!r}")
+    ids = sorted(set(recorte))
+    if not ids:
+        raise ValueError("recorte pela raspagem VAZIO: nenhum imóvel para coletar")
+    return "  AND f.Realty_Id IN (" + ", ".join(str(i) for i in ids) + ")"
+
 
 # Notas por categoria: uma linha por (imóvel, categoria avaliada).
 _SQL_NOTAS = """
@@ -171,14 +199,21 @@ def _agrupar_notas(linhas: list[dict[str, Any]]) -> dict[int, dict[str, int]]:
 
 def coletar(
     definicao_ativo: DefinicaoAtivoDistrito,
+    *,
+    recorte: Collection[int] | None = None,
 ) -> tuple[list[ImovelCandidato], list[ImovelPenalizavel]]:
     """Lê o Newcore e devolve os candidatos e os penalizáveis dos imóveis ativos.
 
     `definicao_ativo` escolhe a coluna de "corretor ativo no distrito" (decisão
-    do dono — ver DefinicaoAtivoDistrito). I/O: não é testado no CI (precisa do
-    banco); as conversões puras acima são o que os testes cobrem.
+    do dono — ver DefinicaoAtivoDistrito). `recorte`, quando dado, restringe a
+    leitura a esses ids — é a rodada AMOSTRAL, cujo universo é o que a raspagem
+    amarrou; quem o passa é o runner, e a planilha e o Registro declaram a amostra.
+    I/O: não é testado no CI (precisa do banco); as conversões puras acima são o
+    que os testes cobrem.
     """
-    sql = _SQL_CANDIDATOS.format(coluna_ativo=definicao_ativo.value)
+    sql = _SQL_CANDIDATOS.format(
+        coluna_ativo=definicao_ativo.value, recorte=_clausula_recorte(recorte)
+    )
     linhas = _dedup_por_imovel(consultar(sql))
     notas_por_imovel = _agrupar_notas(consultar(_SQL_NOTAS))
 

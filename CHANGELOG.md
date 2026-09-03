@@ -18,6 +18,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- **Rodada AMOSTRAL, recortada pela raspagem (A2).** `--recorte-pela-raspagem` faz o universo da rodada ser **só o que a raspagem em `--externo` amarrou**: a coleta interna passa a responder sobre esses ids (`WHERE Realty_Id IN`, ordenado — mesmo conjunto, mesmo SQL) e o F3 é avaliado sobre eles. É o que permite ver a corrente inteira funcionar, com o fator de portal entrando de fato, sem raspar 55 mil anúncios.
+
+  A alternativa óbvia, `LIMIT n` na coleta interna, foi descartada: a interseção com o raspado seria aleatória e a taxa de amarração — que divide pela lista-alvo inteira — reprovaria a coleta na porta.
+
+  **O que o recorte faz com a taxa de amarração, dito na planilha.** Todo candidato da amostral veio da raspagem por construção, então a taxa sai **100% e não mede nada** — e a planilha a imprime. A primeira versão desta fatia afirmava o contrário ("a taxa passa a medir o que interessa"); o revisor apanhou. A limitação AMOSTRAL agora declara os dois números: a taxa é tautológica, e o que mede a amostra é a **cobertura** — quantos dos ids raspados são imóveis ativos no Newcore (`candidatos / recorte`), apurada da própria rodada.
+
+  **O console ainda não dispara amostral.** A flag só é alcançável por `argumentos` escritos à mão ou pela CLI; o disparo pelo console vem com o encadeamento (A4). E a fila de aprovação do console **exclui** a amostral — o cartão que `rodada-aprovar` recusaria não é oferecido.
+
+  **Três disciplinas, sem as quais a amostra vira mentira.** (1) **Declarada**: é a PRIMEIRA limitação da lista, na planilha e no `motivo_degradacao` — quem abre a aba precisa saber antes de qualquer número que ele é sobre uma amostra. (2) **Nunca COMPLETA**: decisão do runner, como o modo seco — a amostragem é fiação, o grafo não a conhece; gravado em `final` para que log, arquivo de resultado e Registro digam o mesmo. (3) **Nunca vira carga**: a marca vai a `parametros_da_rodada` como **dado** (`recorte_pela_raspagem`), não como prosa, e `rodada-aprovar` recusa com código próprio — casar o texto do motivo soltaria a guarda na primeira reescrita da mensagem. Recorte vazio sai antes de tocar o Newcore, com o código de "estoque vazio" e a causa provável nomeada (o formato do `codigoImovel`).
+
+  O SQL da coleta tem `%` em comentário e não pode ir parametrizado ao pymysql (regressão já registrada), então os ids entram interpolados — com validação que recusa qualquer coisa que não seja `int` de verdade, `bool` inclusive.
+
 - **O botão que dispara a rodada, e a tela que a acompanha ao vivo (F6).** `/rodada/nova` enfileira a sexta com a última declaração de parâmetros; `/trabalho/[id]` mostra as sete etapas acendendo uma a uma, o log da execução e o desfecho traduzido. O console **enfileira e nada mais** — quem executa é o trabalhador, num processo separado, porque disparar por `spawn` dentro de uma requisição daria um filho que morre no recarregamento do servidor e uma linha "executando" eterna.
 
   **Vai o ID da declaração, não o caminho de um arquivo.** O trabalhador materializa o TOML na hora de rodar, com o id do trabalho no nome, e a `origem` que viaja para a planilha e para o Registro passa a dizer de qual declaração a rodada saiu — reconstituível mesmo se o arquivo sumir, e sobretudo quando a rodada **aborta**, que não deixa linha nenhuma no Registro.

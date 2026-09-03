@@ -248,6 +248,17 @@ def test_comando_da_sexta_encaixa_as_opcoes_declaradas():
     assert "--dry-run" in argv
 
 
+def test_comando_da_sexta_leva_o_recorte_pela_raspagem():
+    """A rodada AMOSTRAL é uma flag do trabalho, não um tipo novo: enfileirar
+    `sexta` com `recorte_pela_raspagem` vira `--recorte-pela-raspagem` no runner."""
+    argv, _ = comando(
+        _t("sexta", parametros="/tmp/p.toml", externo="/tmp/out", recorte_pela_raspagem=True)
+    )
+    assert "--recorte-pela-raspagem" in argv
+    argv, _ = comando(_t("sexta", parametros="/tmp/p.toml"))
+    assert "--recorte-pela-raspagem" not in argv
+
+
 def test_a_segunda_nao_exige_toml():
     """A segunda lê só o banco: exigir parâmetros dela seria copiar a regra da sexta
     para onde ela não vale."""

@@ -254,8 +254,10 @@ def test_rodada_sem_resultado_nao_diz_que_entregou(tmp_path, monkeypatch, parame
 # --- falha ao REGISTRAR (o sink chamado de dentro do grafo) -------------------
 
 
-def _registrador(parametros, avisar, *, dry_run=False, externo=None):
-    return mod._registrador(parametros, HOJE, externo, AGORA, dry_run=dry_run, avisar=avisar)
+def _registrador(parametros, avisar, *, dry_run=False, externo=None, recorte=None):
+    return mod._registrador(
+        parametros, HOJE, externo, AGORA, dry_run=dry_run, avisar=avisar, recorte=recorte
+    )
 
 
 def test_registrar_falho_avisa_com_o_tipo_e_propaga(tmp_path, monkeypatch, parametros):
@@ -501,6 +503,129 @@ def test_limitacoes_da_fiacao_chegam_ao_MOTIVO_gravado(tmp_path, monkeypatch, pa
     motivo = gravado["motivo_degradacao"]
     assert "HISTÓRICO DE JANELAS" in motivo
     assert "45,9%" in motivo
+
+
+# --- rodada AMOSTRAL: recorte pela raspagem (A2) ------------------------------
+
+
+def _coleta_em(out: Path, codigos: list[str]) -> None:
+    """Saída mínima do raspador: só `codigoImovel` importa para o recorte."""
+    from dados.coletor_externo import COLUNAS
+
+    def linha(cel: dict[str, str]) -> str:
+        return ",".join('"' + cel.get(c, "") + '"' for c in COLUNAS)
+
+    linhas = [",".join('"' + c + '"' for c in COLUNAS)]
+    linhas += [linha({"idPortal": str(9000 + i), "codigoImovel": c}) for i, c in enumerate(codigos)]
+    (out / "canalpro.csv").write_text("\r\n".join(linhas) + "\r\n", encoding="utf-8")
+    (out / "status.json").write_text(
+        '{"result": "ok", "finishedAt": "2026-09-04T08:00:00Z", "portal": "canalpro"}',
+        encoding="utf-8",
+    )
+
+
+def test_recorte_pela_raspagem_e_o_conjunto_de_ids_que_amarraram(tmp_path):
+    _coleta_em(tmp_path, ["101", "202", "IMOVEL-X", ""])
+    ids, coleta = mod._recorte_da_raspagem(tmp_path)
+    assert ids == frozenset({101, 202})
+    assert set(coleta.por_imovel) == ids  # a mesma leitura serve ao nó: o CSV é parseado uma vez
+
+
+def test_recorte_vazio_e_erro_proprio_e_nomeia_a_causa_provavel(tmp_path):
+    _coleta_em(tmp_path, ["IMOVEL-X", "IMOVEL-Y"])
+    with pytest.raises(mod.RecorteVazio, match="codigoImovel"):
+        mod._recorte_da_raspagem(tmp_path)
+
+
+def test_recorte_sem_externo_e_recusado_pelo_parser(arquivo_valido):
+    """Código 2 (argparse), como toda combinação impossível de argumentos."""
+    with pytest.raises(SystemExit) as e:
+        mod.main(["--parametros", str(arquivo_valido), "--recorte-pela-raspagem"])
+    assert e.value.code == 2
+
+
+def test_recorte_vazio_sai_com_4_e_a_rodada_nao_prossegue(tmp_path, arquivo_valido, monkeypatch):
+    """O recorte é lido antes da coleta interna: sem amostra, nenhuma fonte é aberta.
+    E o resultado é escrito, como em todo caminho de saída de `main`."""
+    _coleta_em(tmp_path, ["IMOVEL-X"])
+
+    def _nunca(*_a, **_k):
+        raise AssertionError("a coleta interna não pode rodar sem recorte")
+
+    monkeypatch.setattr(mod, "coletar", _nunca)
+    resultado = tmp_path / "resultado.json"
+    codigo = mod.main(
+        [
+            "--parametros",
+            str(arquivo_valido),
+            "--externo",
+            str(tmp_path),
+            "--recorte-pela-raspagem",
+            "--resultado",
+            str(resultado),
+        ]
+    )
+    assert codigo == 4
+    assert json.loads(resultado.read_text(encoding="utf-8"))["falha"] == "RecorteVazio"
+
+
+def test_fontes_levam_o_recorte_ao_coletor_interno():
+    fontes, _ = mod._fontes(None, recorte=frozenset({1, 2}))
+    assert fontes.coletar_interno.keywords["recorte"] == frozenset({1, 2})
+    fontes, _ = mod._fontes(None)
+    assert fontes.coletar_interno.keywords["recorte"] is None
+
+
+def test_serializaveis_gravam_a_marca_amostral_como_DADO(parametros, tmp_path):
+    """É por esta chave que `rodada-aprovar` recusa a amostra — nula quando não há
+    recorte, para que a chave exista sempre e a ausência não seja ambígua."""
+    assert mod._serializaveis(parametros, HOJE, None)["recorte_pela_raspagem"] is None
+    serial = mod._serializaveis(parametros, HOJE, tmp_path, recorte=frozenset({1, 2, 3}))
+    assert serial["recorte_pela_raspagem"] == {"imoveis": 3}
+    json.dumps(serial)  # continua serializável
+
+
+def test_a_amostra_e_a_PRIMEIRA_limitacao(parametros):
+    limitacoes = mod.limitacoes_da_fiacao(parametros, 0, recorte=frozenset({1, 2}))
+    assert limitacoes[0].startswith("RODADA AMOSTRAL")
+    assert "2 imóveis" in limitacoes[0]
+    assert not any("AMOSTRAL" in x for x in mod.limitacoes_da_fiacao(parametros, 0))
+
+
+def test_rodada_amostral_e_gravada_DEGRADADA_mesmo_com_tudo_pronto(
+    tmp_path, monkeypatch, parametros
+):
+    """Mutação que este teste apanha: sem `_estado_da_entrega`, a amostra em que todas
+    as etapas ficaram prontas chegaria ao Registro como COMPLETA — e uma consulta por
+    estado a tomaria por decisão sobre o estoque."""
+    gravado = {}
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def transaction(self):
+            return self
+
+    monkeypatch.setattr(mod, "conectar", lambda: _Conn())
+    monkeypatch.setattr(mod, "gravar_rodada_decisao", lambda *a, **k: (gravado.update(k), 7)[1])
+    registrar, _ = _registrador(
+        parametros, mod._avisar(tmp_path, dry_run=False), recorte=frozenset({1})
+    )
+    registrar(_estado(estado=Estado.COMPLETA, janelas_lidas=3))
+
+    assert gravado["estado"] == str(Estado.DEGRADADA)
+    assert gravado["motivo_degradacao"].startswith("RODADA AMOSTRAL")
+    assert gravado["parametros"]["recorte_pela_raspagem"] == {"imoveis": 1}
+
+
+def test_sem_recorte_o_estado_do_grafo_e_respeitado():
+    assert mod._estado_da_entrega(Estado.COMPLETA, amostral=False) == Estado.COMPLETA
+    assert mod._estado_da_entrega(Estado.DEGRADADA, amostral=True) == Estado.DEGRADADA
+    assert mod._estado_da_entrega(Estado.ABORTADA, amostral=True) == Estado.ABORTADA
 
 
 def test_limitacao_de_janela_le_o_REGISTRO_nao_a_lista_julgada(parametros):
@@ -846,3 +971,47 @@ def test_nos_do_MESMO_superstep_saem_juntos_e_com_o_estado_de_ambos(
     # Os DOIS recebem o estado de depois de ambos — é o que a limitação descreve.
     for _, prontos in vistos:
         assert prontos == {"analista_perfil": True, "coletor_externo": True}
+
+
+def test_executar_recusa_recorte_sem_externo_como_erro_de_API(tmp_path, parametros):
+    """`executar` é público e chamável sem o parser; a guarda existe para esse
+    chamador, com o tipo que diz "argumento incoerente", não "falha de fonte"."""
+    with pytest.raises(ValueError, match="externo"):
+        mod.executar(tmp_path, parametros, externo=None, hoje=HOJE, recorte_pela_raspagem=True)
+
+
+def test_a_amostra_declara_a_COBERTURA_e_desarma_a_taxa_de_amarracao(parametros):
+    """Sob o recorte todo candidato veio da raspagem: a taxa de amarração sai 100% por
+    construção e não mede nada — a limitação tem de dizer isso, e dizer o número que
+    mede (quantos do raspado são imóveis ativos no Newcore)."""
+    [lim] = [
+        x
+        for x in mod.limitacoes_da_fiacao(
+            parametros, 0, recorte=frozenset(range(200)), candidatos=150
+        )
+        if x.startswith("RODADA AMOSTRAL")
+    ]
+    assert "150 deles (75%)" in lim
+    assert "100% POR CONSTRUÇÃO" in lim
+    sem = [
+        x
+        for x in mod.limitacoes_da_fiacao(parametros, 0, recorte=frozenset({1}))
+        if "AMOSTRAL" in x
+    ]
+    assert "não foi apurada" in sem[0]
+
+
+def test_na_amostral_o_no_reusa_a_leitura_que_fez_o_recorte(tmp_path):
+    """O nó do Coletor Externo e o recorte precisam ter visto o MESMO arquivo: a
+    leitura é feita uma vez e passada adiante, não refeita."""
+    _coleta_em(tmp_path, ["101"])
+    ids, coleta = mod._recorte_da_raspagem(tmp_path)
+    fontes, _ = mod._fontes(tmp_path, recorte=ids, coleta=coleta)
+    assert fontes.coletar_externo is not None
+    assert fontes.coletar_externo() is coleta
+
+
+def test_contagem_distingue_ausente_de_vazio():
+    assert mod._contagem(None) is None
+    assert mod._contagem([]) == 0
+    assert mod._contagem([1, 2]) == 2

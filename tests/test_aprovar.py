@@ -235,6 +235,34 @@ def test_recusa_rodada_ABORTADA(conn):
     assert ler_rodada(conn, rodada_id)["aprovada_em"] is None
 
 
+def _parametros_da_rodada(conn, rodada_id: int, parametros: dict) -> None:
+    from psycopg.types.json import Json
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO registro.parametros_da_rodada (rodada_id, parametros) VALUES (%s, %s)",
+            (rodada_id, Json(parametros)),
+        )
+
+
+def test_recusa_rodada_AMOSTRAL(conn):
+    """A amostra decide sobre o recorte que a raspagem trouxe, não sobre o estoque.
+    Aprová-la faria mil imóveis virarem a carga da semana, com milhares de posições
+    vazias — e a segunda mediria contra ela. A marca é DADO, não prosa."""
+    rodada_id = _rodada(conn, estado="degradada")
+    _parametros_da_rodada(conn, rodada_id, {"recorte_pela_raspagem": {"imoveis": 12}})
+    assert _executar(conn, rodada_id, retomada=aprovar_tacita()) == NAO_APROVAVEL
+    assert ler_rodada(conn, rodada_id)["aprovada_em"] is None
+
+
+def test_a_marca_amostral_NULA_nao_recusa(conn):
+    """`_serializaveis` grava a chave sempre, nula quando não há recorte. Nulo não é
+    marca — senão toda rodada gravada depois da A2 ficaria inaprovável."""
+    rodada_id = _rodada(conn, estado="degradada")
+    _parametros_da_rodada(conn, rodada_id, {"recorte_pela_raspagem": None})
+    assert _executar(conn, rodada_id, retomada=aprovar_tacita()) == OK
+
+
 def test_aceita_rodada_DEGRADADA(conn):
     """Contraprova das duas recusas acima: degradada entrega lista com limitação
     declarada (Spec §7.2) e É aprovável. Sem ela, um código que recusasse tudo
