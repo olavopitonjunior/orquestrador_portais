@@ -144,3 +144,8 @@ verificada por código.
 
 **Fica registrado em vez de implícito.** Qualquer exposição de rede exige autenticação
 antes; e o dia em que o console deixar de ser local, este item vira bloqueio.
+
+**Alcance ampliado em 03/09:** a guarda que impede disparar com uma declaração de
+parâmetros diferente da que o dono viu depende de o cliente informar qual viu. Contra a
+corrida real — outra aba, outra pessoa — funciona; contra um POST direto, não, porque
+quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra porta.

@@ -42,6 +42,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import psycopg
+
 from config.ambiente import carregar_env
 from dados.operacao import (
     Trabalho,
@@ -61,6 +63,13 @@ log = logging.getLogger("trabalhador")
 # de herdado: `carregar_env` procura o `.env` no diretório CORRENTE, e um trabalhador
 # iniciado pelo agendador do sistema (cujo cwd é qualquer um) faria a rodada falhar com
 # "variável ausente" — diagnóstico errado para "rodei do lugar errado".
+# Dois períodos, e a distinção importa. A sondagem precisa ser curta para o progresso
+# parecer ao vivo; o batimento não — ele só precisa caber com folga no prazo que a tela
+# usa para declarar o trabalhador morto (30s). Iguais, uma raspagem de horas faria
+# ~7.200 escritas por hora numa linha só, com o autovacuum girando por nada.
+SONDAGEM = 0.5
+BATIMENTO = 5.0
+
 RAIZ = Path(__file__).resolve().parent.parent.parent
 COLETOR = RAIZ / "coletor-externo"
 
@@ -218,12 +227,34 @@ def _acompanhar(caminho: Path | None, trabalho_id: int, parar: threading.Event) 
     """
     lidas = 0
     falhas = 0
-    with conectar() as conn:
-        conn.autocommit = True
+    ultimo_ponto = 0.0
+    conn: psycopg.Connection | None = None
+    try:
         while True:
-            terminou = parar.wait(0.5)
+            terminou = parar.wait(SONDAGEM)
             try:
-                bater_ponto(conn)
+                # A conexão nasce e RENASCE dentro do try. Estava aberta fora dele, e
+                # isso produzia duas versões do mesmo defeito que este acompanhamento
+                # existe para evitar: se `conectar()` falhasse no arranque, a thread
+                # morria calada e a rodada inteira ficava SEM batimento — o alarme falso
+                # de "trabalhador morto" pelo tempo todo; e se a conexão morresse no
+                # meio, o psycopg não reconecta, então todo comando seguinte levantava e
+                # o laço girava falhando até o fim. O CHANGELOG dizia resistir a "um
+                # soluço na conexão", e o teste provava só o caso leve, com a conexão
+                # viva. Agora resiste ao que a frase nomeia.
+                if conn is None or conn.closed:
+                    conn = conectar()
+                    conn.autocommit = True
+
+                agora = time.monotonic()
+                if agora - ultimo_ponto >= BATIMENTO:
+                    # Período PRÓPRIO, maior que o da sondagem. Batendo a cada meia
+                    # segundo seriam ~7.200 escritas por hora numa linha só — e a
+                    # raspagem dura horas. O prazo que a tela usa é de 30s; 5s dá
+                    # margem de seis vezes com 1/10 da escrita.
+                    bater_ponto(conn)
+                    ultimo_ponto = agora
+
                 if caminho is not None and caminho.is_file():
                     linhas = caminho.read_text(encoding="utf-8").splitlines()
                     novas = linhas[lidas:]
@@ -269,6 +300,9 @@ def _acompanhar(caminho: Path | None, trabalho_id: int, parar: threading.Event) 
                     )
             if terminou:
                 return
+    finally:
+        if conn is not None and not conn.closed:
+            conn.close()
 
 
 def executar_trabalho(trabalho: Trabalho) -> int:

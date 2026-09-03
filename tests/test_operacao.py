@@ -552,3 +552,70 @@ def test_o_acompanhamento_NAO_desiste_na_primeira_falha(tmp_path, monkeypatch, c
         with conn.cursor() as cur:
             cur.execute("DELETE FROM operacao.trabalho WHERE id = %s", (trabalho_id,))
         conn.commit()
+
+
+def test_o_acompanhamento_RECONECTA_quando_a_conexao_morre(tmp_path, monkeypatch, conn):
+    """O caso que a frase do CHANGELOG nomeia, e que o teste anterior NÃO provava.
+
+    Aquele injeta erro na escrita e deixa a conexão viva; este mata a conexão. São
+    coisas diferentes: o psycopg não reconecta sozinho, então uma conexão morta fazia
+    todo comando seguinte levantar e o laço girar falhando até o fim da rodada — com o
+    batimento junto, o que faz a tela mentir que o trabalhador morreu. É o mesmo defeito
+    crítico desta fatia, entrando por outra porta.
+    """
+    import threading
+
+    from dados.registro.conexao import conectar as conectar_real
+    from executar import trabalhador as tr
+
+    trabalho_id = criar(conn, "publicar", pedido_por="teste-reconexao")
+    conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE operacao.trabalhador SET visto_em = now() - interval '1 hour'")
+        conn.commit()
+
+        abertas: list = []
+
+        def contar_e_abrir():
+            c = conectar_real()
+            abertas.append(c)
+            return c
+
+        monkeypatch.setattr(tr, "conectar", contar_e_abrir)
+        monkeypatch.setattr(tr, "BATIMENTO", 0.0)  # bate em toda passada
+
+        parar = threading.Event()
+        thread = threading.Thread(
+            target=tr._acompanhar, args=(None, trabalho_id, parar), daemon=True
+        )
+        thread.start()
+        # Espera a primeira conexão nascer e então a MATA.
+        for _ in range(40):
+            if abertas:
+                break
+            threading.Event().wait(0.05)
+        assert abertas, "o acompanhamento não abriu conexão"
+        abertas[0].close()
+
+        threading.Event().wait(2.0)  # tempo para o laço tropeçar e reabrir
+        parar.set()
+        thread.join(timeout=5)
+
+        assert len(abertas) >= 2, (
+            f"o acompanhamento não reconectou: {len(abertas)} conexão(ões) aberta(s)"
+        )
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT now() - visto_em < interval '1 minute' FROM operacao.trabalhador "
+                "WHERE nome = 'principal'"
+            )
+            linha = cur.fetchone()
+        assert linha is not None and linha[0], "o batimento não voltou depois da reconexão"
+    finally:
+        for c in abertas if "abertas" in dir() else []:
+            if not c.closed:
+                c.close()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM operacao.trabalho WHERE id = %s", (trabalho_id,))
+        conn.commit()

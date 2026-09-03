@@ -28,6 +28,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
   **A declaração que dispara passou a ser a que o dono VIU.** A tela lê os parâmetros uma vez e mostra "vai rodar com a declaração nº X"; a ação lia de novo no clique, e podia enfileirar a nº X+1 submetida no intervalo. A rodada citaria fielmente a nº X+1 como declarada, e a aprovação humana que a tela existe para capturar nunca teria acontecido para aquele conteúdo — o "peso inventado numa planilha aprovada", mudado de arquivo para versão. Agora recusa, em vez de substituir em silêncio.
 
+  **A resiliência que o texto afirmava era mais forte que o código, e isso foi corrigido.** A conexão do acompanhamento era aberta FORA do laço: se falhasse no arranque, a thread morria calada e a rodada inteira ficava sem batimento — o alarme falso pelo tempo todo; e se morresse no meio, o psycopg não reconecta, então tudo levantava e o laço girava falhando. O teste provava só o caso leve, com erro na escrita e a conexão viva. Agora a conexão renasce dentro do laço, e um teste **mata a conexão no meio e exige que o batimento volte** — o único que prova a frase.
+
+  **O batimento ganhou período próprio.** Bater junto com a sondagem de meio segundo daria ~7.200 escritas por hora numa linha só, e a raspagem dura horas. Cinco segundos contra um prazo de trinta: seis vezes de folga com um décimo da escrita.
+
+  **`docs/prazos.md` (novo): o inventário de todo prazo do sistema, com quem o renova e com que período.** O defeito acima não escapou por a execução ser curta — a fumaça roda 60 segundos e o prazo é 30, então o alarme falso estava **dentro da janela observável**. Escapou porque nada afirmava nada sobre a cadência, e a validação era um humano olhando a tela. O documento separa os prazos nossos (só um é par prazo × renovador, e é onde o defeito nasceu) dos que não são — sessão do Canal Pro, `wait_timeout` do MySQL, token do Drive —, que é o que esta classe vira quando a sexta real passar a durar horas.
+
   Provado ponta a ponta pela interface: rodada disparada por clique, executada pelo trabalhador contra o MySQL do Newcore, progresso aparecendo etapa a etapa, e desfecho lido na tela.
 
 
