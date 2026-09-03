@@ -12,6 +12,20 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Added
 
+- **O botão que dispara a rodada, e a tela que a acompanha ao vivo (F6).** `/rodada/nova` enfileira a sexta com a última declaração de parâmetros; `/trabalho/[id]` mostra as sete etapas acendendo uma a uma, o log da execução e o desfecho traduzido. O console **enfileira e nada mais** — quem executa é o trabalhador, num processo separado, porque disparar por `spawn` dentro de uma requisição daria um filho que morre no recarregamento do servidor e uma linha "executando" eterna.
+
+  **Vai o ID da declaração, não o caminho de um arquivo.** O trabalhador materializa o TOML na hora de rodar, com o id do trabalho no nome, e a `origem` que viaja para a planilha e para o Registro passa a dizer de qual declaração a rodada saiu — reconstituível mesmo se o arquivo sumir, e sobretudo quando a rodada **aborta**, que não deixa linha nenhuma no Registro.
+
+  **O progresso é ao vivo de verdade, e isso exigiu um leitor concorrente.** A F4 já emitia um NDJSON por nó concluído, mas ninguém o lia: as etapas ficariam apagadas até o fim. Lê-lo ao terminar daria o mesmo conteúdo e nenhuma serventia — seria relatório, não acompanhamento. O trabalhador segue o arquivo numa linha de execução paralela à drenagem da saída, com duas guardas: linha pela metade não avança o cursor (o escritor pode estar no meio dela), e falha ali não derruba a rodada, porque progresso é conveniência e a rodada é o trabalho.
+
+  **Os códigos de saída viraram frase.** Os seis desfechos da rodada têm tradução própria, e a mais importante é a distinção entre os dois abortos: estoque vazio é ausência de insumo, veto do crivo é violação de invariante. Sob um texto só, uma violação chegaria com a mesma cara de "não havia imóvel para decidir" e ninguém iria olhar. Código desconhecido é traduzido como **grave**, não ignorado.
+
+  **Dois defeitos vistos na tela.** As etapas mostravam "8 de 7 anunciadas", porque a rodada também emite o `registrar`, que é sink e não etapa — número que não quer dizer nada, e que nenhum teste via porque a contagem morava no componente. E o aviso de trabalhador fora do ar precisou nascer junto: sem ele, clicar em "rodar" com o processo parado não produz nada nem explicação.
+
+  Provado ponta a ponta pela interface: rodada disparada por clique, executada pelo trabalhador contra o MySQL do Newcore, progresso aparecendo etapa a etapa, e desfecho lido na tela.
+
+
+
 - **O formulário de parâmetros: o console passa a ESCREVER, e o bloqueio dos catorze nulos vira tela (F5).** `/parametros` renderiza os 20 campos obrigatórios a partir do contrato gerado do próprio validador — tipo, faixa, escolhas fechadas, campos condicionais e o rótulo da pendência que cada um responde. **Nenhum campo nasce preenchido**, e o texto de apoio dentro do campo é "a definir", nunca um número: um exemplo numérico ali é como um valor que ninguém escolheu entra numa planilha aprovada.
 
   **A validação adianta a recusa que o Python faria, sem duplicá-la.** As faixas, os tipos e as escolhas vêm todos do contrato travado por CI; nada é redigitado em TypeScript. O que o formulário faz é deixar o dono corrigir enquanto digita, em vez de descobrir pelo código de saída 5 depois de a rodada ser enfileirada e morrer. A distinção entre limite **aberto** e **fechado** aparece na tela: `decaimento = 0` é recusado com "precisa ser MAIOR que 0", `desconto_fragil = 0` passa.

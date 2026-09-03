@@ -107,6 +107,84 @@ export async function listarTrabalhos(
   return rows.map((l) => ({ ...l, id: Number(l.id), pedido_em: l.pedido_em.toISOString() }));
 }
 
+export type Evento = {
+  id: number;
+  momento: string;
+  nivel: string;
+  no_grafo: string | null;
+  texto: string;
+};
+
+/** As sete etapas do grafo da decisão, na ordem em que o fluxo as percorre.
+ *
+ *  Serve à tela de acompanhamento, que precisa mostrar "etapa 4 de 7" mesmo antes de a
+ *  quarta acontecer. NÃO é a topologia do grafo — é a ordem de APRESENTAÇÃO, e as duas
+ *  podem divergir sem defeito: `analista_perfil` e `coletor_externo` correm em
+ *  paralelo, e listá-los em sequência é uma escolha de leitura, não uma afirmação sobre
+ *  execução. O `registrar` fica de fora porque não é etapa da decisão: é o sink. */
+export const ETAPAS = [
+  "coletor_interno",
+  "analista_perfil",
+  "coletor_externo",
+  "decisor",
+  "crivo",
+  "redator",
+  "finalizar",
+] as const;
+
+export async function lerTrabalho(
+  id: number,
+  exec: Consulta = padrao,
+): Promise<Trabalho | null> {
+  const { rows } = await exec<Trabalho & { id: string; pedido_em: Date }>(
+    "SELECT id, tipo, estado, pedido_em, pedido_por, codigo_saida, rodada_id " +
+      "FROM operacao.trabalho WHERE id = $1",
+    [id],
+  );
+  if (rows.length === 0) return null;
+  const l = rows[0];
+  return { ...l, id: Number(l.id), pedido_em: l.pedido_em.toISOString() };
+}
+
+/** O log de uma execução, do mais antigo para o mais novo — é a ordem em que se lê
+ *  um progresso. `limite` existe porque uma rodada pode imprimir muito, e a tela não
+ *  pode ficar pesada por isso; o corte é no COMEÇO, preservando o fim, que é onde
+ *  está o desfecho. */
+export async function eventosDoTrabalho(
+  trabalhoId: number,
+  limite = 300,
+  exec: Consulta = padrao,
+): Promise<Evento[]> {
+  const { rows } = await exec<Evento & { id: string; momento: Date }>(
+    "SELECT id, momento, nivel, no_grafo, texto FROM (" +
+      "  SELECT id, momento, nivel, no_grafo, texto FROM operacao.trabalho_evento" +
+      "  WHERE trabalho_id = $1 ORDER BY id DESC LIMIT $2" +
+      ") ultimos ORDER BY id",
+    [trabalhoId, limite],
+  );
+  return rows.map((l) => ({ ...l, id: Number(l.id), momento: l.momento.toISOString() }));
+}
+
+/** Quais etapas do grafo já se anunciaram. Consulta PRÓPRIA, e é o ponto.
+ *
+ *  Derivar do log seria de graça e estaria errado: `eventosDoTrabalho` corta em 300
+ *  linhas pelo COMEÇO — certo para o log, onde o desfecho está no fim; errado para a
+ *  contagem. Numa rodada que imprime muito, os primeiros eventos de etapa saem da
+ *  janela e a lista **apaga para trás**: `coletor_interno` escurece enquanto `redator`
+ *  acende. Em modo seco a rodada fala pouco e isso nunca aparece; na primeira sexta
+ *  real, apareceria. */
+export async function etapasConcluidas(
+  trabalhoId: number,
+  exec: Consulta = padrao,
+): Promise<string[]> {
+  const { rows } = await exec<{ no_grafo: string }>(
+    "SELECT DISTINCT no_grafo FROM operacao.trabalho_evento " +
+      "WHERE trabalho_id = $1 AND no_grafo IS NOT NULL AND no_grafo <> ''",
+    [trabalhoId],
+  );
+  return rows.map((l) => l.no_grafo);
+}
+
 /** Há trabalhador batendo ponto há menos de `segundos`? Sem isto, o dono clica em
  *  "rodar", nada acontece, e não há nada na tela explicando que o processo que executa
  *  não está no ar. */
