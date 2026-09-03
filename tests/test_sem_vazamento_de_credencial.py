@@ -42,8 +42,11 @@ cobertas abaixo, e mesmo assim esta ressalva continua valendo.
 **Este arquivo é o único que contém os literais vazados**, em `LITERAIS`, por
 necessidade: sem eles não há detecção de revert exato. Logo ele é versionado e
 público como qualquer outro, e a exposição desses quatro literais **continua** —
-igual à de hoje, não pior. Quem a neutraliza é a rotação da senha ([P-17]), não
-esta guarda. Depois da rotação eles ficam inertes e podem continuar aqui.
+igual à de hoje, não pior. Quem a neutralizaria é a rotação da senha — **recusada
+pelo dono em 02/09, risco aceito na D-026**. Não há "depois da rotação": estes
+quatro literais acompanham segredo VIVO por tempo indeterminado, e esta guarda
+deixou de ser complemento para ser o único controle. Logo a fronteira declarada
+acima não é ressalva: é o teto do risco residual.
 """
 
 from __future__ import annotations
