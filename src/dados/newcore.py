@@ -6,12 +6,17 @@ camadas: (a) a credencial deve ser de um usuário MySQL SEM grant de escrita
 (b) este módulo só expõe consulta, nunca escrita (suspensória). Se um dia
 alguém adicionar um INSERT/UPDATE aqui, a camada (a) ainda o barra no servidor.
 
-O 1045 do U+00A8: a senha do RDS contém U+00A8 (¨), que em UTF-8 são dois bytes
-e o hash caching_sha2_password do servidor foi criado sobre a forma UTF-8. O
-pymysql força `.encode('latin1')` em senha `str`, mandando o byte errado → 1045
-(mistério "só mysql2 autentica" resolvido em 31/08, ver docs/mapa-de-dados.md).
-Por isso a senha é passada como `bytes` UTF-8 — NÃO "simplifique" para str, ou
-o 1045 volta.
+O 1045 "só o mysql2 autentica": **senha não-ASCII quebra o pymysql**. Ele força
+`.encode('latin1')` em senha `str`, ignorando o `charset`; como o hash
+caching_sha2_password do servidor é formado sobre a forma UTF-8, o byte que chega
+não é o esperado e o servidor devolve 1045 — indistinguível de credencial errada
+(resolvido em 31/08, ver docs/mapa-de-dados.md). Por isso a senha vai como
+`bytes` UTF-8 — NÃO "simplifique" para str, ou o 1045 volta.
+
+A regra acima vale para QUALQUER senha, e está escrita assim de propósito: este
+repositório é público (D-012) e descrever o conteúdo da senha vigente é vazar
+credencial em prosa — o que nenhum gitleaks pega, porque prosa não casa com padrão
+de segredo. Guarda que executa: `tests/test_sem_vazamento_de_credencial.py`.
 """
 
 from __future__ import annotations
@@ -46,7 +51,7 @@ def _config() -> dict[str, Any]:
         "host": os.environ["NEWCORE_MYSQL_HOST"],
         "port": int(os.environ["NEWCORE_MYSQL_PORT"]),
         "user": os.environ["NEWCORE_MYSQL_USER"],
-        # bytes UTF-8, NÃO str — ver o docstring do módulo (1045 do U+00A8).
+        # bytes UTF-8, NÃO str — ver o docstring do módulo (o 1045 do pymysql).
         "password": os.environ["NEWCORE_MYSQL_PASSWORD"].encode("utf-8"),
     }
 

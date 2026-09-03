@@ -587,6 +587,20 @@ A recontagem noutro dia, que a incorporação da deriva exige, deixou de estar b
 
 **Ato que só o dono pratica.** Não é decisão nem defeito de código: é conserto de cofre e de acesso.
 
+**Adendo 2026-09-02 — o [P-17] mudou de natureza: deixou de ser higiene de cofre e passou a exigir ROTAÇÃO.** A varredura que precedeu esta fatia achou, no repositório **público**, cinco pontos que descrevem a senha viva: `docs/mapa-de-dados.md` nomeava o caractere não-ASCII em duas frases e, mais adiante, descrevia uma **segunda** propriedade do mesmo segredo, de outra classe de caracteres; `CHANGELOG.md` e o docstring de `src/dados/newcore.py` repetiam o primeiro. O mesmo trecho publicava a identidade da conta de leitura. A **prosa** foi limpa nesta fatia, **e isso não resolve** — por duas razões que precisam ficar escritas, porque a primeira eu afirmei errado antes de medir.
+
+**Primeira: a árvore não ficou limpa.** Os quatro literais continuam versionados, em `LITERAIS` de `tests/test_sem_vazamento_de_credencial.py`, por necessidade da guarda — sem eles não há detecção de revert exato. A varredura que eu dei por limpa usara `git ls-files`, que não enxerga arquivo ainda não adicionado; era artefato de medição, não limpeza. A exposição desses quatro fica **igual** à de hoje, não pior, e depois da rotação eles ficam inertes.
+
+**Segunda: um sexto vetor, que edição nenhuma alcança.** A **mensagem do commit** que fundou o Coletor Interno (31/08) carrega o mesmo fato no corpo. Mensagem de commit não é tocada por edição de árvore de trabalho: fica no log, na página do commit e em todo clone. Some apenas com reescrita de histórico — que reduz visibilidade casual e **não** desfaz clones já feitos, e por isso não substitui a rotação.
+
+Só a troca da senha invalida o que já saiu.
+
+O agravante é de composição, não de um item isolado. Somando o que o repositório dava de graça — identidade da conta, mais de um caractere da senha e uma nota de infraestrutura sobre transporte — o espaço de busca de uma credencial de produção viva encolheu por escrito. Nenhum desses fatos era necessário: em todos os cinco casos a **mecânica** (senha não-ASCII quebra o pymysql; o shell expande metacaractere ao carregar o `.env`) documenta a manutenção igual ou melhor, porque vale para qualquer senha e sobrevive à própria rotação.
+
+**Por que nenhuma ferramenta pegou.** O gitleaks casa **padrão de segredo** — chave, token, DSN. Prosa que **descreve** o segredo não casa com padrão nenhum e passa intacta, sem que nada avise. O portão de regra olha para a Spec, não para isto. O filtro, nas duas vezes em que o material veio de relatório de investigação, era humano — e na segunda vez falhou: em 02/09 um caractere foi copiado de relatório para o documento e só a revisão o barrou. Substituído por guarda que executa: `tests/test_sem_vazamento_de_credencial.py` varre todo arquivo versionado e reprova tanto os literais já vazados quanto a **forma** do vazamento — qualquer afirmação sobre o conteúdo do segredo, e notação de ponto de código na vizinhança da palavra —, com contraprova contra passar por vacuidade. Verificado por mutação em quatro direções, inclusive um vazamento de forma nova sem nenhum literal conhecido.
+
+**Regra que fica, para importação de relatório de investigação:** relatório de subagente é insumo, não texto pronto. O que descreve credencial — conteúdo, identidade da conta, host, política de transporte — não atravessa para documento versionado; atravessa a mecânica. A guarda impõe a parte automatizável; o resto é a regra escrita aqui.
+
 ## A checklist de critérios de aceite do PRD passa a ser mantida viva (2026-09-02)
 
 **Decisão do dono**, tomada nesta data: as caixas do PRD deixam de ser lista morta e passam a refletir o estado real. Até aqui **nenhuma das 31 tinha sido marcada**, inclusive as de critérios entregues há semanas — o que fazia a checklist não significar nada, nem "pronto" nem "não pronto".
