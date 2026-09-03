@@ -30,6 +30,7 @@ rodada-segunda = "executar.segunda:main"
 rodada-sexta = "executar.sexta:main"
 rodada-aprovar = "executar.aprovar:main"
 rodada-contrato = "executar.contrato:main"
+rodada-trabalhador = "executar.trabalhador:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -11,6 +11,20 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 ## [Unreleased]
 
 
+### Added
+
+- **A fila de operação e o trabalhador que a executa — o console passa a poder disparar rodadas.** Esquema `operacao` novo (migração 006) com a fila de trabalhos, o log por execução, os parâmetros declarados, as publicações, o batimento do trabalhador e o adiamento de rodada. Mais `src/dados/operacao.py` (camada de acesso) e `rodada-trabalhador` (o processo que executa).
+
+  **O console nunca executa processo.** Ele INSERE na fila; um trabalhador separado reivindica e roda. Disparar por `spawn` dentro de uma requisição daria um filho que morre no recarregamento do servidor — ou zumbi, se destacado — e uma linha "executando" eterna, porque não haveria quem observasse a transição. Com o estado no banco, nada precisa sobreviver ao reinício.
+
+  **A dedup subiu de nível, e isso é a barreira contra rodada duplicada.** `gravar_rodada_decisao` não tem chave natural: duas chamadas produzem duas rodadas válidas e indistinguíveis, e nada no esquema do Registro impede — um duplo-clique bastaria. Um índice parcial único (`um trabalho por tipo em voo`) faz o segundo INSERT falhar antes de qualquer processo nascer. Por tipo, não global: raspar enquanto se aprova uma rodada antiga é legítimo.
+
+  **O trabalhador chama o CLI, não a função.** `main()` é quem recusa o arquivo-modelo como entrada real, quem recusa `--hoje` no futuro e quem traduz cada falha no seu código de saída; reimplementar isso seria manter duas versões da mesma guarda, e a segunda envelheceria calada. Ele também **nunca re-tenta sozinho** — sem chave de dedup, um processo que morre depois do commit produziria a segunda rodada se retentado — e roda o filho em `INFO`, nunca `DEBUG`, para que traceback com dado do Newcore não chegue à tela.
+
+  **Um defeito próprio, achado e corrigido na mesma fatia.** Traduzir a violação de unicidade em erro nomeado não desfazia o aborto da transação do Postgres: a conexão ficava envenenada e o comando seguinte estourava — justamente o comando que o console faz, que é LER a fila para dizer "já está rodando". A primeira tentativa de conserto foi pior que o defeito: `conn.transaction()` do psycopg3, quando é o mais externo, faz COMMIT ao sair, e sob o fixture de teste isso **commitou seis linhas no banco vigente** que, nascendo `pendente`, travaram a fila de cinco tipos até serem removidas à mão — exatamente a armadilha registrada em `tests/README.md` uma hora antes. A versão final usa SAVEPOINT explícito, e só fora de autocommit.
+
+  **O trabalho é entidade própria porque a rodada abortada não deixa linha nenhuma no Registro** — nem cabeçalho. Sem ele, o motivo de um aborto viveria só no log do processo e sumiria.
+
 ### Fixed
 
 - **A ponte com o MySQL quebrava com qualquer `%` no texto do SQL — e por isso a coleta interna nunca havia rodado contra a base viva.** `consultar(sql)` sem parâmetros chamava `execute(sql, ())`, e o pymysql aplica `query % args` sempre que `args` não é None: uma tupla vazia não escapa disso, e todo `%` do texto vira especificador de formato. O SQL do Coletor Interno tem dois percentuais em **comentário** — números de medição, `94,8%` e `0,176%` —, então a rodada morria com `TypeError` antes de ler uma linha.
