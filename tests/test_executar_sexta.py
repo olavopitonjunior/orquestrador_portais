@@ -852,7 +852,34 @@ def test_o_emissor_NAO_vaza_o_estado_da_rodada(tmp_path):
     )
     conteudo = alvo.read_text(encoding="utf-8")
     assert "Newcore" not in conteudo
-    assert set(json.loads(conteudo)) == {"momento", "no", "prontos"}
+    linha = json.loads(conteudo)
+    assert set(linha) == {"momento", "no", "prontos", "resumo"}
+    # `resultado` aqui não tem a forma do domínio: o resumo do decisor não sai, e a
+    # emissão DECLARA isso em vez de morrer — só o tipo do erro, nunca a mensagem.
+    assert linha["resumo"] == {"indisponivel": "AttributeError", "degradacoes": []}
+
+
+def test_o_emissor_leva_o_resumo_do_agente_sem_id_de_imovel(tmp_path):
+    """O relatório do agente sai no NDJSON — contagens e limitações, nada mais."""
+    alvo = tmp_path / "e.ndjson"
+    emitir = mod._emissor_de_eventos(alvo)
+    assert emitir is not None
+    emitir(
+        "coletor_interno",
+        {
+            "prontos": {"coletor_interno": True},
+            "candidatos": [object(), object(), object()],
+            "penalizaveis": {101: object(), 202: object()},
+            "degradacoes": ["fonte X indisponível"],
+            "recorte_amostral": 7,
+        },
+    )
+    linha = json.loads(alvo.read_text(encoding="utf-8"))
+    assert linha["resumo"]["candidatos"] == 3
+    assert linha["resumo"]["penalizaveis"] == 2
+    assert linha["resumo"]["recorte_amostral"] == 7
+    assert linha["resumo"]["degradacoes"] == ["fonte X indisponível"]
+    assert "101" not in json.dumps(linha)
 
 
 def test_executar_chama_o_callback_uma_vez_por_no(tmp_path, monkeypatch, parametros):

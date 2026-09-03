@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any
 
 import psycopg
+from psycopg.types.json import Json
 
 TIPOS = ("sexta", "segunda", "canario", "full", "aprovar", "publicar")
 EM_VOO = ("pendente", "executando")
@@ -209,13 +210,23 @@ def evento(
     *,
     nivel: str = "info",
     no_grafo: str | None = None,
+    resumo: Mapping[str, Any] | None = None,
 ) -> None:
-    """Uma linha do log da execução. É o que a tela de acompanhamento mostra."""
+    """Uma linha do log da execução. É o que a tela de acompanhamento mostra.
+
+    `resumo` é o relatório do agente daquele nó (contagens e limitações, JSON puro),
+    quando a linha vem do NDJSON da rodada; nulo para linha de log comum."""
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO operacao.trabalho_evento (trabalho_id, nivel, no_grafo, texto) "
-            "VALUES (%s, %s, %s, %s)",
-            (trabalho_id, nivel, no_grafo, texto),
+            "INSERT INTO operacao.trabalho_evento (trabalho_id, nivel, no_grafo, texto, resumo) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (
+                trabalho_id,
+                nivel,
+                no_grafo,
+                texto,
+                Json(dict(resumo)) if resumo is not None else None,
+            ),
         )
 
 
