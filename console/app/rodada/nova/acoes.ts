@@ -11,8 +11,30 @@ import { TrabalhoEmVoo, criarTrabalho, ultimosParametros } from "@/lib/operacao"
 
 export type RespostaDisparo = { ok: false; erro: string };
 
-export async function dispararSexta(por: string, dryRun: boolean): Promise<RespostaDisparo> {
+export async function dispararSexta(
+  por: string,
+  dryRun: boolean,
+  declaracaoVista: number | null,
+): Promise<RespostaDisparo> {
   const declaracao = await ultimosParametros();
+
+  // A declaração que DISPARA precisa ser a que o dono VIU. A tela lê uma vez, no
+  // servidor, e mostra "vai rodar com a declaração nº X"; sem esta conferência, a ação
+  // lia de novo no clique e podia enfileirar a nº X+1 — submetida noutra aba, ou por
+  // outra pessoa, no intervalo. A rodada citaria fielmente a nº X+1 como declarada, e a
+  // aprovação humana que esta tela existe para capturar nunca teria acontecido para
+  // AQUELE conteúdo. É o "peso inventado numa planilha aprovada", mudado de arquivo
+  // para versão. Recusa, e não substitui em silêncio.
+  if (declaracao !== null && declaracaoVista !== null && declaracao.id !== declaracaoVista) {
+    return {
+      ok: false,
+      erro:
+        `os parâmetros mudaram enquanto esta tela estava aberta: você viu a declaração ` +
+        `nº ${declaracaoVista} e a mais recente agora é a nº ${declaracao.id}. Recarregue ` +
+        `e confira antes de disparar.`,
+    };
+  }
+
   if (declaracao === null) {
     return {
       ok: false,

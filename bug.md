@@ -67,8 +67,10 @@ Já aconteceu de forma acidental, e é assim que se sabe que dói: seis linhas d
 vazaram para o banco vigente em 03/09 (um `conn.transaction()` que, sendo o mais externo,
 commitava) e travaram a fila de cinco tipos até serem removidas manualmente.
 
-O material para consertar já existe e está ocioso: `'cancelado'` está no CHECK e nenhum
-código o escreve; `operacao.trabalhador.visto_em` é escrito e nunca lido. Falta a peça que
+O material para consertar já existe e está parcialmente ocioso: `'cancelado'` está no CHECK
+e nenhum código o escreve. O `visto_em` **deixou de ser ocioso em 03/09** — o console o lê
+para avisar que o trabalhador não está no ar —, mas ninguém o usa para RECUPERAR trabalho
+órfão, que é a metade que falta. Falta a peça que
 os liga — algo que, ao arrancar, marque como `cancelado` o que está `executando` sob um
 `pid` que não existe mais, ou cujo batimento envelheceu além de um limite.
 

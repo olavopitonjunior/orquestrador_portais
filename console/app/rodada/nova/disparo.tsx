@@ -4,7 +4,13 @@ import { useState } from "react";
 
 import { dispararSexta, type RespostaDisparo } from "./acoes";
 
-export function Disparo({ podeDisparar }: { podeDisparar: boolean }) {
+export function Disparo({
+  podeDisparar,
+  declaracaoVista,
+}: {
+  podeDisparar: boolean;
+  declaracaoVista: number | null;
+}) {
   const [por, setPor] = useState("");
   const [dryRun, setDryRun] = useState(true);
   const [enviando, setEnviando] = useState(false);
@@ -14,7 +20,7 @@ export function Disparo({ podeDisparar }: { podeDisparar: boolean }) {
     setEnviando(true);
     // Em sucesso a ação REDIRECIONA e esta linha não retorna — por isso o estado de
     // "enviando" só é desfeito no caminho de erro.
-    const r = await dispararSexta(por, dryRun);
+    const r = await dispararSexta(por, dryRun, declaracaoVista);
     setResposta(r);
     setEnviando(false);
   }

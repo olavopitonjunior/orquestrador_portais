@@ -59,8 +59,26 @@ const POR_CODIGO: Record<number, Desfecho> = {
   },
 };
 
-export function desfechoDe(codigo: number | null): Desfecho | null {
+/** A tradução vale para a SEXTA, e o tipo é exigido por isso.
+ *
+ *  Os códigos são o contrato de `executar/sexta.py`, e outros tipos os reusam com
+ *  significados DIFERENTES: em `executar/segunda.py` o código 4 quer dizer "sem carga
+ *  aprovada desde a sexta", nada a ver com "a coleta interna veio vazia". Traduzir sem
+ *  olhar o tipo faria a tela afirmar, com confiança e por escrito, algo simplesmente
+ *  falso — e a raspagem, cujo código vem do `npm`, passaria pela mesma tabela.
+ *
+ *  Para os demais tipos devolve-se o código cru: não saber é melhor que inventar. */
+export function desfechoDe(tipo: string, codigo: number | null): Desfecho | null {
   if (codigo === null) return null;
+  if (tipo !== "sexta") {
+    return {
+      titulo: `Código ${codigo}`,
+      explicacao:
+        `O console só traduz os códigos da rodada de sexta. Para um trabalho do tipo ` +
+        `'${tipo}', o significado é o do comando que ele executa.`,
+      grave: codigo !== 0,
+    };
+  }
   return (
     POR_CODIGO[codigo] ?? {
       titulo: `Código ${codigo}`,

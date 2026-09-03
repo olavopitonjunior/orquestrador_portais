@@ -43,7 +43,7 @@ export default async function Page() {
         </div>
       ) : null}
 
-      <Disparo podeDisparar={declaracao !== null} />
+      <Disparo podeDisparar={declaracao !== null} declaracaoVista={declaracao?.id ?? null} />
     </>
   );
 }

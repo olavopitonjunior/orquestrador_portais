@@ -465,7 +465,7 @@ def test_o_seguidor_nao_TRAVA_numa_linha_ilegivel_no_meio(tmp_path, monkeypatch,
         )
         parar = threading.Event()
         parar.set()  # uma passada só
-        tr._seguir_eventos(arquivo, trabalho_id, parar)
+        tr._acompanhar(arquivo, trabalho_id, parar)
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT no_grafo FROM operacao.trabalho_evento WHERE trabalho_id=%s "
@@ -476,6 +476,78 @@ def test_o_seguidor_nao_TRAVA_numa_linha_ilegivel_no_meio(tmp_path, monkeypatch,
         assert vistos == ["coletor_interno", "decisor"], (
             f"a linha ilegível no meio travou o seguidor: {vistos}"
         )
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM operacao.trabalho WHERE id = %s", (trabalho_id,))
+        conn.commit()
+
+
+def test_o_acompanhamento_BATE_PONTO_durante_a_rodada(tmp_path, monkeypatch, conn):
+    """O batimento era dado uma vez, ANTES da rodada. Uma sexta real leva minutos, e a
+    tela considera morto um trabalhador sem batimento há 30 segundos — então em toda
+    rodada de verdade, meio minuto depois, o acompanhamento passaria a dizer "o
+    trabalhador não está no ar". Falso, e justamente na tela feita para tranquilizar
+    quem acabou de disparar; e o alarme falso é o que mais provavelmente faria alguém
+    matar o processo no meio, arriscando a rodada duplicada que a fila impede."""
+    import threading
+
+    from executar import trabalhador as tr
+
+    with conn.cursor() as cur:
+        cur.execute("UPDATE operacao.trabalhador SET visto_em = now() - interval '1 hour'")
+    conn.commit()
+
+    trabalho_id = criar(conn, "publicar", pedido_por="teste-batimento")
+    conn.commit()
+    try:
+        parar = threading.Event()
+        parar.set()  # uma passada só
+        tr._acompanhar(None, trabalho_id, parar)  # sem arquivo de progresso, de propósito
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT now() - visto_em < interval '1 minute' FROM operacao.trabalhador "
+                "WHERE nome = 'principal'"
+            )
+            linha = cur.fetchone()
+        assert linha is not None and linha[0], "o acompanhamento não bateu o ponto"
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM operacao.trabalho WHERE id = %s", (trabalho_id,))
+        conn.commit()
+
+
+def test_o_acompanhamento_NAO_desiste_na_primeira_falha(tmp_path, monkeypatch, conn):
+    """Desistir na primeira falha era compromisso mais forte que a intenção pedia: um
+    soluço momentâneo congelaria o painel pelo resto de uma rodada de minutos — e com o
+    batimento junto, a tela passaria a mentir que o trabalhador morreu."""
+    import json as _json
+    import threading
+
+    from executar import trabalhador as tr
+
+    trabalho_id = criar(conn, "publicar", pedido_por="teste-resiliencia")
+    conn.commit()
+    try:
+        arquivo = tmp_path / "e.ndjson"
+        arquivo.write_text(
+            "".join(_json.dumps({"no": n}) + "\n" for n in ("um", "dois", "tres")),
+            encoding="utf-8",
+        )
+        chamadas: list[str] = []
+        original = tr.evento
+
+        def falha_uma_vez(conexao, tid, texto, **kw):
+            chamadas.append(kw.get("no_grafo") or "")
+            if len(chamadas) == 2:
+                raise RuntimeError("soluço")
+            return original(conexao, tid, texto, **kw)
+
+        monkeypatch.setattr(tr, "evento", falha_uma_vez)
+        parar = threading.Event()
+        # Duas passadas: a primeira tropeça, a segunda precisa continuar de onde parou.
+        threading.Timer(1.2, parar.set).start()
+        tr._acompanhar(arquivo, trabalho_id, parar)
+        assert len(chamadas) >= 3, f"o acompanhamento desistiu: {chamadas}"
     finally:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM operacao.trabalho WHERE id = %s", (trabalho_id,))

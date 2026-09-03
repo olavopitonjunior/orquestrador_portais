@@ -36,7 +36,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   }
 
   const emCurso = EM_CURSO.has(trabalho.estado);
-  const desfecho = desfechoDe(trabalho.codigo_saida);
+  const desfecho = desfechoDe(trabalho.tipo, trabalho.codigo_saida);
   // Quais etapas já se anunciaram. O nó vem do NDJSON que a rodada emite ao vivo; a
   // ordem de apresentação é a de ETAPAS, não a de chegada — dois nós do mesmo passo do
   // grafo terminam juntos, e listá-los na ordem de chegada sugeriria uma sequência que

@@ -190,8 +190,19 @@ def _drenar(processo: subprocess.Popen[str], trabalho_id: int) -> None:
             evento(conn, trabalho_id, texto[:4000], nivel=nivel)
 
 
-def _seguir_eventos(caminho: Path, trabalho_id: int, parar: threading.Event) -> None:
-    """Lê o NDJSON de progresso ENQUANTO a rodada corre, e vira evento com o nó.
+def _acompanhar(caminho: Path | None, trabalho_id: int, parar: threading.Event) -> None:
+    """Bate o ponto e lê o progresso ENQUANTO a rodada corre. Uma thread, duas tarefas.
+
+    **O batimento precisa acontecer aqui, e não só no começo do ciclo.** Ele era dado
+    uma vez, antes de a rodada começar; uma sexta real leva MINUTOS, e a tela considera
+    morto um trabalhador sem batimento há 30 segundos. Resultado medido: em toda rodada
+    de verdade, meio minuto depois, o acompanhamento passaria a dizer "o trabalhador
+    não está no ar" — falso, e justamente na tela feita para tranquilizar quem acabou de
+    disparar. E o alarme falso é o que mais provavelmente faria alguém matar o processo
+    no meio, o que arrisca a rodada duplicada que a fila existe para impedir.
+
+    Vale para TODO tipo de trabalho, com ou sem arquivo de progresso: a raspagem também
+    leva minutos, e o batimento não é do NDJSON, é do processo.
 
     Precisa ser concorrente. A alternativa — ler o arquivo ao fim — daria o mesmo
     conteúdo e nenhuma serventia: a tela de acompanhamento existe para mostrar em que
@@ -206,12 +217,14 @@ def _seguir_eventos(caminho: Path, trabalho_id: int, parar: threading.Event) -> 
     Falha aqui NÃO derruba a rodada. Progresso é conveniência; a rodada é o trabalho.
     """
     lidas = 0
+    falhas = 0
     with conectar() as conn:
         conn.autocommit = True
         while True:
             terminou = parar.wait(0.5)
             try:
-                if caminho.is_file():
+                bater_ponto(conn)
+                if caminho is not None and caminho.is_file():
                     linhas = caminho.read_text(encoding="utf-8").splitlines()
                     novas = linhas[lidas:]
                     for posicao, linha in enumerate(novas):
@@ -236,12 +249,24 @@ def _seguir_eventos(caminho: Path, trabalho_id: int, parar: threading.Event) -> 
                             no_grafo=str(dado.get("no") or ""),
                         )
                         lidas += 1
-            except Exception:  # noqa: BLE001 — progresso é conveniência; a rodada é o trabalho
+            except Exception:  # noqa: BLE001 — acompanhar é conveniência; a rodada é o trabalho
                 # `OSError` sozinho não bastava: `evento()` levanta `psycopg.Error`, que
                 # não é `OSError`, e a thread morria calada — as etapas paravam sem uma
                 # palavra na tela. "Não derruba a rodada" não é o mesmo que "avisa".
-                log.warning("o acompanhamento do trabalho %s parou", trabalho_id, exc_info=True)
-                return
+                #
+                # E desistir na primeira falha era compromisso mais forte do que a
+                # intenção pedia: um soluço momentâneo na conexão congelaria o painel
+                # pelo resto de uma rodada de minutos, com o batimento junto — e aí a
+                # tela passaria a mentir que o trabalhador morreu. Segue tentando; só
+                # desiste quando o processo termina.
+                falhas += 1
+                if falhas in (1, 10, 100):
+                    log.warning(
+                        "acompanhamento do trabalho %s falhou (%dª vez)",
+                        trabalho_id,
+                        falhas,
+                        exc_info=True,
+                    )
             if terminou:
                 return
 
@@ -269,13 +294,15 @@ def executar_trabalho(trabalho: Trabalho) -> int:
     # independentes (o arquivo traz os nós do grafo, a saída traz o log humano), e
     # esperar uma para ler a outra perderia a razão de existir de ambas.
     parar = threading.Event()
-    seguidor: threading.Thread | None = None
     eventos = trabalho.argumentos.get("eventos_ndjson")
-    if eventos:
-        seguidor = threading.Thread(
-            target=_seguir_eventos, args=(Path(str(eventos)), trabalho.id, parar), daemon=True
-        )
-        seguidor.start()
+    # SEMPRE, e não só quando há progresso a ler: o batimento é do processo, não do
+    # arquivo, e sem ele a tela declara morto um trabalhador que está trabalhando.
+    seguidor = threading.Thread(
+        target=_acompanhar,
+        args=(Path(str(eventos)) if eventos else None, trabalho.id, parar),
+        daemon=True,
+    )
+    seguidor.start()
 
     try:
         _drenar(processo, trabalho.id)
@@ -293,8 +320,12 @@ def executar_trabalho(trabalho: Trabalho) -> int:
         # senão as últimas etapas — justamente as que dizem como terminou — ficariam
         # de fora por uma corrida de meio segundo.
         parar.set()
-        if seguidor is not None:
-            seguidor.join(timeout=5)
+        seguidor.join(timeout=5)
+        if seguidor.is_alive():
+            # Só acontece com a conexão do acompanhamento pendurada. É `daemon`, então
+            # não segura a saída do processo — mas fica com uma conexão aberta, e sem
+            # esta linha a única pista seria o número de conexões subindo.
+            log.warning("o acompanhamento do trabalho %s não encerrou em 5s", trabalho.id)
     return processo.wait()
 
 

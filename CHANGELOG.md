@@ -22,6 +22,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
   **Dois defeitos vistos na tela.** As etapas mostravam "8 de 7 anunciadas", porque a rodada também emite o `registrar`, que é sink e não etapa — número que não quer dizer nada, e que nenhum teste via porque a contagem morava no componente. E o aviso de trabalhador fora do ar precisou nascer junto: sem ele, clicar em "rodar" com o processo parado não produz nada nem explicação.
 
+  **Um defeito que teria aparecido em TODA rodada real, e em nenhuma de teste.** O batimento do trabalhador era dado uma vez, antes de a rodada começar; uma sexta leva minutos, e a tela considera morto quem não bate há trinta segundos. Meio minuto depois do disparo, o acompanhamento passaria a dizer **"o trabalhador não está no ar"** — falso, e justamente na tela feita para tranquilizar quem acabou de disparar. Pior: esse alarme é o que mais provavelmente faria alguém matar o processo no meio, arriscando a rodada duplicada que a fila existe para impedir. O batimento passou para a mesma linha de execução que segue o progresso, e vale para todo tipo de trabalho — a raspagem também leva minutos.
+
+  **E a tradução dos códigos de saída passou a exigir o TIPO.** Eles são o contrato da sexta, e outros tipos reusam os mesmos números com significados diferentes: na segunda, o código 4 quer dizer "sem carga aprovada", nada a ver com "a coleta interna veio vazia". Traduzir sem olhar o tipo faria a tela afirmar, com confiança e por escrito, algo simplesmente falso.
+
+  **A declaração que dispara passou a ser a que o dono VIU.** A tela lê os parâmetros uma vez e mostra "vai rodar com a declaração nº X"; a ação lia de novo no clique, e podia enfileirar a nº X+1 submetida no intervalo. A rodada citaria fielmente a nº X+1 como declarada, e a aprovação humana que a tela existe para capturar nunca teria acontecido para aquele conteúdo — o "peso inventado numa planilha aprovada", mudado de arquivo para versão. Agora recusa, em vez de substituir em silêncio.
+
   Provado ponta a ponta pela interface: rodada disparada por clique, executada pelo trabalhador contra o MySQL do Newcore, progresso aparecendo etapa a etapa, e desfecho lido na tela.
 
 
