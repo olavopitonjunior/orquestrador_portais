@@ -10,6 +10,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Uma raspagem que não amarrou NADA deixava de passar por boa (A1).** `avaliar_coleta` tinha três portas — coleta ok, taxa de amarração ≥ limiar (nº 7), idade ≤ máxima (nº 5) — e nenhuma cobria o caso de zero imóveis casados: a taxa sai 0,0, e `0,0 < 0,0` é falso, então com limiar 0,0 (o que um piloto declara para ver a raspagem entrar) a coleta era admitida e a rodada saía **COMPLETA com F3 = 0 para todos** — indistinguível de "todos empatados no portal". A composição do F3 ainda percorria `por_imovel` inteiro, então linhas amarradas a imóveis fora da lista-alvo produziam o mesmo silêncio por outro caminho.
+
+  A porta nova é a segunda das quatro, e o motivo diz o que conferir: *"NENHUMA amarrou com a lista-alvo — não é 'todos iguais': é dado ausente. Confira o formato do codigoImovel contra o id do Newcore"*. Não é zelo abstrato: o `codigoImovel` real do Canal Pro **nunca foi visto** — a única fixture do raspador é sintética e não-numérica —, então esta é a falha mais provável da primeira rodada com raspagem, e ela agora sai declarada e degradada em vez de completa e errada. Provado por mutação: com a porta neutralizada, os três testes novos falham.
+
 ### Added
 
 - **O botão que dispara a rodada, e a tela que a acompanha ao vivo (F6).** `/rodada/nova` enfileira a sexta com a última declaração de parâmetros; `/trabalho/[id]` mostra as sete etapas acendendo uma a uma, o log da execução e o desfecho traduzido. O console **enfileira e nada mais** — quem executa é o trabalhador, num processo separado, porque disparar por `spawn` dentro de uma requisição daria um filho que morre no recarregamento do servidor e uma linha "executando" eterna.
