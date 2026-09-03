@@ -21,7 +21,16 @@ export function db(): Pool {
           "raiz — ou exporte a URL do Postgres próprio.",
       );
     }
-    g.__registroPool = new Pool({ connectionString: url });
+    g.__registroPool = new Pool({
+      connectionString: url,
+      // Teto por consulta. O console lê tabelas que crescem — `decisao_imovel` tem
+      // ~7 mil linhas por rodada — e uma consulta longa segurando transação bloqueia
+      // o `CREATE INDEX CONCURRENTLY` que o checkpointer do LangGraph roda ao abrir a
+      // aprovação. Já travou de verdade, do lado Python, e a correção lá foi ordem de
+      // aquisição; aqui é teto. Uma tela que demora 15s já está quebrada de qualquer
+      // forma: falhar é melhor que travar o fluxo de quem aprova.
+      options: "-c statement_timeout=15s",
+    });
   }
   return g.__registroPool;
 }

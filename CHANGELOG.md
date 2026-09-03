@@ -10,8 +10,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
-
 ### Added
+
+- **O formulário de parâmetros: o console passa a ESCREVER, e o bloqueio dos catorze nulos vira tela (F5).** `/parametros` renderiza os 20 campos obrigatórios a partir do contrato gerado do próprio validador — tipo, faixa, escolhas fechadas, campos condicionais e o rótulo da pendência que cada um responde. **Nenhum campo nasce preenchido**, e o texto de apoio dentro do campo é "a definir", nunca um número: um exemplo numérico ali é como um valor que ninguém escolheu entra numa planilha aprovada.
+
+  **A validação adianta a recusa que o Python faria, sem duplicá-la.** As faixas, os tipos e as escolhas vêm todos do contrato travado por CI; nada é redigitado em TypeScript. O que o formulário faz é deixar o dono corrigir enquanto digita, em vez de descobrir pelo código de saída 5 depois de a rodada ser enfileirada e morrer. A distinção entre limite **aberto** e **fechado** aparece na tela: `decaimento = 0` é recusado com "precisa ser MAIOR que 0", `desconto_fragil = 0` passa.
+
+  **A TRAVESSIA virou passo de CI.** O console serializa em TypeScript, a rodada valida em Python, e os dois lados podem concordar consigo mesmos enquanto discordam **entre si** — nenhum teste de um lado só cobre isso. O passo gera o TOML pelo console em **quatro casos** — as três formas de desempenho mais a seção opcional, que é o único ramo condicional do carregador — e exige que `carregar()` o aceite, conferindo **destino** e não só estrutura. Verificado por mutação: emitir `25.0` onde o validador exige inteiro derruba a build, e trocar os dois níveis de peso falha nomeando o campo.
+
+  **Dois defeitos que só apareceram ao OLHAR a tela.** Os links do menu colavam ("PainelParâmetros") — não havia regra de espaçamento, e com um item só ninguém veria. E o erro exibido por campo era o **último**, não o primeiro: um peso com casa decimal produz dois problemas ("precisa ser inteiro" e "os quatro somam 100,5"), e o de regra engolia o do campo — o dono via a soma errada sem ver a causa dela.
+
+  **Escrita provada de ponta a ponta contra o Postgres real:** o console valida, serializa, grava em `operacao.parametros_declarados`, lê de volta, e o TOML gravado **carrega no validador da rodada**. O pool ganhou `statement_timeout` — o console lê tabelas de ~7 mil linhas, e consulta longa segurando transação bloqueia o `CREATE INDEX CONCURRENTLY` que a aprovação roda.
+
 
 - **Progresso ao vivo por nó do grafo, e o desfecho da rodada em arquivo — sem instrumentar nó nenhum (F4).** A sexta trocou `invoke` por `stream` com `stream_mode=["updates","values"]`: `updates` diz qual nó terminou, `values` traz o estado acumulado, e o último deles é exatamente o que `invoke` devolvia. **Zero mudança nos nós.** O grafo da decisão não tem checkpointer — o estado carrega objetos de domínio não serializáveis —, então não há de onde LER progresso: ele precisa ser emitido enquanto acontece.
 
@@ -28,6 +38,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
   **Três lacunas da mesma classe, fechadas por uma linha cada.** O NDJSON acrescentava sem truncar no arranque — inofensivo enquanto nenhum trabalho roda duas vezes, mas na primeira recuperação de trabalho órfão o log da segunda tentativa concatenaria no da primeira e o progresso andaria **para trás**, contra a monotonicidade que esta mesma fatia exige. O `--hoje` no futuro sai por `SystemExit`, não por `return`, e não escrevia o resultado — o que fazia o nome da guarda estrutural ("todo caminho de saída") mentir. E a chave interna `__interrupt__` do LangGraph seria tratada como nome de nó: `invoke` a retira do estado, este laço não retirava. Nenhuma alcançável hoje; todas travadas por teste e verificadas por mutação.
 
   Fecha o defeito de `rodada_id` nunca preenchido, registrado em `bug.md` na fatia anterior.
+
+
+### Changed
+
+- **Migração já aplicada não se edita — regra escrita em `src/dados/README.md`.** Não há tabela de versão nem aplicador, e o CI só prova o caminho que ninguém percorre: ele sobe as migrações num Postgres limpo a cada PR. O caminho real — aplicar num banco que já tem dado — nenhum check exercita. A 006 foi editada depois de aplicada à mão, e o que salvou foi a forma (`DROP CONSTRAINT IF EXISTS` anexado ao fim), não o cuidado de quem editou.
+
 
 
 ### Added

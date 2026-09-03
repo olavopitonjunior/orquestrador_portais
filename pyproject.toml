@@ -57,6 +57,9 @@ packages = [
 
 [dependency-groups]
 dev = [
+    # Os testes leem os workflows do GitHub: YAML inválido não roda check NENHUM,
+    # e só o pytest local pode acusar isso antes do push.
+    "pyyaml>=6",
     "mypy>=1.13",
     "pytest>=8",
     "ruff>=0.6",

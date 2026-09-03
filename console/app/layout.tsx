@@ -15,6 +15,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <div className="marca">Vitrine · Console do Operador</div>
           <nav className="nav">
             <a href="/">Painel</a>
+        <a href="/parametros">Parâmetros</a>
           </nav>
         </header>
         <main className="conteudo">{children}</main>
