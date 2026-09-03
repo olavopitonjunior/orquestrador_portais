@@ -94,3 +94,67 @@ export async function saudeColeta(): Promise<SaudeColeta> {
     linhas: rows,
   };
 }
+
+export type Amarracao = {
+  linhas: number; // linhas de dado (sem o cabeçalho)
+  numericos: number; // codigoImovel decimal puro — o que o leitor da rodada amarra
+  vazios: number;
+  naoNumericos: number;
+  exemplos: string[]; // até 3 valores distintos do campo, para o operador VER o formato
+};
+
+/** Parser mínimo do CSV do raspador: toda célula entre aspas, `""` escapa aspas,
+ *  CRLF. Não é um parser geral — é o contrato de `csv-writer.ts`, e só ele. Divergência
+ *  conhecida com a rodada (que usa `csv.DictReader`): uma quebra de linha DENTRO de uma
+ *  célula desloca a coluna aqui, porque o arquivo é partido por linha antes do parse. O
+ *  `codigoImovel` é texto do anunciante; improvável, e a medição é diagnóstico, não decisão. */
+function celulasDaLinha(linha: string): string[] {
+  const celulas: string[] = [];
+  let atual = "";
+  let dentro = false;
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha[i];
+    if (dentro) {
+      if (c === '"') {
+        if (linha[i + 1] === '"') {
+          atual += '"';
+          i++;
+        } else dentro = false;
+      } else atual += c;
+    } else if (c === '"') dentro = true;
+    else if (c === ",") {
+      celulas.push(atual);
+      atual = "";
+    } else atual += c;
+  }
+  celulas.push(atual);
+  return celulas;
+}
+
+/** Mede a amarração do CSV que o canário escreveu — SEM ler o Newcore (invariante 1):
+ *  "numérico" é a condição que `dados/coletor_externo._imovel_id_de` exige; casar de
+ *  fato com um imóvel ativo só a rodada confere. `null` se não há CSV. */
+export async function amarracaoDoCsv(portal = "canalpro"): Promise<Amarracao | null> {
+  const caminho = resolve(outDir(), `${portal}.csv`);
+  if (!(await existe(caminho))) return null;
+  const texto = await readFile(caminho, "utf-8");
+  const linhas = texto.split(/\r?\n/).filter((l) => l.length > 0);
+  if (linhas.length === 0) return { linhas: 0, numericos: 0, vazios: 0, naoNumericos: 0, exemplos: [] };
+  const cabecalho = celulasDaLinha(linhas[0]);
+  const col = cabecalho.indexOf("codigoImovel");
+  if (col < 0) return { linhas: linhas.length - 1, numericos: 0, vazios: 0, naoNumericos: linhas.length - 1, exemplos: [] };
+  const r: Amarracao = { linhas: 0, numericos: 0, vazios: 0, naoNumericos: 0, exemplos: [] };
+  const vistos = new Set<string>();
+  for (const linha of linhas.slice(1)) {
+    r.linhas++;
+    const v = (celulasDaLinha(linha)[col] ?? "").trim();
+    if (v === "") r.vazios++;
+    else if (/^\d+$/.test(v)) r.numericos++;
+    else r.naoNumericos++;
+    if (v !== "" && !vistos.has(v) && r.exemplos.length < 3) {
+      vistos.add(v);
+      r.exemplos.push(v);
+    }
+  }
+  return r;
+}

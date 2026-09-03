@@ -630,3 +630,27 @@ def test_o_acompanhamento_RECONECTA_quando_a_conexao_morre(tmp_path, monkeypatch
         with conn.cursor() as cur:
             cur.execute("DELETE FROM operacao.trabalho WHERE id = %s", (trabalho_id,))
         conn.commit()
+
+
+def test_canary_steps_vira_CANARY_STEPS_so_no_canario():
+    from executar.trabalhador import ambiente_do_trabalho
+
+    assert ambiente_do_trabalho(_t("canario", canary_steps="1,10,100")) == {
+        "CANARY_STEPS": "1,10,100"
+    }
+    assert ambiente_do_trabalho(_t("canario")) == {}
+    assert ambiente_do_trabalho(_t("full")) == {}
+    with pytest.raises(ArgumentosInvalidos, match="canário"):
+        ambiente_do_trabalho(_t("full", canary_steps="10"))
+
+
+@pytest.mark.parametrize(
+    "ruim",
+    ["", "a", "10;rm -rf", "1,,2", "1, 2", "1,2\n", "\u0661", "\uff11\uff10", 10, True, ["10"]],
+)
+def test_canary_steps_fora_da_gramatica_e_recusado(ruim):
+    """O que vai para o ambiente de um processo filho não pode ser texto livre."""
+    from executar.trabalhador import ambiente_do_trabalho
+
+    with pytest.raises(ArgumentosInvalidos):
+        ambiente_do_trabalho(_t("canario", canary_steps=ruim))

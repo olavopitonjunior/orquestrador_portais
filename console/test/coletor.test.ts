@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { saudeColeta } from "../lib/coletor";
+import { amarracaoDoCsv, saudeColeta } from "../lib/coletor";
 
 function comOut(arquivos: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "console-coletor-"));
@@ -69,4 +69,59 @@ test("finishedAt inválido → sem data e sem idade (nunca NaN na UI)", async ()
   assert.equal(s.coletadoEm, null);
   assert.equal(s.idadeDias, null); // não NaN
   assert.equal(s.linhas, 10);
+});
+
+function csv(linhas: string[][]): string {
+  const cel = (v: string) => '"' + v.replace(/"/g, '""') + '"';
+  return linhas.map((l) => l.map(cel).join(",")).join("\r\n") + "\r\n";
+}
+
+test("amarração: conta numéricos, vazios e não numéricos, com exemplos", async () => {
+  comOut({
+    "canalpro.csv": csv([
+      ["idPortal", "codigoImovel", "nota"],
+      ["1", "123456", "8000"],
+      ["2", "IMOVEL-0001", "8000"],
+      ["3", "", ""],
+      ["4", "7890", ""],
+      ["5", "7890", ""], // repetido: exemplo não duplica
+    ]),
+  });
+  const a = await amarracaoDoCsv();
+  assert.ok(a);
+  assert.equal(a.linhas, 5);
+  assert.equal(a.numericos, 3);
+  assert.equal(a.vazios, 1);
+  assert.equal(a.naoNumericos, 1);
+  assert.deepEqual(a.exemplos, ["123456", "IMOVEL-0001", "7890"]);
+});
+
+test("amarração: sem CSV → null; CSV só com cabeçalho → zeros", async () => {
+  comOut({});
+  assert.equal(await amarracaoDoCsv(), null);
+  comOut({ "canalpro.csv": csv([["idPortal", "codigoImovel"]]) });
+  assert.deepEqual(await amarracaoDoCsv(), {
+    linhas: 0, numericos: 0, vazios: 0, naoNumericos: 0, exemplos: [],
+  });
+});
+
+test("amarração: aspas escapadas e vírgula dentro da célula não deslocam a coluna", async () => {
+  comOut({
+    "canalpro.csv": csv([
+      ["idPortal", "notaNome", "codigoImovel"],
+      ["1", 'x "y", z', "42"],
+    ]),
+  });
+  const a = await amarracaoDoCsv();
+  assert.ok(a);
+  assert.equal(a.numericos, 1);
+  assert.deepEqual(a.exemplos, ["42"]);
+});
+
+test("amarração: sem a coluna codigoImovel, tudo conta como não numérico", async () => {
+  comOut({ "canalpro.csv": csv([["idPortal"], ["1"], ["2"]]) });
+  const a = await amarracaoDoCsv();
+  assert.ok(a);
+  assert.equal(a.linhas, 2);
+  assert.equal(a.naoNumericos, 2);
 });
