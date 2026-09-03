@@ -53,3 +53,57 @@ Os dois runners memoizam com `if not cache: cache.append(...)`, sem trava. O `in
 **Por que não corrigi agora, e não é preguiça:** hoje só `no_analista_perfil` chama `coletar_vendas`, então não há corrida alcançável; o mesmo padrão já está mergeado na segunda, e consertar só a sexta cria assimetria entre os dois runners; e o gatilho real é o **retry do Orquestrador — parâmetro pendente nº 4, nulo**, que é a mesma fatia que torna vivo o problema de reexecução do nó de registro (hoje resolvido por `capturado[-1]`).
 
 **Quando tratar**: junto da definição do parâmetro nº 4, com um `threading.Lock` nos dois runners de uma vez. Achado do `revisor-de-codigo`.
+
+## A fila de operação pode encravar em definitivo, e nada a destrava
+
+**Agente:** — (infraestrutura de operação) · **Aberto em:** 2026-09-03 · **Afetou carga publicada?** não
+
+A guarda que impede rodada duplicada é um índice parcial único: um trabalho por tipo
+enquanto `pendente` ou `executando`. Se o trabalhador morrer sem poder concluir — SIGKILL,
+queda de energia, contêiner derrubado —, a linha fica `'executando'` para sempre e **todo
+trabalho daquele tipo passa a ser recusado**, em definitivo. A única saída hoje é SQL na mão.
+
+Já aconteceu de forma acidental, e é assim que se sabe que dói: seis linhas de teste
+vazaram para o banco vigente em 03/09 (um `conn.transaction()` que, sendo o mais externo,
+commitava) e travaram a fila de cinco tipos até serem removidas manualmente.
+
+O material para consertar já existe e está ocioso: `'cancelado'` está no CHECK e nenhum
+código o escreve; `operacao.trabalhador.visto_em` é escrito e nunca lido. Falta a peça que
+os liga — algo que, ao arrancar, marque como `cancelado` o que está `executando` sob um
+`pid` que não existe mais, ou cujo batimento envelheceu além de um limite.
+
+**Não corrigido nesta fatia** porque nem console nem agendador existem ainda, e a decisão
+de "quanto tempo sem batimento significa morto" é parâmetro que ninguém definiu — inventá-lo
+seria valor inventado. Precisa estar resolvido **antes** de o sistema ir para a máquina do
+gestor sem supervisão.
+
+## O console nunca vai ligar um trabalho à rodada que ele produziu
+
+**Agente:** — (infraestrutura de operação) · **Aberto em:** 2026-09-03 · **Afetou carga publicada?** não
+
+`operacao.trabalho.rodada_id` existe, tem chave estrangeira e docstring explicando quando
+fica nula. Mas **nenhum chamador a preenche**: o trabalhador chama `concluir()` sem o
+argumento, e não há outro caminho. Uma rodada real gravará `NULL` do mesmo jeito que um
+modo seco — e aí o acervo do console não consegue dizer qual execução produziu qual rodada.
+
+Escapou porque o teste de fumaça foi em modo seco, onde `NULL` é a resposta certa.
+
+**RESOLVIDO em 2026-09-03, na fatia F4.** O runner passou a escrever um arquivo de
+resultado em TODOS os caminhos de saída (`--resultado`), com o `rodada_id` declarado; o
+trabalhador o lê e o passa a `concluir()`. Parsear a prosa do log era a alternativa, e
+faria uma mudança de redação virar defeito de integração. Uma guarda estrutural exige que
+todo `return` de `main` escreva o arquivo antes de sair — verificada por mutação.
+
+## `npm` vem do PATH herdado, e sob agendador ele não está lá
+
+**Agente:** Coletor Externo (disparo) · **Aberto em:** 2026-09-03 · **Afetou carga publicada?** não
+
+O trabalhador executa `npm run canary|full` contando com o PATH do processo. Sob `launchd`
+no macOS o PATH é mínimo (`/usr/bin:/bin:/usr/sbin:/sbin`) e um `npm` de homebrew, nvm ou
+mise não está nele. Some-se que o `mise.toml` da raiz fixa Python e **não fixa node**,
+enquanto o `package.json` do coletor exige `>= 22`: um `npm` herdado pode rodar o raspador
+na versão errada sem erro nenhum.
+
+**Mitigado, não resolvido:** a mensagem de erro passou a NOMEAR o executável ausente e a
+apontar o PATH mínimo do agendador — antes dizia só `FileNotFoundError`, verdadeiro e
+inútil. Falta resolver o binário no arranque e fixar node no `mise.toml`.

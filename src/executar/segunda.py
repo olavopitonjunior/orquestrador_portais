@@ -38,6 +38,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from config.ambiente import carregar_env
 from dados.acompanhamento import coletar_leads
 from dados.registro.acompanhamento import (
     AcumuloDaJanela,
@@ -277,6 +278,8 @@ def executar(destino: Path, *, hoje: date | None = None, dry_run: bool = False) 
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Ambiente do `.env` do diretório CORRENTE — ver o docstring de config.ambiente.
+    carregar_env()
     p = argparse.ArgumentParser(description="Rodada de segunda (acompanhamento)")
     p.add_argument("--destino", type=Path, default=Path("saida/segunda"))
     p.add_argument("--dry-run", action="store_true", help="não grava nem escreve nada")

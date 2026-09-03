@@ -11,6 +11,7 @@ apanhada pelo crivo não sai com o mesmo código de "não havia estoque".
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
@@ -134,6 +135,12 @@ def test_runner_nunca_fia_meio_coletor(tmp_path, monkeypatch, parametros):
         def invoke(self, _estado):
             return {"estado": Estado.ABORTADA, "motivo_aborto": "sem estoque"}
 
+        def stream(self, _estado, stream_mode=None):
+            """Emula o contrato real do LangGraph: `values` traz o estado
+            acumulado, e o último é o retorno. Sem isto, o falso exercitaria
+            um caminho que a produção não usa mais."""
+            yield "values", self.invoke(_estado)
+
     def _falso_construir(fontes, params, **kw):
         capturado["externo_fonte"] = fontes.coletar_externo
         capturado["externo_params"] = kw.get("parametros_externo")
@@ -156,6 +163,12 @@ def _grafo_que_devolve(final):
     class _Grafo:
         def invoke(self, _estado):
             return final
+
+        def stream(self, _estado, stream_mode=None):
+            """Emula o contrato real do LangGraph: `values` traz o estado
+            acumulado, e o último é o retorno. Sem isto, o falso exercitaria
+            um caminho que a produção não usa mais."""
+            yield "values", self.invoke(_estado)
 
     return lambda *a, **k: _Grafo()
 
@@ -313,6 +326,12 @@ def test_id_devolvido_e_o_ULTIMO_nao_o_primeiro(tmp_path, monkeypatch, parametro
             self._registrar(estado)  # o retry: o nó roda duas vezes
             self._registrar(estado)
             return estado
+
+        def stream(self, _estado, stream_mode=None):
+            """Emula o contrato real do LangGraph: `values` traz o estado
+            acumulado, e o último é o retorno. Sem isto, o falso exercitaria
+            um caminho que a produção não usa mais."""
+            yield "values", self.invoke(_estado)
 
     monkeypatch.setattr(mod, "construir_grafo", lambda _f, _p, **kw: _Grafo(kw["registrar"]))
     _final, rodada_id = mod.executar(tmp_path, parametros, hoje=HOJE)
@@ -606,3 +625,224 @@ def test_com_historico_a_planilha_recebe_o_dict_e_o_limiar(
     # e o limiar acompanha: sem ele a coluna declararia pendência de parâmetro para
     # sempre, inclusive depois de o dono definir o nº 14
     assert vistos["resultado_esperado"] == {"destaque": 1, "super_destaque": 3}
+
+
+# --- o arquivo de resultado: como o desfecho chega a quem disparou ------------
+
+
+def _resultado(caminho):
+    import json
+
+    return json.loads(caminho.read_text(encoding="utf-8"))
+
+
+def test_o_modelo_recusado_ainda_ESCREVE_o_resultado(tmp_path):
+    """Recusa é desfecho, não ausência de desfecho. Quem disparou precisa saber por
+    que não houve rodada — e o arquivo é o único canal, porque parsear a prosa do log
+    faria uma mudança de redação virar defeito de integração."""
+    alvo = tmp_path / "r.json"
+    assert mod.main(["--parametros", str(mod.MODELO_DE_DOCS), "--resultado", str(alvo)]) == 5
+    r = _resultado(alvo)
+    assert r["codigo"] == 5 and r["rodada_id"] is None and r["falha"] == "ModeloComoEntrada"
+
+
+def test_parametro_faltando_ESCREVE_o_resultado(tmp_path):
+    incompleto = tmp_path / "p.toml"
+    incompleto.write_text(
+        "\n".join(
+            linha
+            for linha in mod.MODELO_DE_DOCS.read_text(encoding="utf-8").splitlines()
+            if not linha.startswith("razao = ")
+        ),
+        encoding="utf-8",
+    )
+    alvo = tmp_path / "r.json"
+    assert mod.main(["--parametros", str(incompleto), "--resultado", str(alvo)]) == 5
+    r = _resultado(alvo)
+    assert r["codigo"] == 5 and r["falha"] == "ParametroAusente"
+
+
+def test_sem_a_opcao_nenhum_arquivo_e_escrito(tmp_path, monkeypatch):
+    """A opção é opcional: quem roda à mão não deve ganhar arquivo que não pediu."""
+    monkeypatch.chdir(tmp_path)
+    assert mod.main(["--parametros", str(mod.MODELO_DE_DOCS)]) == 5
+    assert not list(tmp_path.glob("*.json"))
+
+
+def test_TODO_caminho_de_saida_de_main_escreve_o_resultado():
+    """Guarda estrutural, e a razão dela é concreta: um `return` novo em `main` que
+    esqueça o arquivo deixa quem disparou sem desfecho, e o sintoma é uma tela que
+    diz "executando" para sempre. Ler o código-fonte é o único jeito de cobrir os
+    caminhos que exigiriam Newcore fora do ar ou crivo vetando para acontecer."""
+    import inspect
+    import re
+
+    fonte = inspect.getsource(mod.main)
+    corpo = fonte.split("\n")
+    retornos = [i for i, linha in enumerate(corpo) if re.match(r"\s+return \w", linha)]
+    assert retornos, "não achei nenhum `return` em main — a guarda passaria vazia"
+    for i in retornos:
+        janela = "\n".join(corpo[max(0, i - 4) : i + 1])
+        assert "_escrever_resultado" in janela, (
+            f"o `return` da linha {i} de main não escreve o resultado antes de sair:\n{janela}"
+        )
+
+
+# --- o emissor de eventos: só rodava em produção -----------------------------
+
+
+def test_sem_caminho_nao_ha_emissor():
+    """`--eventos` é opcional; quem roda à mão não deve ganhar arquivo que não pediu."""
+    assert mod._emissor_de_eventos(None) is None
+
+
+def test_o_emissor_escreve_UMA_linha_por_no_e_cria_o_diretorio(tmp_path):
+    alvo = tmp_path / "fundo" / "e.ndjson"
+    emitir = mod._emissor_de_eventos(alvo)
+    assert emitir is not None
+    emitir("coletor_interno", {"prontos": {"coletor_interno": True}})
+    emitir("decisor", {"prontos": {"coletor_interno": True, "decisor": True}})
+
+    linhas = [json.loads(linha) for linha in alvo.read_text(encoding="utf-8").splitlines()]
+    assert [d["no"] for d in linhas] == ["coletor_interno", "decisor"]
+    assert linhas[1]["prontos"] == {"coletor_interno": True, "decisor": True}
+    assert all(d["momento"] for d in linhas)
+
+
+def test_o_emissor_NAO_vaza_o_estado_da_rodada(tmp_path):
+    """O estado carrega objetos de domínio e dados vindos do Newcore. O arquivo é lido
+    por outro processo e mostrado numa tela — só podem sair nome do nó, instante e os
+    prontos. Um `json.dumps` do estado inteiro nem serializaria, e essa falha
+    apareceria na primeira rodada real, não aqui."""
+    alvo = tmp_path / "e.ndjson"
+    emitir = mod._emissor_de_eventos(alvo)
+    assert emitir is not None
+    emitir(
+        "decisor",
+        {
+            "prontos": {"decisor": True},
+            "resultado": object(),
+            "candidatos": ["dado do Newcore que não pode sair"],
+        },
+    )
+    conteudo = alvo.read_text(encoding="utf-8")
+    assert "Newcore" not in conteudo
+    assert set(json.loads(conteudo)) == {"momento", "no", "prontos"}
+
+
+def test_executar_chama_o_callback_uma_vez_por_no(tmp_path, monkeypatch, parametros):
+    """O caminho do callback dentro de `executar` não era exercitado por teste nenhum —
+    só rodava em produção. É a mesma classe do defeito de defasagem que a primeira
+    execução instrumentada revelou."""
+
+    class _GrafoComProgresso:
+        def stream(self, _estado, stream_mode=None):
+            yield "updates", {"coletor_interno": {}}
+            yield "values", {"prontos": {"coletor_interno": True}}
+            yield "updates", {"decisor": {}}
+            yield "values", {"estado": Estado.ABORTADA, "motivo_aborto": "fim do teste"}
+
+    monkeypatch.setattr(mod, "construir_grafo", lambda *a, **k: _GrafoComProgresso())
+    vistos: list[tuple[str, dict]] = []
+    mod.executar(
+        tmp_path,
+        parametros,
+        hoje=HOJE,
+        dry_run=True,
+        ao_terminar_no=lambda no, estado: vistos.append((no, dict(estado))),
+    )
+    assert [no for no, _ in vistos] == ["coletor_interno", "decisor"]
+    # E cada um com o estado DEPOIS dele — a defasagem que a produção revelou.
+    assert vistos[0][1]["prontos"] == {"coletor_interno": True}
+
+
+def test_o_emissor_COMECA_LIMPO_a_cada_execucao(tmp_path):
+    """O NDJSON acrescenta linha a linha; sem truncar no arranque, uma segunda
+    tentativa do mesmo trabalho concatenaria no log da primeira e o progresso da tela
+    andaria PARA TRÁS — contra a monotonicidade que esta fatia exige. Inofensivo hoje
+    (nenhum trabalho roda duas vezes), deixa de ser quando houver recuperação de
+    trabalho órfão, que é a fatia óbvia seguinte."""
+    alvo = tmp_path / "e.ndjson"
+    primeiro = mod._emissor_de_eventos(alvo)
+    assert primeiro is not None
+    primeiro("decisor", {"prontos": {"decisor": True}})
+
+    segundo = mod._emissor_de_eventos(alvo)  # nova execução, mesmo caminho
+    assert segundo is not None
+    segundo("coletor_interno", {"prontos": {"coletor_interno": True}})
+
+    linhas = [json.loads(linha) for linha in alvo.read_text(encoding="utf-8").splitlines()]
+    assert [d["no"] for d in linhas] == ["coletor_interno"], (
+        "o log da execução anterior sobreviveu e o progresso andaria para trás"
+    )
+
+
+def test_chave_interna_do_langgraph_nao_vira_nome_de_no(tmp_path, monkeypatch, parametros):
+    """`invoke` retira `__interrupt__` do fluxo de updates; este laço não retira, então
+    sem o filtro ela sairia no NDJSON como se um nó chamado `__interrupt__` tivesse
+    terminado. Não alcançável hoje — o grafo da decisão não tem checkpointer —, e é
+    justamente por isso que a guarda precisa existir antes de alguém pôr um."""
+
+    class _GrafoComInterrupcao:
+        def stream(self, _estado, stream_mode=None):
+            yield "updates", {"decisor": {}, "__interrupt__": ()}
+            yield "values", {"estado": Estado.ABORTADA, "motivo_aborto": "fim do teste"}
+
+    monkeypatch.setattr(mod, "construir_grafo", lambda *a, **k: _GrafoComInterrupcao())
+    vistos: list[str] = []
+    mod.executar(
+        tmp_path,
+        parametros,
+        hoje=HOJE,
+        dry_run=True,
+        ao_terminar_no=lambda no, _e: vistos.append(no),
+    )
+    assert vistos == ["decisor"], f"chave interna vazou como nó: {vistos}"
+
+
+def test_hoje_no_futuro_ESCREVE_o_resultado_antes_de_sair(tmp_path):
+    """Caminho de saída que NÃO é um `return`: `p.error` sai por SystemExit(2). A
+    guarda estrutural casa `return`, então sem esta escrita o nome dela mentiria."""
+    from datetime import timedelta
+
+    alvo = tmp_path / "r.json"
+    amanha = (date.today() + timedelta(days=1)).isoformat()
+    with pytest.raises(SystemExit) as e:
+        mod.main(
+            ["--parametros", str(mod.MODELO_DE_DOCS), "--hoje", amanha, "--resultado", str(alvo)]
+        )
+    assert e.value.code == 2
+    assert json.loads(alvo.read_text(encoding="utf-8"))["codigo"] == 2
+
+
+def test_nos_do_MESMO_superstep_saem_juntos_e_com_o_estado_de_ambos(
+    tmp_path, monkeypatch, parametros
+):
+    """Trava o comportamento do fan-out, que era implícito.
+
+    `analista_perfil` e `coletor_externo` terminam no mesmo superstep do LangGraph, e
+    o estado acumulado só chega depois dos dois. Os `prontos` reportados são reais —
+    ambos terminaram —, mas o `momento` é o do MAIS LENTO, atribuído igualmente ao
+    mais rápido. É limitação documentada no emissor, não defeito; este teste existe
+    para que uma mudança futura no laço não a altere sem que alguém decida.
+    """
+
+    class _GrafoComFanOut:
+        def stream(self, _estado, stream_mode=None):
+            yield "updates", {"analista_perfil": {}, "coletor_externo": {}}
+            yield "values", {"prontos": {"analista_perfil": True, "coletor_externo": True}}
+            yield "values", {"estado": Estado.ABORTADA, "motivo_aborto": "fim do teste"}
+
+    monkeypatch.setattr(mod, "construir_grafo", lambda *a, **k: _GrafoComFanOut())
+    vistos: list[tuple[str, dict]] = []
+    mod.executar(
+        tmp_path,
+        parametros,
+        hoje=HOJE,
+        dry_run=True,
+        ao_terminar_no=lambda no, estado: vistos.append((no, dict(estado.get("prontos") or {}))),
+    )
+    assert [no for no, _ in vistos] == ["analista_perfil", "coletor_externo"]
+    # Os DOIS recebem o estado de depois de ambos — é o que a limitação descreve.
+    for _, prontos in vistos:
+        assert prontos == {"analista_perfil": True, "coletor_externo": True}

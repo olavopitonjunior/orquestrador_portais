@@ -8,6 +8,7 @@ prova aqui é o CONTRATO do runner — quais guardas recusam, com que código, e
 carimbo é único.
 """
 
+import os
 from contextlib import nullcontext
 from datetime import datetime, timedelta
 
@@ -422,13 +423,36 @@ def test_main_aprovar_exige_quem_aprovou():
     assert e.value.code == 2
 
 
-def test_main_sem_postgres_url_sai_por_FONTE(monkeypatch):
+def test_main_sem_postgres_url_sai_por_FONTE(monkeypatch, tmp_path):
     """Fail-fast de `conexao.url`, traduzido para o código de falha de fonte — não
-    para o de escrita: nada chegou a ser escrito."""
+    para o de escrita: nada chegou a ser escrito.
+
+    O `chdir` é parte do contrato, não conveniência de teste: `main` carrega o `.env`
+    do diretório CORRENTE, então apagar a variável do ambiente não basta enquanto
+    houver um `.env` ao lado — ele a reporia. Aqui se testa a ausência de verdade."""
     from executar.aprovar import FONTE, main
 
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("POSTGRES_URL", raising=False)
     assert main(["tacita", "7"]) == FONTE
+
+
+def test_main_pega_a_postgres_url_do_env_do_diretorio_corrente(monkeypatch, tmp_path):
+    """O outro lado, e a razão de o carregador existir: com um `.env` ao lado, o
+    comando roda sem o operador exportar nada. Antes disto não havia forma suportada
+    de popular o ambiente — `set -a; . .env` é justamente o que a documentação proíbe,
+    porque o shell expandiria metacaractere do valor."""
+    from executar.aprovar import FONTE, main
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    (tmp_path / ".env").write_text(
+        'POSTGRES_URL="postgresql:///nao-existe-de-proposito"\n', encoding="utf-8"
+    )
+    # Passa da guarda de variável ausente e falha adiante, ao tentar conectar — que
+    # é o que prova que a variável foi lida. Continua FONTE, por outro motivo.
+    assert main(["tacita", "7"]) == FONTE
+    assert os.environ["POSTGRES_URL"] == "postgresql:///nao-existe-de-proposito"
 
 
 def test_main_recusa_id_nao_numerico():

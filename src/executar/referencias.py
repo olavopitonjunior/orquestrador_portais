@@ -61,6 +61,7 @@ from pathlib import Path
 # `executar.sexta`, que arrastaria LangGraph e psycopg (575 ms de 630 ms) para uma
 # ferramenta que lê markdown e conta imóveis, e faria qualquer efeito colateral
 # futuro daquele módulo virar efeito colateral desta medição.
+from config.ambiente import carregar_env
 from config.recorte import DEFINICAO_ATIVO
 from dados.coletor_interno import coletar
 from dados.vendas import coletar_vendas
@@ -383,6 +384,8 @@ def _registrar(comparacoes: Sequence[Comparacao], medido_em: date, diagnostico: 
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Ambiente do `.env` do diretório CORRENTE — ver o docstring de config.ambiente.
+    carregar_env()
     p = argparse.ArgumentParser(description="Mede os números de referência contra a base.")
     p.add_argument(
         "--registrar",

@@ -534,3 +534,90 @@ def test_imovel_sem_janela_nao_entra_no_historico():
     assert 2 in final["resultado"].detalhes
     assert 1 in final["historico_janelas"]
     assert 2 not in final["historico_janelas"]
+
+
+def test_o_estado_final_por_STREAM_e_igual_ao_por_INVOKE():
+    """A trava da decisão de usar `stream` em produção.
+
+    A sexta trocou `invoke` por `stream` para emitir progresso por nó — o grafo da
+    decisão não tem checkpointer (o estado carrega objetos de domínio não
+    serializáveis), então não há de onde LER progresso: ele precisa ser emitido
+    enquanto acontece. A troca só é segura se o estado final for o mesmo, e isso não
+    é óbvio sob o fan-out `analista_perfil ∥ coletor_externo`, onde duas atualizações
+    concorrem para o mesmo estado.
+
+    Manter os dois caminhos (stream quando alguém observa, invoke quando não) seria
+    pior: o instrumentado só rodaria quando o console dispara, e o exercitado em teste
+    divergiria do que roda em produção. Um caminho só, e este teste é o que o autoriza.
+    """
+    entrada = {
+        "data_referencia": date(2026, 9, 4),
+        "estado": Estado.EM_ANDAMENTO,
+        "prontos": {},
+        "degradacoes": [],
+    }
+    grafo = construir_grafo(_fontes([_candidato(1), _candidato(2)]), PARAMS)
+
+    por_invoke = grafo.invoke(dict(entrada))
+
+    nos: list[str] = []
+    por_stream: dict = {}
+    for modo, pedaco in grafo.stream(dict(entrada), stream_mode=["updates", "values"]):
+        if modo == "values":
+            por_stream = pedaco
+        else:
+            nos.extend(pedaco.keys())
+
+    assert set(por_stream) == set(por_invoke), "o stream perdeu ou inventou chaves de estado"
+    assert por_stream["estado"] == por_invoke["estado"]
+    assert por_stream["prontos"] == por_invoke["prontos"]
+    assert por_stream["degradacoes"] == por_invoke["degradacoes"]
+    # E o progresso precisa existir: sem os nós, a troca não teria comprado nada.
+    assert nos[0] == "coletor_interno", f"o primeiro nó deveria ser a coleta, veio {nos[:1]}"
+    assert {"analista_perfil", "coletor_externo", "decisor", "crivo"} <= set(nos)
+    assert nos[-1] == "finalizar", f"o último nó deveria ser o fechamento, veio {nos[-1:]}"
+
+
+def test_o_progresso_reporta_o_estado_DEPOIS_do_no_concluido():
+    """Regressão da primeira execução instrumentada.
+
+    O LangGraph emite `updates` ANTES do `values` do mesmo passo. Anunciando o nó na
+    hora, cada um era reportado com o estado de ANTES dele — o `coletor_interno` saía
+    com zero etapas prontas e a tela mostrava sempre um passo atrás. Não aparece em
+    teste de topologia porque lá ninguém olha os `prontos`.
+    """
+
+    vistos: list[tuple[str, int]] = []
+
+    class _Fontes:
+        pass
+
+    # Exercita pelo runner, que é quem instrumenta — não pelo grafo cru.
+    entrada = {
+        "data_referencia": date(2026, 9, 4),
+        "estado": Estado.EM_ANDAMENTO,
+        "prontos": {},
+        "degradacoes": [],
+    }
+    grafo = construir_grafo(_fontes([_candidato(1), _candidato(2)]), PARAMS)
+    final: dict = {}
+    pendentes: list[str] = []
+    for modo, pedaco in grafo.stream(dict(entrada), stream_mode=["updates", "values"]):
+        if modo == "values":
+            final = pedaco
+            for no in pendentes:
+                vistos.append((no, sum(1 for v in final.get("prontos", {}).values() if v)))
+            pendentes.clear()
+        else:
+            pendentes.extend(pedaco)
+
+    assert vistos, "nenhum nó foi anunciado"
+    primeiro_no, prontos_no_primeiro = vistos[0]
+    assert primeiro_no == "coletor_interno"
+    assert prontos_no_primeiro >= 1, (
+        "o primeiro nó foi anunciado com o estado de ANTES dele — a tela mostraria "
+        "sempre um passo atrás"
+    )
+    # E o progresso precisa ser monótono: etapa nenhuma "desprontifica".
+    contagens = [n for _, n in vistos]
+    assert contagens == sorted(contagens), f"o progresso andou para trás: {vistos}"

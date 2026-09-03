@@ -16,8 +16,9 @@ export function db(): Pool {
     const url = process.env.POSTGRES_URL;
     if (!url) {
       throw new Error(
-        "POSTGRES_URL ausente no ambiente. Gere o .env (op inject -i .env.tmpl -o .env) " +
-          "ou exporte a URL do Postgres próprio.",
+        "POSTGRES_URL ausente no ambiente. Gere o .env DENTRO de console/ " +
+          "(op inject -i .env.tmpl -o .env) — o console lê o seu próprio .env, não o da " +
+          "raiz — ou exporte a URL do Postgres próprio.",
       );
     }
     g.__registroPool = new Pool({ connectionString: url });

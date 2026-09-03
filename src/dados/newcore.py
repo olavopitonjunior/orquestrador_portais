@@ -109,5 +109,15 @@ def consultar(
     # A defesa dura continua sendo a credencial read-only; esta guarda não abre
     # essa brecha. Nenhuma query interna usa CTE hoje.
     with conectar(database) as conn, conn.cursor() as cur:
-        cur.execute(sql, params or ())
+        # Sem parâmetros, `execute` é chamado com UM argumento — nunca com `()`.
+        # O pymysql aplica `query % args` sempre que `args` não é None, e uma tupla
+        # vazia não escapa disso: qualquer `%` no texto do SQL vira especificador de
+        # formato e estoura com TypeError. Não é hipótese — a primeira execução real
+        # da sexta morreu assim, por causa de dois percentuais escritos em COMENTÁRIO
+        # do próprio SQL ("94,8%", "0,176%"). O defeito é silencioso na revisão porque
+        # o SQL está certo; quem erra é a ponte.
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
         return list(cur.fetchall())

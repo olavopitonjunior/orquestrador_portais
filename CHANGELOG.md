@@ -10,6 +10,77 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+
+### Added
+
+- **Progresso ao vivo por nó do grafo, e o desfecho da rodada em arquivo — sem instrumentar nó nenhum (F4).** A sexta trocou `invoke` por `stream` com `stream_mode=["updates","values"]`: `updates` diz qual nó terminou, `values` traz o estado acumulado, e o último deles é exatamente o que `invoke` devolvia. **Zero mudança nos nós.** O grafo da decisão não tem checkpointer — o estado carrega objetos de domínio não serializáveis —, então não há de onde LER progresso: ele precisa ser emitido enquanto acontece.
+
+  **Um caminho só, e não dois.** Usar `stream` apenas quando alguém observa deixaria o caminho instrumentado rodando só quando o console dispara, e a versão exercitada em teste divergiria da que roda em produção. O que autoriza o caminho único é um teste que prova estado final idêntico entre `stream` e `invoke`, inclusive sob o fan-out `analista_perfil ∥ coletor_externo`.
+
+  **Dois contratos de ARQUIVO, no idioma que o projeto já usa** (o `status.json` do raspador): `--eventos` escreve uma linha JSON por nó concluído, com `flush`, e sobrevive à morte de quem observa; `--resultado` escreve o desfecho em **todos** os caminhos de saída, inclusive os de falha. É por ele que o `rodada_id` chega a quem disparou — parsear a frase do log seria a alternativa, e faria uma mudança de redação virar defeito de integração. É também o único jeito de contar uma rodada **abortada**, que não deixa nenhuma linha no Registro. O campo de falha carrega só o TIPO da exceção: a mensagem pode ecoar dado do Newcore, e o arquivo é lido por outro processo e mostrado numa tela.
+
+  **Guarda estrutural:** um teste lê o código-fonte de `main` e exige que todo `return` escreva o resultado antes de sair — os caminhos que exigiriam Newcore fora do ar ou crivo vetando não são exercitáveis de outro jeito. Verificado por mutação.
+
+  **Um defeito de defasagem, achado pela primeira execução instrumentada:** o LangGraph emite `updates` antes do `values` do mesmo passo, então anunciar o nó na hora o reportava com o estado de ANTES dele — o `coletor_interno` saía com zero etapas prontas e a tela mostraria sempre um passo atrás. Não aparece em teste de topologia, porque lá ninguém olha os prontos. Os nós passam a esperar o `values` seguinte, e um teste exige progresso monótono.
+
+  **Artefatos de operação saem de `saida/`.** Ficavam em `saida/execucoes/`, ao lado de `saida/sexta/`, que guarda a planilha — o entregável contratual. O comentário do código já dizia "fora de `saida/`" enquanto a constante estava dentro: comentário e código afirmando o oposto, que neste projeto é bug do código. Passaram para `var/execucoes/`, porque expurgo de log não pode alcançar planilha.
+
+  **Três lacunas da mesma classe, fechadas por uma linha cada.** O NDJSON acrescentava sem truncar no arranque — inofensivo enquanto nenhum trabalho roda duas vezes, mas na primeira recuperação de trabalho órfão o log da segunda tentativa concatenaria no da primeira e o progresso andaria **para trás**, contra a monotonicidade que esta mesma fatia exige. O `--hoje` no futuro sai por `SystemExit`, não por `return`, e não escrevia o resultado — o que fazia o nome da guarda estrutural ("todo caminho de saída") mentir. E a chave interna `__interrupt__` do LangGraph seria tratada como nome de nó: `invoke` a retira do estado, este laço não retirava. Nenhuma alcançável hoje; todas travadas por teste e verificadas por mutação.
+
+  Fecha o defeito de `rodada_id` nunca preenchido, registrado em `bug.md` na fatia anterior.
+
+
+### Added
+
+- **A fila de operação e o trabalhador que a executa — o console passa a poder disparar rodadas.** Esquema `operacao` novo (migração 006) com a fila de trabalhos, o log por execução, os parâmetros declarados, as publicações, o batimento do trabalhador e o adiamento de rodada. Mais `src/dados/operacao.py` (camada de acesso) e `rodada-trabalhador` (o processo que executa).
+
+  **O console nunca executa processo.** Ele INSERE na fila; um trabalhador separado reivindica e roda. Disparar por `spawn` dentro de uma requisição daria um filho que morre no recarregamento do servidor — ou zumbi, se destacado — e uma linha "executando" eterna, porque não haveria quem observasse a transição. Com o estado no banco, nada precisa sobreviver ao reinício.
+
+  **A dedup subiu de nível, e isso é a barreira contra rodada duplicada.** `gravar_rodada_decisao` não tem chave natural: duas chamadas produzem duas rodadas válidas e indistinguíveis, e nada no esquema do Registro impede — um duplo-clique bastaria. Um índice parcial único (`um trabalho por tipo em voo`) faz o segundo INSERT falhar antes de qualquer processo nascer. Por tipo, não global: raspar enquanto se aprova uma rodada antiga é legítimo.
+
+  **O trabalhador chama o CLI, não a função.** `main()` é quem recusa o arquivo-modelo como entrada real, quem recusa `--hoje` no futuro e quem traduz cada falha no seu código de saída; reimplementar isso seria manter duas versões da mesma guarda, e a segunda envelheceria calada. Ele também **nunca re-tenta sozinho** — sem chave de dedup, um processo que morre depois do commit produziria a segunda rodada se retentado — e roda o filho em `INFO`, nunca `DEBUG`, para que traceback com dado do Newcore não chegue à tela.
+
+  **Um defeito próprio, achado e corrigido na mesma fatia.** Traduzir a violação de unicidade em erro nomeado não desfazia o aborto da transação do Postgres: a conexão ficava envenenada e o comando seguinte estourava — justamente o comando que o console faz, que é LER a fila para dizer "já está rodando". A primeira tentativa de conserto foi pior que o defeito: `conn.transaction()` do psycopg3, quando é o mais externo, faz COMMIT ao sair, e sob o fixture de teste isso **commitou seis linhas no banco vigente** que, nascendo `pendente`, travaram a fila de cinco tipos até serem removidas à mão — exatamente a armadilha registrada em `tests/README.md` uma hora antes. A versão final usa SAVEPOINT explícito, e só fora de autocommit.
+
+  **O trabalho é entidade própria porque a rodada abortada não deixa linha nenhuma no Registro** — nem cabeçalho. Sem ele, o motivo de um aborto viveria só no log do processo e sumiria.
+
+### Fixed
+
+- **A ponte com o MySQL quebrava com qualquer `%` no texto do SQL — e por isso a coleta interna nunca havia rodado contra a base viva.** `consultar(sql)` sem parâmetros chamava `execute(sql, ())`, e o pymysql aplica `query % args` sempre que `args` não é None: uma tupla vazia não escapa disso, e todo `%` do texto vira especificador de formato. O SQL do Coletor Interno tem dois percentuais em **comentário** — números de medição, `94,8%` e `0,176%` —, então a rodada morria com `TypeError` antes de ler uma linha.
+
+  **O defeito é invisível na revisão porque o SQL está certo: quem erra é a ponte.** E era invisível na suíte porque nenhum teste atravessava o driver — todos param no contrato de conversão. Achado pela **primeira execução real da sexta**, não por leitura. Corrigido passando os parâmetros só quando existem, com teste de regressão que afirma o que a ponte entrega ao driver: um argumento sem parâmetros, dois com.
+
+  Com a correção, a rodada de sexta completou de ponta a ponta contra o Newcore ao vivo pela primeira vez: **64 segundos**, código 0, estado DEGRADADA apenas no fator de portal (sem raspagem), sem gravar nada por ser modo seco.
+
+
+### Added
+
+- **Contrato dos parâmetros da rodada, exportado em JSON — a fonte única do formulário do console.** O painel precisa saber, por campo do TOML, o tipo, a faixa, as escolhas fechadas, se é obrigatório e de qual parâmetro pendente ele é. Isso existia só espalhado por `src/config/parametros.py` — validadores, dataclasses de domínio, mensagens de erro —, nada que TypeScript leia. Duplicar em TS garantiria divergência silenciosa. `src/config/contrato.py` descreve os **22 campos** e **4 regras cruzadas**; `rodada-contrato` os emite; `console/lib/contrato-parametros.json` é a cópia commitada, travada por um passo de CI que compara byte a byte.
+
+  **A trava tem duas metades, e a primeira versão só tinha uma.** A de **forma** monta um TOML *a partir do contrato* e exige que `carregar()` o aceite — o que prova as duas direções por causa das regras do carregador: contrato que esquece campo cai em "parâmetro ausente"; contrato que inventa campo cai em "chave desconhecida". A de **valor** faltava: a ida e volta visita um ponto interior por campo e não enxerga faixa, tipo nem escolhas. Uma auditoria hostil mutou os quatro atributos e a suíte ficou **verde nas quatro vezes**. Entrou uma bateria de sondas que afirma **aceita E recusa** em cada fronteira, com `nextafter` em vez de delta chutado.
+
+  **O pior dos quatro furos não era a faixa, era o tipo.** O validador aceita `int` e `float` no mesmo campo, então marcar `inteiro` num campo fracionário **não erra em lugar nenhum**: o formulário proibiria 0,35 numa intensidade de penalidade, o dono digitaria 0 ou 1, e a rodada decidiria 6.970 posições pagas com um número que ele não queria mas que o formulário obrigou — exatamente o que `src/config/parametros.py` existe para impedir.
+
+  **Dois defeitos estruturais corrigidos junto.** O rótulo da pendência estava nulo em 10 dos 22 campos, porque a função que o deriva só era chamada no laço dos pesos — o formulário ficaria mudo sobre qual decisão o dono está respondendo. Agora uma fábrica única o aplica sempre, por busca de prefixo em `PENDENTE_DE`, e o defeito é irreproduzível. E as regras cruzadas eram **prosa**: duas delas tinham os mesmos campos e só se distinguiam pelo texto, o que obrigaria o console a reimplementar a semântica em TypeScript a partir de uma string. Ganharam tipo legível por máquina (`soma_igual`, `todos_ou_nenhum`, `maior_que`).
+
+
+### Fixed
+
+- **O ambiente passa a carregar — `op inject` volta a funcionar e a suíte deixa de depender da ordem dos testes.** Três defeitos encadeados, todos medidos e nenhum onde o registro dizia.
+
+  **1. O `.env` não podia ser gerado, e a culpa não era do cofre.** O `[P-17]` registrava duas causas: o campo da senha guardaria uma linha de comando, e `POSTGRES_URL` faltaria no item. Medido, as duas caem — a senha **funciona** (a leitura do Newcore respondeu: 405.053 linhas no espelho, 48.881 ativos) e `POSTGRES_URL` **não precisa** de cofre, porque a forma `postgresql:///banco` usa o socket local e não carrega usuário, senha nem host. A causa real era o **próprio `.env.tmpl`**, que declarava três referências para campos inexistentes; o `op inject` falha inteiro quando uma só falta. Duas delas eram `CANALPRO_USER`/`CANALPRO_PASSWORD`, resíduo anterior à **D-010** (login manual), que **nenhuma linha de código lia**.
+
+  **2. Não existia forma suportada de carregar o `.env`.** Os runners leem `os.environ` direto e nada o populava; o caminho óbvio (`set -a; . .env`) é justamente o proibido, porque o shell expande metacaractere do valor e produz um `Access denied` indistinguível de credencial errada. `src/config/ambiente.py` faz o que o mapa de dados mandava: lê o arquivo **dentro do Python**, literalmente, sem interpretar `$`, crase ou escape. Não sobrescreve o ambiente — no CI as variáveis vêm do job e precisam vencer qualquer arquivo local. Chamado pelos quatro pontos de entrada.
+
+  **3. Ligar o carregador expôs poluição entre testes, e ela é minha.** `os.environ` é global ao processo: um teste que exercita `main` publicava `POSTGRES_URL` para todos os seguintes, e a suíte passou de 73 pulados para 29 — mas **quais** 29 dependia da ordem. Teste que passa por herdar ambiente de outro não prova o que diz. `tests/conftest.py` carrega o ambiente uma vez, no início da sessão, e o resultado passa a ser o mesmo em qualquer ordem.
+
+  **Efeito medido:** de **754 passando / 73 pulados** para **842 passando / 0 pulados** localmente — os testes de I/O do Registro, que nunca rodavam fora do CI, passam a rodar. Conferido que não sujam dados: 8 rodadas e 13.940 decisões antes e depois, idênticas (o fixture isola por transação com `rollback`).
+
+  **O console tinha o MESMO defeito, e consertar a raiz não o alcançava.** `console/.env.tmpl` seguia apontando para a referência de cofre inexistente — e o Next lê `console/.env`, nunca o da raiz, então os dois templates versionados afirmavam o oposto sobre o mesmo campo do mesmo item. Alinhados, com `console/README.md` e a mensagem de erro de `console/lib/db.ts` (que mandava gerar o `.env` sem dizer em qual diretório). Guarda executável nova: um teste exige que os dois templates concordem sobre `POSTGRES_URL` e que nenhum referencie campo que o item do cofre não tem — verificado por mutação nas duas direções.
+
+  **Armadilha registrada no próprio template:** o `op inject` varre o arquivo **inclusive nos comentários**. Explicar em prosa o formato de uma referência de cofre, mesmo dentro de crase, aborta o comando com `invalid secret reference`. Custou uma execução falha.
+
+
 ### Security
 
 - **Sai da prosa versionada a descrição da senha de produção do Newcore — e entra uma guarda que executa.** Cinco pontos versionados afirmavam fato sobre uma credencial **viva**: `docs/mapa-de-dados.md` (duas frases nomeando o caractere não-ASCII, mais a identidade da conta de leitura e uma nota adiante sobre outra propriedade do segredo), `CHANGELOG.md` e o docstring de `src/dados/newcore.py`. Nenhum era necessário: em todos, a **mecânica** — senha não-ASCII quebra o pymysql; o shell expande metacaractere ao carregar o `.env` — documenta a manutenção igual ou melhor, porque vale para qualquer senha e **sobrevive à rotação**. O texto passou a ser a regra geral; nenhum comportamento de código muda (`newcore.py` só teve docstring e comentário reescritos).

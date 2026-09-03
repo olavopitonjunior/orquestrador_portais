@@ -206,3 +206,52 @@ def test_removido_NAO_volta_por_relaxamento():
     """Se status fosse relaxável, a correção teria criado um caminho de volta
     para a vitrine PAGA — pior que o defeito que ela conserta."""
     assert Regra.STATUS_ATIVO not in ORDEM_RELAXAMENTO
+
+
+def test_sql_com_percentual_no_texto_nao_quebra_a_ponte(monkeypatch):
+    """Regressão da primeira execução real da sexta.
+
+    `consultar(sql)` sem parâmetros passava `()` ao pymysql, que aplica `query % args`
+    sempre que `args` não é None. Uma tupla vazia não escapa disso: qualquer `%` no
+    texto do SQL vira especificador de formato e estoura com TypeError. O SQL do
+    coletor tem dois percentuais em COMENTÁRIO — números de medição —, então a coleta
+    interna falhava contra a base viva enquanto todos os testes ficavam verdes, porque
+    nenhum deles atravessava a ponte.
+
+    O teste substitui a conexão e afirma o que a ponte ENTREGA ao driver: com
+    parâmetros, dois argumentos; sem, apenas um.
+    """
+    from dados import newcore
+
+    chamadas: list[tuple] = []
+
+    class _Cursor:
+        def execute(self, *args):
+            chamadas.append(args)
+
+        def fetchall(self):
+            return []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *e):
+            return False
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *e):
+            return False
+
+    monkeypatch.setattr(newcore, "conectar", lambda *a, **k: _Conn())
+
+    newcore.consultar("SELECT 1 -- 94,8% dos ativos")
+    assert len(chamadas[-1]) == 1, "sem parâmetros, o SQL não pode passar por formatação"
+
+    newcore.consultar("SELECT %s", (1,))
+    assert len(chamadas[-1]) == 2, "com parâmetros, o driver precisa recebê-los"
