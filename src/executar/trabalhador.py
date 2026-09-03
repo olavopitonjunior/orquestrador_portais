@@ -283,6 +283,9 @@ def _acompanhar(caminho: Path | None, trabalho_id: int, parar: threading.Event) 
                             trabalho_id,
                             f"etapa concluída: {dado.get('no', '?')}",
                             no_grafo=str(dado.get("no") or ""),
+                            resumo=dado.get("resumo")
+                            if isinstance(dado.get("resumo"), dict)
+                            else None,
                         )
                         lidas += 1
             except Exception:  # noqa: BLE001 — acompanhar é conveniência; a rodada é o trabalho

@@ -6,8 +6,11 @@ import {
   etapasConcluidas,
   eventosDoTrabalho,
   lerTrabalho,
+  resumosDoTrabalho,
   trabalhadorVivo,
 } from "@/lib/operacao";
+
+import { RelatorioDosAgentes } from "./relatorio";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +20,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return <h1>Trabalho inválido</h1>;
 
-  const [trabalho, eventos, anunciadas, vivo] = await Promise.all([
+  const [trabalho, eventos, anunciadas, vivo, resumos] = await Promise.all([
     lerTrabalho(id).catch(() => null),
     eventosDoTrabalho(id).catch(() => []),
     etapasConcluidas(id).catch(() => [] as string[]),
     trabalhadorVivo().catch(() => false),
+    resumosDoTrabalho(id).catch(() => new Map<string, Record<string, unknown>>()),
   ]);
 
   if (trabalho === null) {
@@ -109,6 +113,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           do mais lento.
         </p>
       </section>
+
+      <RelatorioDosAgentes etapas={ETAPAS} porNo={resumos} />
 
       <section className="secao">
         <h2>Log</h2>

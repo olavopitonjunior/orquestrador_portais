@@ -170,3 +170,12 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Ocorrido**: `str.isdigit()` aceita dígitos Unicode como `"²"` e `"١"`; para `"²"`, `int()` levanta `ValueError` e derruba a leitura do CSV inteira (falha ruidosa, não silenciosa); para `"١"`, `int()` converte e amarra um id que o console conta como não-numérico. Achado do `auditor-de-invariantes` (A2) e do `revisor-de-codigo` (A3).
 - **Afetou carga publicada?**: não — nenhum CSV real foi lido ainda.
 - **Situação**: **aberto.** Correção mínima: `re.fullmatch(r"[0-9]+", codigo)` em `_imovel_id_de`, com teste para `"²"` e `"١"`. Entra na fatia que tocar `coletor_externo.py` em seguida, ou sozinha.
+
+## O diretório da raspagem é dito em três lugares, e só dois obedecem às variáveis de ambiente
+
+**Data**: 2026-09-03 · **Severidade**: baixa (só sob configuração não-padrão) · **Onde**: `coletor-externo/src/core/config.ts` (`OUT_DIR`, default `./out` relativo a `coletor-externo/`), `console/lib/coletor.ts` (`COLETOR_OUT_DIR`, default `../coletor-externo/out` relativo ao console) e `console/app/rodada/nova/acoes.ts` (`SAIDA_DO_RASPADOR = "coletor-externo/out"`, literal, relativo à raiz que o trabalhador fixa)
+
+- **Esperado**: a tela que diz "há uma coleta ok", a rodada que lê o CSV e o raspador que o escreve olham o MESMO diretório, sempre.
+- **Ocorrido**: nas configurações padrão os três resolvem para `<raiz>/coletor-externo/out`. Quem definir `OUT_DIR` ou `COLETOR_OUT_DIR` passa a ter a tela olhando um diretório e a rodada lendo outro, sem aviso — a literal do disparo ignora as duas variáveis. Achado do `revisor-de-codigo` e do `orchestrator` na fatia A4.
+- **Afetou carga publicada?**: não.
+- **Situação**: **aberto, declarado** em comentário no `acoes.ts`. Correção: uma única fonte (variável lida pelo trabalhador ao montar `--externo`, e a mesma pelo console), com teste que os três resolvem igual. Fatia própria.

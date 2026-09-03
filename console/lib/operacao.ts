@@ -113,6 +113,9 @@ export type Evento = {
   nivel: string;
   no_grafo: string | null;
   texto: string;
+  // O relatório do agente daquele nó — contagens e limitações, derivadas do estado da
+  // rodada (`src/executar/resumos.py`). Nulo em linha de log comum.
+  resumo: Record<string, unknown> | null;
 };
 
 /** As sete etapas do grafo da decisão, na ordem em que o fluxo as percorre.
@@ -156,8 +159,8 @@ export async function eventosDoTrabalho(
   exec: Consulta = padrao,
 ): Promise<Evento[]> {
   const { rows } = await exec<Evento & { id: string; momento: Date }>(
-    "SELECT id, momento, nivel, no_grafo, texto FROM (" +
-      "  SELECT id, momento, nivel, no_grafo, texto FROM operacao.trabalho_evento" +
+    "SELECT id, momento, nivel, no_grafo, texto, resumo FROM (" +
+      "  SELECT id, momento, nivel, no_grafo, texto, resumo FROM operacao.trabalho_evento" +
       "  WHERE trabalho_id = $1 ORDER BY id DESC LIMIT $2" +
       ") ultimos ORDER BY id",
     [trabalhoId, limite],
@@ -211,4 +214,23 @@ export async function ultimoCanarioOk(
   );
   if (rows.length === 0) return null;
   return { id: Number(rows[0].id), terminado_em: rows[0].terminado_em.toISOString() };
+}
+
+/** O relatório de cada agente: o ÚLTIMO resumo gravado por nó. Consulta PRÓPRIA, pela
+ *  mesma razão de `etapasConcluidas`: `eventosDoTrabalho` corta nos últimos 300 eventos,
+ *  e numa sexta real — cada linha de stdout vira evento — os resumos das primeiras
+ *  etapas saem da janela e o relatório apagaria para trás. Último por nó, e não
+ *  primeiro: se um nó for reexecutado (retry do Orquestrador, parâmetro nº 4), o que
+ *  vale é o que ficou. */
+export async function resumosDoTrabalho(
+  trabalhoId: number,
+  exec: Consulta = padrao,
+): Promise<Map<string, Record<string, unknown>>> {
+  const { rows } = await exec<{ no_grafo: string; resumo: Record<string, unknown> }>(
+    "SELECT DISTINCT ON (no_grafo) no_grafo, resumo FROM operacao.trabalho_evento " +
+      "WHERE trabalho_id = $1 AND resumo IS NOT NULL AND no_grafo <> '' " +
+      "ORDER BY no_grafo, id DESC",
+    [trabalhoId],
+  );
+  return new Map(rows.map((l) => [l.no_grafo, l.resumo]));
 }

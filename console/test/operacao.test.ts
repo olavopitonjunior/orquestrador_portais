@@ -17,6 +17,7 @@ import {
   guardarParametros,
   listarTrabalhos,
   trabalhadorVivo,
+  resumosDoTrabalho,
   ultimoCanarioOk,
   ultimosParametros,
   type Consulta,
@@ -178,4 +179,19 @@ test("ultimoCanarioOk pede só canário concluído com saída 0, o mais recente"
 test("ultimoCanarioOk sem canário → null", async () => {
   const { exec } = espiao([]);
   assert.equal(await ultimoCanarioOk(exec), null);
+});
+
+test("resumosDoTrabalho é consulta própria: último resumo por nó, sem o corte em 300", async () => {
+  const { exec, chamadas } = espiao([
+    { no_grafo: "coletor_interno", resumo: { candidatos: 3 } },
+    { no_grafo: "decisor", resumo: { elegiveis: 2 } },
+  ]);
+  const m = await resumosDoTrabalho(9, exec);
+  assert.deepEqual([...m.keys()], ["coletor_interno", "decisor"]);
+  assert.deepEqual(m.get("decisor"), { elegiveis: 2 });
+  assert.match(chamadas[0].sql, /DISTINCT ON \(no_grafo\)/);
+  assert.match(chamadas[0].sql, /resumo IS NOT NULL/);
+  assert.match(chamadas[0].sql, /ORDER BY no_grafo, id DESC/);
+  assert.doesNotMatch(chamadas[0].sql, /LIMIT/);
+  assert.deepEqual(chamadas[0].params, [9]);
 });

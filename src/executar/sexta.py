@@ -78,6 +78,7 @@ from dados.vendas import coletar_vendas
 from dominio.penalidades import JanelaCrua
 from dominio.perfil import ImovelVendido
 from entrega.planilha_piloto import escrever_planilha
+from executar.resumos import AtribuidorDeDegradacoes, resumo_do_no
 from grafo.estado import Estado, EstadoRodada, Fontes
 from grafo.fluxo import construir_grafo
 
@@ -604,6 +605,13 @@ def executar(
             # emitido, e não só no fim: quem observa (`ao_terminar_no`) vê o mesmo estado
             # que o Registro, o log e o arquivo de resultado vão dizer.
             final["estado"] = _estado_da_entrega(final.get("estado"), amostral=amostral)
+            # Para o resumo por nó (`executar/resumos.py`): o emissor nasce em `main`,
+            # antes de o recorte existir, então a contagem viaja no estado observado.
+            final["recorte_amostral"] = None if recorte is None else len(recorte)
+            # Quais nós saem juntos deste `values`: no fan-out são dois, e a ordem entre
+            # eles é a de conclusão das threads — o resumo atribui as degradações do
+            # passo ao par, não ao que terminou primeiro.
+            final["nos_do_passo"] = list(pendentes)
             if ao_terminar_no is not None:
                 for no in pendentes:
                     ao_terminar_no(no, final)
@@ -619,6 +627,7 @@ def executar(
     if ao_terminar_no is not None:
         # O que sobrar não teve `values` depois — anuncia com o último estado conhecido,
         # senão o nó final sumiria da tela justamente quando ela é mais consultada.
+        final["nos_do_passo"] = list(pendentes)
         for no in pendentes:
             ao_terminar_no(no, final)
 
@@ -751,8 +760,9 @@ def _emissor_de_eventos(caminho: Path | None) -> Callable[[str, Mapping[str, Any
     """Uma linha JSON por nó concluído, com `flush` a cada uma.
 
     Sem o flush, o buffer só desceria ao fim da rodada — e a tela de acompanhamento
-    existe para mostrar o que acontece AGORA. Só nome do nó, instante e os prontos:
-    nada do estado, que carrega objetos de domínio e dados do Newcore.
+    existe para mostrar o que acontece AGORA. Nome do nó, instante, os prontos e o
+    RESUMO do agente (`executar/resumos.py`: só contagens, rótulos e limitações):
+    nada do estado em si, que carrega objetos de domínio e dados do Newcore.
 
     **Limitação em fan-out, e ela é do `momento`, não dos `prontos`.**
     `analista_perfil` e `coletor_externo` terminam no MESMO superstep do LangGraph, e
@@ -775,12 +785,31 @@ def _emissor_de_eventos(caminho: Path | None) -> Callable[[str, Mapping[str, Any
     # o NDJSON da segunda tentativa concatenaria no da primeira, e o progresso da tela
     # andaria PARA TRÁS, contra a monotonicidade que um teste desta fatia exige.
     caminho.unlink(missing_ok=True)
+    atribuidor = AtribuidorDeDegradacoes()
 
     def emitir(no: str, estado: Mapping[str, Any]) -> None:
+        # O relatório do agente: contado a partir do estado, nunca escrito pelo nó.
+        # Só contagens e limitações — nada do estado em si, que carrega objetos de
+        # domínio e dados do Newcore (ver `executar/resumos.py`).
+        # Fora do `try`: as degradações do passo não podem sumir do relatório porque o
+        # resumo daquele nó falhou.
+        novas = atribuidor.novas(estado, no)
+        try:
+            resumo = resumo_do_no(
+                no,
+                estado,
+                degradacoes_novas=novas,
+                recorte_amostral=estado.get("recorte_amostral"),
+            )
+        except Exception as e:  # noqa: BLE001 — o relatório é conveniência; a rodada é o trabalho
+            # Declarado, não silencioso: a tela mostra que o resumo deste nó não saiu e
+            # por que tipo de erro. Só o TIPO — a mensagem poderia ecoar dado do estado.
+            resumo = {"indisponivel": type(e).__name__, "degradacoes": novas}
         linha = {
             "momento": datetime.now().isoformat(timespec="seconds"),
             "no": no,
             "prontos": dict(estado.get("prontos") or {}),
+            "resumo": resumo,
         }
         with caminho.open("a", encoding="utf-8") as f:
             f.write(json.dumps(linha, ensure_ascii=False) + "\n")
