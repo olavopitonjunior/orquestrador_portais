@@ -28,6 +28,12 @@ jobs:
       POSTGRES_URL: postgresql://ci:ci@127.0.0.1:5432/orquestrador_portais
     steps:
       - uses: actions/checkout@v4
+      # O passo da travessia roda `npm ci`, e sem isto o Node seria o que o runner
+      # trouxer naquele mês — validando a serialização numa versão que não é a que
+      # constrói o console (o job `console` fixa a mesma).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
       - uses: astral-sh/setup-uv@v5
       - name: Dependências de desenvolvimento
         run: uv sync --group dev
@@ -157,6 +163,40 @@ jobs:
       # TODAS as migrações, não só a 001: elas são aplicadas à mão (não há aplicador
       # em ordem — pendência declarada em escrita.py), então um erro de sintaxe numa
       # migração nova só apareceria na hora de aplicar, no banco de quem opera.
+      # A TRAVESSIA: o console serializa em TypeScript, a rodada valida em Python, e os
+      # dois lados podem concordar consigo mesmos enquanto discordam ENTRE SI. Nenhum
+      # teste de um lado só cobre isso.
+      #
+      # Vem DEPOIS do check do contrato de propósito: se o JSON commitado envelhecer, é
+      # aquele passo que diagnostica ("regere com..."), e este só sintomatiza com um
+      # erro de TOML. O que diagnostica falha primeiro.
+      #
+      # Confere DESTINO, não só estrutura: trocar `pesos.super_destaque` por
+      # `pesos.destaque` na serialização geraria TOML válido, que carrega limpo, com os
+      # dois níveis invertidos — e o CI ficaria verde sem a comparação de valores.
+      - name: O TOML que o console gera carrega na rodada
+        run: |
+          npm --prefix console ci --no-audit --no-fund
+          for caso in visualizacoes nota cliques_do_tipo com_opcionais; do
+            (cd console && node --import tsx scripts/travessia.ts "$caso" "/tmp/t-$caso.toml")
+            uv run python -c "
+import json, sys
+from pathlib import Path
+from config.parametros import carregar
+p = carregar(Path(sys.argv[1]))
+esperado = json.loads(Path(sys.argv[2]).read_text())
+d = p.declarado
+def por_caminho(c):
+    no = d
+    for parte in c.split('.'):
+        no = no[parte]
+    return no
+for caminho, valor in esperado.items():
+    obtido = por_caminho(caminho)
+    assert str(obtido) == str(valor), f'{caminho}: o console pediu {valor!r}, chegou {obtido!r}'
+print('  carregou e os valores chegaram no destino certo:', sys.argv[1])
+" "/tmp/t-$caso.toml" "/tmp/t-$caso.esperado.json"
+          done
       - name: Parse do DDL do Registro (dialeto postgres)
         run: >
           uv run --with 'sqlglot==30.17.0' python -c
