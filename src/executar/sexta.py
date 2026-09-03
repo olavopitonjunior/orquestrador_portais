@@ -63,6 +63,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from config.ambiente import carregar_env
 from config.parametros import ParametroAusente, ParametroInvalido, ParametrosDaRodada, carregar
 from config.recorte import DEFINICAO_ATIVO
 from dados.candidatos_perfil import coletar_dimensoes_candidatos
@@ -542,6 +543,8 @@ def construir_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Ambiente do `.env` do diretório CORRENTE — ver o docstring de config.ambiente.
+    carregar_env()
     p = construir_parser()
     args = p.parse_args(argv)
     if args.hoje and args.hoje > date.today():

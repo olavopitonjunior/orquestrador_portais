@@ -70,6 +70,7 @@ from typing import Any
 
 import psycopg
 
+from config.ambiente import carregar_env
 from dados.registro.conexao import conectar, url
 from dados.registro.leitura import JaAprovada, ler_rodada, marcar_aprovada
 from grafo.aprovacao import aprovar_explicita, aprovar_tacita, construir_grafo_aprovacao
@@ -436,6 +437,8 @@ def _checkpointer_postgres(dsn: str) -> Iterator[Any]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Ambiente do `.env` do diretório CORRENTE — ver o docstring de config.ambiente.
+    carregar_env()
     p = argparse.ArgumentParser(
         description="Aprovação da rodada de decisão (D-001): carimba `aprovada_em`."
     )

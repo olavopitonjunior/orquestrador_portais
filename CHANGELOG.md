@@ -10,6 +10,23 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Fixed
+
+- **O ambiente passa a carregar — `op inject` volta a funcionar e a suíte deixa de depender da ordem dos testes.** Três defeitos encadeados, todos medidos e nenhum onde o registro dizia.
+
+  **1. O `.env` não podia ser gerado, e a culpa não era do cofre.** O `[P-17]` registrava duas causas: o campo da senha guardaria uma linha de comando, e `POSTGRES_URL` faltaria no item. Medido, as duas caem — a senha **funciona** (a leitura do Newcore respondeu: 405.053 linhas no espelho, 48.881 ativos) e `POSTGRES_URL` **não precisa** de cofre, porque a forma `postgresql:///banco` usa o socket local e não carrega usuário, senha nem host. A causa real era o **próprio `.env.tmpl`**, que declarava três referências para campos inexistentes; o `op inject` falha inteiro quando uma só falta. Duas delas eram `CANALPRO_USER`/`CANALPRO_PASSWORD`, resíduo anterior à **D-010** (login manual), que **nenhuma linha de código lia**.
+
+  **2. Não existia forma suportada de carregar o `.env`.** Os runners leem `os.environ` direto e nada o populava; o caminho óbvio (`set -a; . .env`) é justamente o proibido, porque o shell expande metacaractere do valor e produz um `Access denied` indistinguível de credencial errada. `src/config/ambiente.py` faz o que o mapa de dados mandava: lê o arquivo **dentro do Python**, literalmente, sem interpretar `$`, crase ou escape. Não sobrescreve o ambiente — no CI as variáveis vêm do job e precisam vencer qualquer arquivo local. Chamado pelos quatro pontos de entrada.
+
+  **3. Ligar o carregador expôs poluição entre testes, e ela é minha.** `os.environ` é global ao processo: um teste que exercita `main` publicava `POSTGRES_URL` para todos os seguintes, e a suíte passou de 73 pulados para 29 — mas **quais** 29 dependia da ordem. Teste que passa por herdar ambiente de outro não prova o que diz. `tests/conftest.py` carrega o ambiente uma vez, no início da sessão, e o resultado passa a ser o mesmo em qualquer ordem.
+
+  **Efeito medido:** de **754 passando / 73 pulados** para **842 passando / 0 pulados** localmente — os testes de I/O do Registro, que nunca rodavam fora do CI, passam a rodar. Conferido que não sujam dados: 8 rodadas e 13.940 decisões antes e depois, idênticas (o fixture isola por transação com `rollback`).
+
+  **O console tinha o MESMO defeito, e consertar a raiz não o alcançava.** `console/.env.tmpl` seguia apontando para a referência de cofre inexistente — e o Next lê `console/.env`, nunca o da raiz, então os dois templates versionados afirmavam o oposto sobre o mesmo campo do mesmo item. Alinhados, com `console/README.md` e a mensagem de erro de `console/lib/db.ts` (que mandava gerar o `.env` sem dizer em qual diretório). Guarda executável nova: um teste exige que os dois templates concordem sobre `POSTGRES_URL` e que nenhum referencie campo que o item do cofre não tem — verificado por mutação nas duas direções.
+
+  **Armadilha registrada no próprio template:** o `op inject` varre o arquivo **inclusive nos comentários**. Explicar em prosa o formato de uma referência de cofre, mesmo dentro de crase, aborta o comando com `invalid secret reference`. Custou uma execução falha.
+
+
 ### Security
 
 - **Sai da prosa versionada a descrição da senha de produção do Newcore — e entra uma guarda que executa.** Cinco pontos versionados afirmavam fato sobre uma credencial **viva**: `docs/mapa-de-dados.md` (duas frases nomeando o caractere não-ASCII, mais a identidade da conta de leitura e uma nota adiante sobre outra propriedade do segredo), `CHANGELOG.md` e o docstring de `src/dados/newcore.py`. Nenhum era necessário: em todos, a **mecânica** — senha não-ASCII quebra o pymysql; o shell expande metacaractere ao carregar o `.env` — documenta a manutenção igual ou melhor, porque vale para qualquer senha e **sobrevive à rotação**. O texto passou a ser a regra geral; nenhum comportamento de código muda (`newcore.py` só teve docstring e comentário reescritos).

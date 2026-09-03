@@ -39,10 +39,10 @@ op inject -i .env.tmpl -o .env   # gera o .env (convenção do repo; .env é ign
 npm run dev                      # http://localhost:3000
 ```
 
-`POSTGRES_URL` vem do ambiente (`op://Personal/orquestrador_portais/POSTGRES_URL`, via
-`.env.tmpl`) — nunca um DSN com credencial no repo. Para um Postgres local sem 1Password,
-basta exportar a variável na mão. Sem ela, o console mostra o erro em vez de quebrar (e o
-detalhe fica no log do servidor).
+`POSTGRES_URL` vem do `.env.tmpl` deste diretório, e é **literal** — `postgresql:///orquestrador_portais`.
+Não é DSN com credencial: a forma de socket local não carrega usuário, senha, host nem porta, e
+a autenticação é a do usuário do sistema. O console lê o seu PRÓPRIO `.env`, não o da raiz.
+Sem a variável, o console mostra o erro em vez de quebrar (e o detalhe fica no log do servidor).
 
 Para a saúde da coleta externa, o console lê os artefatos do raspador. O diretório padrão
 é `../coletor-externo/out`; aponte outro com `COLETOR_OUT_DIR` se necessário. Sem esses

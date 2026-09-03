@@ -585,6 +585,17 @@ Separadamente, o item do cofre **não tem `POSTGRES_URL`**, embora o `.env.tmpl`
 
 A recontagem noutro dia, que a incorporação da deriva exige, deixou de estar bloqueada por credencial e passou a ser só questão de calendário.
 
+**Adendo 2026-09-02 — o diagnóstico acima estava errado, e a causa real era outra.** Ao construir o console, o `op inject` foi medido em vez de suposto, e as duas afirmações do parágrafo anterior caem:
+
+- **O campo `NEWCORE_MYSQL_PASSWORD` não guarda linha de comando.** Guarda senha, e ela **funciona**: com o `.env` gerado, a conexão de leitura ao Newcore respondeu (405.053 linhas no espelho, 48.881 ativos, medido em 02/09). O defeito registrado não corresponde ao que está no cofre — ou foi consertado pelo dono sem o registro acompanhar.
+- **`POSTGRES_URL` não precisava estar no cofre.** O Postgres próprio roda na máquina do gestor por decisão de hospedagem, e a forma `postgresql:///banco` usa o socket local com a autenticação do usuário do sistema: **não carrega usuário, senha nem host**. Não havia credencial a proteger, e uma referência de cofre para endereço local seria indireção sem proteção. Passou a ser literal no template.
+
+**A causa real do `op inject` falhar era o próprio template.** Ele declarava **três** referências para campos inexistentes no item: `POSTGRES_URL`, `CANALPRO_USER` e `CANALPRO_PASSWORD`. O `op inject` falha **inteiro** quando uma só falta, então o sintoma ("não produz um `.env` utilizável") nunca foi do cofre — era do arquivo versionado. As duas do Canal Pro eram resíduo anterior à **D-010**, que adotou login manual: contradiziam a decisão e nenhuma linha de código as lia.
+
+**Armadilha achada no caminho, e vale registrar porque custou uma execução:** o `op inject` varre o arquivo inteiro, **comentário inclusive**. Explicar em prosa o formato de uma referência de cofre, mesmo dentro de crase, faz o comando abortar com `invalid secret reference`. O `.env.tmpl` agora declara essa regra no próprio cabeçalho.
+
+**O que sobra do [P-17]:** só a metade que este trabalho não alcança — a credencial de produção em texto claro em arquivos de configuração de MCP, fora deste repositório. Some a menção ao cofre e ao `op inject`, que deixaram de ser verdade.
+
 **Ato que só o dono pratica.** Não é decisão nem defeito de código: é conserto de cofre e de acesso.
 
 **Adendo 2026-09-02 — o [P-17] mudou de natureza: deixou de ser higiene de cofre e passou a exigir ROTAÇÃO.** A varredura que precedeu esta fatia achou, no repositório **público**, cinco pontos que descrevem a senha viva: `docs/mapa-de-dados.md` nomeava o caractere não-ASCII em duas frases e, mais adiante, descrevia uma **segunda** propriedade do mesmo segredo, de outra classe de caracteres; `CHANGELOG.md` e o docstring de `src/dados/newcore.py` repetiam o primeiro. O mesmo trecho publicava a identidade da conta de leitura. A **prosa** foi limpa nesta fatia, **e isso não resolve** — por duas razões que precisam ficar escritas, porque a primeira eu afirmei errado antes de medir.
