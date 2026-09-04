@@ -77,12 +77,12 @@ function Amarracao({ a }: { a: Amarracao | null }) {
       </section>
     );
   }
-  const fracao = a.linhas ? a.numericos / a.linhas : 0;
+  const fracao = a.linhas ? a.noFormato / a.linhas : 0;
   const veredito =
     a.linhas === 0
       ? "CSV vazio"
       : fracao === 0
-        ? "NENHUMA linha tem código numérico — a amarração NÃO funciona com este formato"
+        ? "NENHUMA linha está no formato {Id}{letra} — a amarração NÃO funciona com este formato"
         : fracao < 0.5
           ? "menos da metade amarra: confira o formato antes de raspar em volume"
           : "a maioria amarra";
@@ -102,10 +102,10 @@ function Amarracao({ a }: { a: Amarracao | null }) {
           </tr>
           <tr>
             <td>
-              com <code>codigoImovel</code> numérico (o que amarra)
+              com <code>codigoImovel</code> no formato <code>{"{Id}{letra}"}</code> (o que amarra)
             </td>
             <td className="id">
-              {a.numericos} ({(fracao * 100).toFixed(0)}%)
+              {a.noFormato} ({(fracao * 100).toFixed(0)}%)
             </td>
           </tr>
           <tr>
@@ -113,8 +113,8 @@ function Amarracao({ a }: { a: Amarracao | null }) {
             <td className="id">{a.vazios}</td>
           </tr>
           <tr>
-            <td>não numéricos</td>
-            <td className="id">{a.naoNumericos}</td>
+            <td>fora do formato</td>
+            <td className="id">{a.foraDoFormato}</td>
           </tr>
           <tr>
             <td>exemplos do campo</td>
@@ -125,8 +125,8 @@ function Amarracao({ a }: { a: Amarracao | null }) {
         </tbody>
       </table>
       <p className="campo-ajuda">
-        "Numérico" é a condição que o leitor da rodada exige para casar com{" "}
-        <code>realties.Id</code>. Casar de fato com um imóvel ATIVO só a rodada confere — o
+        O formato <code>{"{Id}{letra}"}</code> é o que o leitor da rodada exige para casar com{" "}
+        <code>realties.Id</code> — a letra é a rotação de marketing do portal, não parte da chave. Casar de fato com um imóvel ATIVO só a rodada confere — o
         console não lê o Newcore.
       </p>
       <p className="campo-ajuda">
@@ -171,7 +171,7 @@ export default async function Page() {
   // O portão da coleta completa: Chrome no ar, a saúde atual "ok" (o status.json é
   // reescrito por cada coleta, então "ok" é da ÚLTIMA — bloqueio posterior a um canário
   // bom o derruba), um canário concluído com 0 pelo console, e um CSV com ao menos um
-  // código numérico. Sem isso, horas de raspagem e um login manual podem produzir um CSV
+  // código no formato {Id}{letra}. Sem isso, horas de raspagem e um login manual podem produzir um CSV
   // que não amarra — o canário custa segundos e decide isso antes.
   const podeCanario = chrome?.noAr === true;
   let motivoSemFull: string | null = null;
@@ -179,8 +179,8 @@ export default async function Page() {
   else if (saude?.estado !== "ok") motivoSemFull = `a última coleta está '${saude?.estado ?? "?"}', não 'ok'.`;
   else if (canarioOk === null) motivoSemFull = "nenhum canário disparado pelo console terminou com sucesso ainda.";
   else if (amarracao === null) motivoSemFull = "não há CSV em out/ para medir a amarração.";
-  else if (amarracao.numericos === 0)
-    motivoSemFull = "o CSV em out/ não tem nenhum codigoImovel numérico: raspar em volume não conserta isso.";
+  else if (amarracao.noFormato === 0)
+    motivoSemFull = "o CSV em out/ não tem nenhum codigoImovel no formato {Id}{letra}: raspar em volume não conserta isso.";
   const podeFull = motivoSemFull === null;
 
   return (

@@ -299,3 +299,13 @@ Medição feita para corrigir o defeito do espelho registrado em `bug.md`. Os do
 - **Integridade referencial `FT_RealtyRelation → realties` é total**: **0 órfãos** em 405.053 linhas, e 0 no recorte ativo. Os ~36 mil Ids deletados de `realties` nunca chegam ao espelho, então os dois `INNER JOIN` da coleta não perdem candidato hoje. É integridade **observada**, não constraint de esquema — se o espelho passar a materializar Ids removidos, a coleta voltaria a perder linha em silêncio.
 
 **Armadilha operacional:** **nunca** carregue o ambiente do Newcore com `set -a; . arquivo`. O shell expande metacaracteres dentro do valor e produz um `Access denied` indistinguível de credencial errada. Leia o arquivo dentro do Python, literalmente. Isto é regra permanente, não observação sobre a senha vigente: escrita como fato do segredo atual, ela **seria** o vazamento que descreve. *(Repositório público — D-012; guarda em `tests/test_sem_vazamento_de_credencial.py`.)*
+
+## Amarração anúncio ↔ imóvel (Canal Pro) — medido em 03/09/2026
+
+Primeira raspagem real, canário de 300 anúncios pelo trabalhador do console:
+
+| Campo | Fonte | O que foi medido |
+|---|---|---|
+| `codigoImovel` (o `externalId` da API `listings` do painel) | Canal Pro | Formato `{Id}{letra}`: seis dígitos + uma letra maiúscula (ex.: `431347A`). **300 de 300** com o prefixo em `newcore.realties.Id`, todos `Ativo` no espelho. A letra varia (21 letras em 300; A=57, Z=42, S=21…) — não é tipo de transação. |
+| `realties.NewIdMarketingRotation` | Newcore (`newcore.realties`, varchar) | **Igual ao `codigoImovel` em 300 de 300.** É o id sob o qual a Newcore republica o anúncio (rotação de marketing; `MarketingRotatedAt` não nulo nos 300). A chave da amarração é o **prefixo numérico** (`realties.Id`); a letra é descartada por `dados/coletor_externo._imovel_id_de`. |
+| `visualizacoes` (API `listings`) | Canal Pro | **0 em 300 de 300.** A forma `visualizacoes` do F3 não tem sinal nesta API; `nota` (LQS) tem 14 valores distintos. Registrado em `bug.md`; a forma é parâmetro declarado (`externo.desempenho.forma`). |

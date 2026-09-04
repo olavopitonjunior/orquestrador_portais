@@ -205,6 +205,16 @@ export const canalPro: Portal = {
   async captureSessionId(page: Page): Promise<Sessao> {
     // Instala, antes de navegar, um hook que grava em window.__CP os headers de
     // auth da próxima XHR listings; depois navega ao painel (que a dispara).
+    // Shim do `__name`: o tsx/esbuild anota funções com o helper `__name`, e o puppeteer
+    // serializa a função para o navegador, onde o helper não existe — "__name is not
+    // defined" (medido em 03/09/2026, logo após a captura de sessão). Identidade em
+    // cada documento novo e no atual; inofensivo quando o helper não é injetado.
+    const shim = () => {
+      const g = globalThis as unknown as { __name?: (f: unknown, n?: string) => unknown };
+      if (typeof g.__name !== 'function') g.__name = (f: unknown) => f;
+    };
+    await page.evaluateOnNewDocument(shim);
+    await page.evaluate(shim).catch(() => undefined);
     await page.evaluateOnNewDocument((nomes: string[]) => {
       const w = window as unknown as { __CP?: Record<string, string> };
       const orig = window.fetch;
@@ -229,7 +239,18 @@ export const canalPro: Portal = {
       throw new BlockedError('Cloudflare detectado no Canal Pro. Re-aqueça o perfil (login) e rode de novo.');
     }
     for (let i = 0; i < 40; i++) {
-      const s = await page.evaluate(() => (window as unknown as { __CP?: Record<string, string> }).__CP || null);
+      let s: Record<string, string> | null = null;
+      try {
+        s = await page.evaluate(() => (window as unknown as { __CP?: Record<string, string> }).__CP || null);
+      } catch (e) {
+        // O SPA do painel navega de novo DEPOIS de o goto resolver (medido em 03/09/2026:
+        // duas corridas mortas aos ~3 s com "Execution context was destroyed"). Contexto
+        // destruído durante a espera é benigno — o hook de `evaluateOnNewDocument` é
+        // reinstalado a cada documento novo, então basta esperar e olhar de novo.
+        // "Target closed" NÃO entra: é a aba/Chrome que morreu, e esperar 20 s para dizer
+        // "abra a lista de anúncios" seria o diagnóstico errado. Sobe na hora.
+        if (!/Execution context was destroyed|Cannot find context/i.test(String(e))) throw e;
+      }
       if (s && Object.keys(s).length) return s as CanalProSession;
       await new Promise((r) => setTimeout(r, 500));
     }

@@ -169,7 +169,7 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Esperado**: as duas leituras concordam sobre quais `codigoImovel` amarram.
 - **Ocorrido**: `str.isdigit()` aceita dígitos Unicode como `"²"` e `"١"`; para `"²"`, `int()` levanta `ValueError` e derruba a leitura do CSV inteira (falha ruidosa, não silenciosa); para `"١"`, `int()` converte e amarra um id que o console conta como não-numérico. Achado do `auditor-de-invariantes` (A2) e do `revisor-de-codigo` (A3).
 - **Afetou carga publicada?**: não — nenhum CSV real foi lido ainda.
-- **Situação**: **aberto.** Correção mínima: `re.fullmatch(r"[0-9]+", codigo)` em `_imovel_id_de`, com teste para `"²"` e `"١"`. Entra na fatia que tocar `coletor_externo.py` em seguida, ou sozinha.
+- **Situação**: **resolvido em 2026-09-03 (noite)**, junto com a chave real da amarração (`{Id}{letra}`): `_imovel_id_de` passou a `re.fullmatch(r"([0-9]+)[A-Z]?")`, com testes para `"²"`, `"١"` e `"１０"`; o console mede pelo mesmo formato. Issue #61.
 
 ## O diretório da raspagem é dito em três lugares, e só dois obedecem às variáveis de ambiente
 
@@ -189,3 +189,21 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Afetou carga publicada?**: não — modo seco, e a rodada abortou antes de qualquer entrega.
 - **Estado da rodada no momento**: ABORTADA por falha de fonte (código 3), nas duas.
 - **Situação**: **mitigado** neste fix: `read_timeout` de 120 s para 600 s por consulta (`LEITURA_MYSQL_S`, `docs/prazos.md` atualizado) — a causa (base carregada, consulta de 109 s) não muda; o teto foi alargado. O que o fix NÃO faz: o teto efetivo passa a ser do lado de lá — `max_execution_time` do MySQL ou o idle-TCP de proxy/NAT no caminho, além de `wait_timeout`/`net_write_timeout` —, **nenhum medido**; se algum for menor que 600 s, a falha muda de forma (conexão perdida em vez de estouro de leitura), com o mesmo código 3. E a forma da falha **não é observável hoje**: a sexta loga só `type(e).__name__`, então "caíram no teto de 120 s" é inferência (109 s medidos, errno nunca logado). O que fecha a pendência: logar `e.args[0]` quando for `pymysql.err.MySQLError` — é um inteiro (2013/2006), não ecoa dado do banco. Fatia própria.
+
+## `visualizacoes` vem zero em todos os anúncios da API do Canal Pro — o F3 por visualizações não tem sinal
+
+**Data**: 2026-09-03 (noite) · **Severidade**: média (o fator de portal entra no ranking sem discriminar ninguém) · **Onde**: Coletor Externo — a API `listings` do painel (`coletor-externo/src/portals/canalpro.ts`); a forma do F3 declarada em `[externo.desempenho] forma` (`docs/parametros-da-rodada.exemplo.toml`)
+
+- **Esperado**: com a raspagem entrando, o F3 diferencia os imóveis pelo desempenho do anúncio no portal.
+- **Ocorrido**: na primeira rodada real (trabalho 2790 → rodada 15474, 300 anúncios), `visualizacoes` veio `0` em **300 de 300**; os cliques também (contato ≠ 0 em 2, telefone em 1, WhatsApp em 0). A `nota` (LQS) tem **14 valores distintos** (9580 em 188, 8442.5 em 61, 9080 em 22…). Com a forma declarada `visualizacoes`, o min-max dá 0,0 para todos e `nota_desempenho` ficou 0 em todas as linhas gravadas — o F3 "entrou" e não pesou nada.
+- **Afetou carga publicada?**: não — rodada amostral, inaprovável por construção.
+- **Situação**: **aberto, e é do dono.** A forma do F3 é parâmetro declarado (`externo.desempenho.forma`: `visualizacoes` | `nota` | `cliques_do_tipo`), PROVISÓRIO. Recomendação medida: declarar `forma = "nota"` (com `quando_ausente`) — é o único sinal com variância na amostra. Fica também a pergunta ao raspador: a API `listings` expõe visualizações em outro campo, ou só no detalhe do anúncio? (`QtdViewsZap` existe em `realties` no Newcore, mas é do banco, não do portal.)
+
+## A idade da coleta saía −1 — `finishedAt` é UTC e a data era tirada no fuso da máquina
+
+**Data**: 2026-09-03 (noite) · **Severidade**: baixa (número declarado errado na planilha; a porta de idade não fechava indevidamente) · **Onde**: `src/dados/coletor_externo.py::avaliar_coleta`
+
+- **Esperado**: uma coleta feita hoje às 21h tem idade 0.
+- **Ocorrido**: rodada 15474 declarou "idade do dado do portal: −1 dia(s)". O raspador grava `finishedAt` em UTC (`toISOString()`: `2026-09-04T00:04Z`) e a idade era `data_referencia − coletado_em.date()` — data em UTC. A primeira correção usou `astimezone()` sem argumento, que lê o fuso do SO: mesma entrada, idade diferente noutra máquina — o revisor provou com `TZ=Pacific/Pago_Pago` (invariante 5).
+- **Afetou carga publicada?**: não.
+- **Situação**: **resolvido em 2026-09-03 (noite)**: `FUSO_DA_OPERACAO = America/Sao_Paulo`, fixo e nomeado (fato operacional — a máquina do gestor —, não parâmetro de decisão), entra em `ParametrosExterno.fuso`; `finishedAt` sem offset é UTC por declaração. Teste com data fixa; suíte verde em três fusos.
