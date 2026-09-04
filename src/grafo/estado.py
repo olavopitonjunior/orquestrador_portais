@@ -20,7 +20,7 @@ from datetime import date
 from enum import StrEnum
 from typing import Annotated, TypedDict
 
-from dados.coletor_externo import ColetaExterna
+from dados.coletor_externo import ColetaExterna, DesempenhoAnuncio
 from dominio.auditoria import ResultadoAuditoria
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel, JanelaCrua
@@ -60,6 +60,10 @@ class EstadoRodada(TypedDict, total=False):
     perfis: tuple[PerfilConversao, ...]
     externo_presente: bool
     desempenho_por_imovel: dict[int, float]  # sinal de portal (F3) do Coletor Externo
+    # O que a raspagem trouxe CRU por imóvel (nota, visualizações, cliques), entre ou
+    # não no cálculo — DESCRITIVO, para o CSV da apuração. Nenhum nó de decisão o lê;
+    # `externo_presente` é que diz se o portal pesou. Vazio sem raspagem.
+    anuncios_por_imovel: dict[int, DesempenhoAnuncio]
     # Spec §3.1: a aba de resumo carrega OBRIGATORIAMENTE a idade do dado do portal e
     # a taxa de amarração. Os dois vinham no `ResultadoExterno` e eram descartados
     # justamente no caso de sucesso — só apareciam embutidos no motivo da REJEIÇÃO.

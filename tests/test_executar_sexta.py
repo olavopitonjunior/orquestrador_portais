@@ -22,6 +22,7 @@ import pytest
 import executar.sexta as mod
 from config.parametros import carregar
 from dominio.penalidades import ImovelPenalizavel
+from entrega.planilha_piloto import ContextoApuracao
 from grafo.estado import Estado
 
 EXEMPLO = Path(__file__).resolve().parent.parent / "docs" / "parametros-da-rodada.exemplo.toml"
@@ -1045,3 +1046,46 @@ def test_contagem_distingue_ausente_de_vazio():
     assert mod._contagem(None) is None
     assert mod._contagem([]) == 0
     assert mod._contagem([1, 2]) == 2
+
+
+def test_a_planilha_recebe_o_CONTEXTO_da_apuracao_vindo_do_estado(
+    tmp_path, monkeypatch, parametros, conexao_falsa
+):
+    """O sexto arquivo (`apuracao.csv`) só sai se o runner passar `contexto`, e ele é
+    montado do estado final — candidatos, dimensões, penalizáveis, anúncios crus e se o
+    portal pesou. Sem este teste, um runner que esquecesse o kwarg produziria as cinco
+    abas e nenhuma apuração, em silêncio."""
+    vistos = _capturar_planilha(monkeypatch)
+    # O runner só repassa: um marcador basta para provar a fiação, sem montar candidato.
+    final_extra = {
+        "janelas_lidas": 0,
+        "historico_janelas": {},
+        "candidatos": ["candidato-7"],
+        "dims": {7: {}},
+        "penalizaveis": {7: "penalizavel-7"},
+        "anuncios_por_imovel": {7: "anuncio"},
+        "externo_presente": True,
+    }
+    monkeypatch.setattr(mod, "construir_grafo", _grafo_completo(final_extra))
+    mod.executar(tmp_path, parametros, hoje=HOJE)
+    ctx = vistos["contexto"]
+    assert isinstance(ctx, ContextoApuracao)
+    assert list(ctx.candidatos) == final_extra["candidatos"]
+    assert dict(ctx.dims) == {7: {}}
+    # A perna que uma sonda de mutação achou solta: trocar por `{}` ou por `dims` passava.
+    assert dict(ctx.penalizaveis) == {7: "penalizavel-7"}
+    assert dict(ctx.anuncios) == {7: "anuncio"}
+    assert ctx.externo_entrou is True
+
+
+def test_sem_externo_no_estado_o_contexto_diz_que_o_portal_NAO_pesou(
+    tmp_path, monkeypatch, parametros, conexao_falsa
+):
+    vistos = _capturar_planilha(monkeypatch)
+    monkeypatch.setattr(
+        mod, "construir_grafo", _grafo_completo({"janelas_lidas": 0, "historico_janelas": {}})
+    )
+    mod.executar(tmp_path, parametros, hoje=HOJE)
+    ctx = vistos["contexto"]
+    assert ctx.externo_entrou is False and dict(ctx.anuncios) == {}
+    assert list(ctx.candidatos) == []  # estado sem candidatos → apuração vazia, não erro

@@ -19,6 +19,12 @@ export const dynamic = "force-dynamic";
 // O que cada aba é, e o que cada coluna de justificativa quer dizer — para o dono ler
 // a planilha sem precisar da Spec ao lado. Texto de exibição, não regra.
 const SOBRE_A_ABA: Record<Aba, string> = {
+  apuracao:
+    "O resultado total: uma linha por imóvel candidato, inclusive os que ficaram fora, com o " +
+    "desfecho (super destaque, destaque, não coube na cota, reprovado, não avaliado), a regra " +
+    "que reprovou, as características do imóvel (preço, distrito, metragem, dormitórios, vagas) e " +
+    "o que o portal trouxe. Quem não foi pontuado tem as colunas de nota VAZIAS — nunca zeradas — e " +
+    "a coluna notas_entre diz se a nota foi normalizada entre os elegíveis ou entre os reprovados.",
   super_destaque:
     "As posições do nível de topo, na ordem do ranking. Disputa real (mais de dez candidatos " +
     "por vaga) e objetivo de valor esperado. Nunca relaxa.",
@@ -55,6 +61,9 @@ const SOBRE_A_COLUNA: Record<string, string> = {
 
 // A ordem de LEITURA, explícita: limitações antes de qualquer número; depois o nível com
 // disputa; depois o de folga; excluídos e relaxamento por último.
+// A apuração NÃO entra aqui: são dezenas de milhares de linhas numa rodada inteira, e a
+// tela não é o lugar de lê-las — ela ganha um cartão próprio no topo, com a contagem e o
+// botão, e o arquivo se lê no Sheets.
 const ORDEM_DAS_ABAS: readonly Aba[] = [
   "parametros_e_limitacoes",
   "super_destaque",
@@ -383,6 +392,33 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <div className="banner" role="alert">
               Abas ausentes em disco: {planilha.ausentes.join(", ")}.
             </div>
+          ) : null}
+          {planilha.abas.apuracao ? (
+            <section className="caixa">
+              <div className="caixa-cabecalho">
+                <h2>
+                  A apuração completa{" "}
+                  <span className="pill pill-muted">
+                    {planilha.abas.apuracao.vazia || planilha.abas.apuracao.semConteudo
+                      ? "0"
+                      : planilha.abas.apuracao.linhas.length.toLocaleString("pt-BR")}{" "}
+                    imóveis
+                  </span>
+                </h2>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+                  <span className="nota" style={{ maxWidth: 560 }}>{SOBRE_A_ABA.apuracao}</span>
+                  {planilha.abas.apuracao.semConteudo ? null : (
+                    <a
+                      className="botao"
+                      href={`/rodada/${rodada.id}/planilha/apuracao.csv`}
+                      download={`rodada-${rodada.id}-apuracao.csv`}
+                    >
+                      Baixar a apuração (CSV)
+                    </a>
+                  )}
+                </div>
+              </div>
+            </section>
           ) : null}
           {ORDEM_DAS_ABAS.map((aba) => {
             const t = planilha.abas[aba];

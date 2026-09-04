@@ -91,6 +91,7 @@ def no_coletor_externo(
     if fontes.coletar_externo is None or parametros_externo is None:
         return {
             "externo_presente": False,
+            "anuncios_por_imovel": {},
             "prontos": {"externo": False},
             "degradacoes": [
                 "Coletor Externo não executado (esqueleto, sem raspagem): "
@@ -100,9 +101,13 @@ def no_coletor_externo(
     coleta = fontes.coletar_externo()
     alvo = [c.imovel_id for c in estado["candidatos"]]
     r = avaliar_coleta(coleta, alvo, parametros_externo, estado["data_referencia"])
+    # Os anúncios crus sobem nos DOIS desfechos: o CSV da apuração mostra o que o portal
+    # trouxe mesmo quando ele não pesou — `externo_presente` diz se pesou.
+    anuncios = dict(coleta.por_imovel)
     if r.entra:
         return {
             "externo_presente": True,
+            "anuncios_por_imovel": anuncios,
             "desempenho_por_imovel": dict(r.desempenho_por_imovel),
             # Sobem MESMO no sucesso: a Spec §3.1 exige os dois na aba de resumo, e
             # antes eles só existiam embutidos no motivo da rejeição — a rodada
@@ -113,6 +118,7 @@ def no_coletor_externo(
         }
     return {
         "externo_presente": False,
+        "anuncios_por_imovel": anuncios,
         "externo_taxa_amarracao": r.taxa_amarracao,
         "externo_idade_dias": r.idade_dias,
         "prontos": {"externo": False},

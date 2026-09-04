@@ -68,7 +68,7 @@ function saida(datas: Record<string, Record<string, string>>): string {
   return raiz;
 }
 
-test("lê as cinco abas de uma data e lista as ausentes", async () => {
+test("lê as abas de uma data e lista as ausentes (a apuração inclusive)", async () => {
   saida({
     "2026-09-05": {
       "super_destaque.csv": "posicao,imovel_id\r\n1,101\r\n",
@@ -81,7 +81,7 @@ test("lê as cinco abas de uma data e lista as ausentes", async () => {
   assert.equal(p.abas.super_destaque?.linhas.length, 1);
   assert.equal(p.abas.destaque?.vazia, true);
   assert.equal(p.abas.relaxamento?.semConteudo, false);
-  assert.deepEqual(p.ausentes, ["excluidos_por_regra", "parametros_e_limitacoes"]);
+  assert.deepEqual(p.ausentes, ["apuracao", "excluidos_por_regra", "parametros_e_limitacoes"]);
 });
 
 test("datas mais recentes primeiro; nome fora do padrão é ignorado e nunca vira caminho", async () => {

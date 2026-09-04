@@ -77,7 +77,7 @@ from dados.registro.janelas import LIMITACAO_AMOSTRA, historico_para_penalidade
 from dados.vendas import coletar_vendas
 from dominio.penalidades import JanelaCrua
 from dominio.perfil import ImovelVendido
-from entrega.planilha_piloto import escrever_planilha
+from entrega.planilha_piloto import ContextoApuracao, escrever_planilha
 from executar.resumos import AtribuidorDeDegradacoes, resumo_do_no
 from grafo.estado import Estado, EstadoRodada, Fontes
 from grafo.fluxo import construir_grafo
@@ -686,6 +686,15 @@ def executar(
                 # afirmação falsa que a coluna existe para eliminar.
                 historico_janelas=final.get("historico_janelas"),
                 resultado_esperado=parametros.resultado_esperado,
+                # O sexto arquivo: uma linha por candidato, inclusive os excluídos, com o
+                # que o estado da rodada já carrega — nada é relido do banco aqui.
+                contexto=ContextoApuracao(
+                    candidatos=final.get("candidatos") or (),
+                    dims=final.get("dims") or {},
+                    penalizaveis=final.get("penalizaveis") or {},
+                    anuncios=final.get("anuncios_por_imovel") or {},
+                    externo_entrou=bool(final.get("externo_presente")),
+                ),
             )
         except Exception as e:
             # A rodada JÁ está no Registro: avisa que a planilha não saiu e propaga.
