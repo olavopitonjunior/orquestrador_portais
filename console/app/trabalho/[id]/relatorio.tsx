@@ -1,4 +1,5 @@
-// --- para console/app/trabalho/[id]/page.tsx: seção "Relatório dos agentes" ---
+// Seção "Relatório dos agentes" — usada por /trabalho/[id] (rodada em curso) e por
+// /rodada/[id] (a rodada inteira num lugar só).
 // Requer: `Evento.resumo: Record<string, unknown> | null` e `eventosDoTrabalho` lendo a
 // coluna `resumo`. A seção mostra, por etapa da lista de apresentação, o resumo do
 // evento com `no_grafo = etapa` e `resumo` não nulo — chave/valor, sem conhecer o

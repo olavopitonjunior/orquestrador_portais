@@ -153,9 +153,12 @@ export async function lerTrabalho(
  *  um progresso. `limite` existe porque uma rodada pode imprimir muito, e a tela não
  *  pode ficar pesada por isso; o corte é no COMEÇO, preservando o fim, que é onde
  *  está o desfecho. */
+/** Quantas linhas de log a tela lê — as ÚLTIMAS; o começo de um log maior fica fora. */
+export const LIMITE_DO_LOG = 300;
+
 export async function eventosDoTrabalho(
   trabalhoId: number,
-  limite = 300,
+  limite = LIMITE_DO_LOG,
   exec: Consulta = padrao,
 ): Promise<Evento[]> {
   const { rows } = await exec<Evento & { id: string; momento: Date }>(

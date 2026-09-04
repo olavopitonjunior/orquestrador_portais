@@ -1,9 +1,16 @@
 import Link from "next/link";
 
-import { trabalhoDaRodada } from "@/lib/operacao";
+import {
+  ETAPAS,
+  LIMITE_DO_LOG,
+  eventosDoTrabalho,
+  resumosDoTrabalho,
+  trabalhoDaRodada,
+} from "@/lib/operacao";
 import { ABAS, lerPlanilha, type Aba, type Tabela } from "@/lib/planilha";
 import { lerRodada, limitacoesDe, parametrosDaRodada } from "@/lib/registro";
 import { dataHora, PilulaEstado } from "../../estado";
+import { RelatorioDosAgentes } from "../../trabalho/[id]/relatorio";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +128,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     );
   }
 
+  // Tudo num lugar só: o relatório dos agentes e o log da execução que produziu esta
+  // rodada vêm para cá — quem lê a planilha não deveria ter de sair dela para saber o
+  // que cada agente fez. As mesmas consultas de /trabalho/[id]; sem trabalho (rodada
+  // disparada pela CLI), as seções dizem isso em vez de sumir.
+  const [resumos, eventos] = trabalhoId
+    ? await Promise.all([
+        resumosDoTrabalho(trabalhoId).catch(() => new Map<string, Record<string, unknown>>()),
+        eventosDoTrabalho(trabalhoId).catch(() => []),
+      ])
+    : [new Map<string, Record<string, unknown>>(), []];
   const dataReferencia =
     typeof parametros?.data_referencia === "string" ? parametros.data_referencia : null;
   const planilha = dataReferencia ? await lerPlanilha(dataReferencia) : null;
@@ -187,6 +204,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </p>
       </section>
 
+      {trabalhoId ? (
+        <RelatorioDosAgentes etapas={ETAPAS} porNo={resumos} />
+      ) : (
+        <section className="secao">
+          <h2>Relatório dos agentes</h2>
+          <p className="vazio">
+            Esta rodada não veio da fila do console (foi disparada pela linha de comando), então
+            não há relatório de agentes nem log gravados para ela.
+          </p>
+        </section>
+      )}
+
       <h2>A planilha</h2>
       {rodada.tipo === "acompanhamento" ? (
         <p className="campo-ajuda">
@@ -225,6 +254,47 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           })}
         </>
       )}
+
+      {trabalhoId ? (
+        <section className="secao">
+          <h2>Log da execução</h2>
+          {eventos.length === 0 ? (
+            <p className="campo-ajuda">
+              Trabalho <Link href={`/trabalho/${trabalhoId}`}>{trabalhoId}</Link> — nada gravado.
+            </p>
+          ) : (
+            <>
+              <p className="campo-ajuda">
+                Trabalho <Link href={`/trabalho/${trabalhoId}`}>{trabalhoId}</Link> —{" "}
+                {eventos.length >= LIMITE_DO_LOG
+                  ? `as ${LIMITE_DO_LOG} últimas linhas de um log maior (o começo não está aqui nem em /trabalho)`
+                  : `o log inteiro, ${eventos.length} linhas`}
+                ; o relatório dos agentes acima não depende deste corte.
+              </p>
+            <div className="tabela-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">hora</th>
+                    <th scope="col">nó</th>
+                    <th scope="col">linha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eventos.map((e) => (
+                    <tr key={e.id} className={e.nivel === "erro" ? "linha-erro" : undefined}>
+                      <td>{new Date(e.momento).toLocaleTimeString("pt-BR")}</td>
+                      <td>{e.no_grafo ?? ""}</td>
+                      <td>{e.texto}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            </>
+          )}
+        </section>
+      ) : null}
     </>
   );
 }
