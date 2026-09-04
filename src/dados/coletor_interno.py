@@ -23,6 +23,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
+from dados.bucketizacao import texto_ou_none
 from dados.newcore import consultar
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel
@@ -49,6 +50,13 @@ class DefinicaoAtivoDistrito(StrEnum):
 _SQL_CANDIDATOS = """
 SELECT
   f.Realty_Id                                   AS imovel_id,
+  -- O código sob o qual a Newcore republica o anúncio no portal. Medido em 03/09/2026
+  -- (300/300 na primeira raspagem real): é IGUAL ao `codigoImovel` do Canal Pro, que a
+  -- amarração lê pelo prefixo numérico. DESCRITIVO — não entra em regra nenhuma; vai
+  -- para o CSV da apuração, para quem aplica a carga achar o anúncio sem abrir o banco.
+  -- Se responde a [P-13] ("qual referência a pessoa usa para aplicar a carga") é fato
+  -- humano, não de banco: a pendência fica onde está até o dono dizer.
+  r.NewIdMarketingRotation                      AS codigo_portal,
   -- STATUS: as DUAS fontes, e a redundância é deliberada. O espelho
   -- `FT_RealtyRelation` é mantido incrementalmente e atrasa ~13,5 h (medido
   -- 02/09/2026); sozinho, ele dá como ativo imóvel já removido no transacional.
@@ -172,6 +180,7 @@ def linha_para_candidato(row: dict[str, Any], notas: dict[str, int] | None) -> I
         gestor_captou_ou_vendeu_30d=bool(row["gestor_ativo_30d"]),
         produtividade_gestor_30d=int(row["produtividade_gestor_30d"] or 0),
         corretores_ativos_no_distrito=int(row["ativos_no_distrito"]),
+        codigo_portal=texto_ou_none(row.get("codigo_portal")),
     )
 
 

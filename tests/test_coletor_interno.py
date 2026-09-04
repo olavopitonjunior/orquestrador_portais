@@ -294,3 +294,29 @@ def test_sql_com_percentual_no_texto_nao_quebra_a_ponte(monkeypatch):
 
     newcore.consultar("SELECT %s", (1,))
     assert len(chamadas[-1]) == 2, "com parâmetros, o driver precisa recebê-los"
+
+
+# --- código do portal (descritivo) ---------------------------------------------
+
+
+def test_o_select_traz_o_codigo_do_portal_como_coluna_descritiva():
+    assert "r.NewIdMarketingRotation" in _SQL_CANDIDATOS
+    assert "AS codigo_portal" in _SQL_CANDIDATOS
+
+
+def test_codigo_portal_e_mapeado_e_ausente_vira_None():
+    assert (
+        linha_para_candidato({**LINHA, "codigo_portal": "431347A"}, None).codigo_portal == "431347A"
+    )
+    # linha antiga, sem a coluna: o campo é descritivo e fica nulo, não quebra
+    assert linha_para_candidato(LINHA, None).codigo_portal is None
+    assert linha_para_candidato({**LINHA, "codigo_portal": "  "}, None).codigo_portal is None
+    assert linha_para_candidato({**LINHA, "codigo_portal": None}, None).codigo_portal is None
+
+
+def test_nenhuma_regra_le_o_codigo_do_portal():
+    """Descritivo de verdade: mudar o código não muda o veredito de elegibilidade."""
+    com = linha_para_candidato({**LINHA, "codigo_portal": "431347A"}, None)
+    sem = linha_para_candidato(LINHA, None)
+    hoje = date(2026, 9, 3)
+    assert regras_reprovadas(com, hoje) == regras_reprovadas(sem, hoje)

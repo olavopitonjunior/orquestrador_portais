@@ -89,6 +89,10 @@ class ImovelCandidato:
     # no ranking, o uso do binário acima (que era redundante com a elegibilidade).
     produtividade_gestor_30d: int
     corretores_ativos_no_distrito: int
+    # DESCRITIVO, não regra: o código do anúncio no portal (`realties.NewIdMarketingRotation`,
+    # igual ao `codigoImovel` do Canal Pro em 300/300, medido em 03/09/2026). Vai para o
+    # CSV da apuração. `None` = a coleta não trouxe; nenhuma regra o lê.
+    codigo_portal: str | None = None
 
     # Instâncias não são hasháveis (o mapping impede hash estável); deduplique
     # por imovel_id. O __post_init__ copia o mapping para um proxy imutável,
