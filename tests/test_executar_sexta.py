@@ -60,12 +60,24 @@ def _resultado_falso():
 # --- a rodada não sai sem os parâmetros do dono -------------------------------
 
 
-def test_parametros_e_obrigatorio():
-    """Sem `--parametros` não há rodada: treze dos quatorze são nulos, e um default
-    aqui seria o valor inventado que o CLAUDE.md proíbe — invisível na planilha."""
-    with pytest.raises(SystemExit) as e:
-        mod.main([])
-    assert e.value.code == 2  # argparse: argumento obrigatório ausente
+def test_sem_parametros_a_rodada_roda_com_os_ADOTADOS(monkeypatch):
+    """`--parametros` é OPCIONAL desde a D-034: toda chave tem valor adotado com
+    decisão registrada, e valor adotado não é valor inventado. Sem o arquivo, `main`
+    carrega `carregar(None)` — tudo adotado, régua nº 14 nula — e roda. Antes, o
+    mesmo `main([])` saía por SystemExit(2) do argparse."""
+    recebidos = {}
+
+    def _executar(destino, parametros, **kw):
+        recebidos["parametros"] = parametros
+        return _estado(), None
+
+    monkeypatch.setattr(mod, "executar", _executar)
+    assert mod.main([]) == 0
+    p = recebidos["parametros"]
+    assert p.origem == "adotados (D-034)"
+    assert set(p.procedencia.values()) == {"adotado D-034"}
+    assert p.declarados_diferentes_do_adotado == ()
+    assert p.resultado_esperado is None  # o nº 14 segue nulo sem declaração
 
 
 def test_arquivo_de_parametros_inexistente_sai_com_5(tmp_path):
@@ -374,13 +386,40 @@ def test_dry_run_nao_abre_conexao_nem_escreve(tmp_path, monkeypatch, parametros)
 
 
 def test_registro_grava_a_forma_declarada_verbatim(parametros):
-    """As duas FORMAS viram função e não sobrevivem a `ParametrosDecisao`. Gravar só
-    os números deixaria a rodada irreproduzível a partir do Registro (invariante 5)."""
+    """O que a rodada de fato USOU (`efetivo`) e de onde cada chave veio
+    (`procedencia`), mais o TOML declarado verbatim: as FORMAS (decaimento geométrico
+    a partir do perdão, ordem sem portal) viram função em `ParametrosDecisao` e não
+    sobrevivem à dataclass — gravar só os objetos deixaria a rodada irreproduzível a
+    partir do Registro (invariante 5). Não há mais `rotulo` único: a procedência é
+    POR CHAVE."""
     serial = mod._serializaveis(parametros, HOJE, None)
-    assert serial["rotulo"] == "PROVISÓRIO"
+    assert "rotulo" not in serial
     assert serial["origem"].endswith(".toml")
-    assert serial["decaimento_janela"] == {"forma": "geometrica", "razao": 0.5}
-    assert serial["externo"]["desempenho"] == {"forma": "visualizacoes"}
+    # o modelo declara exatamente os adotados: procedência "adotado D-034" em todas
+    assert serial["efetivo"]["desconto.perdao_por_semana"] == 50
+    assert serial["efetivo"]["portal.ordem_quando_nao_entra"] == "leads_180d"
+    assert set(serial["procedencia"].values()) == {"adotado D-034"}
+    assert set(serial["efetivo"]) == set(serial["procedencia"])
+    # e o TOML declarado, verbatim, por seção
+    assert serial["desconto"]["perdao_por_semana"] == 50
+    assert serial["portal"]["peso_nota"] == 70
+
+
+def test_registro_rotula_o_DECLARADO_diferente_do_adotado(tmp_path):
+    """Chave declarada com valor diferente do adotado sai como "declarado"; igual ao
+    adotado não é escolha nova e volta a "adotado D-034"."""
+    arquivo = tmp_path / "p.toml"
+    arquivo.write_text(
+        "[portal]\npeso_nota = 60\npeso_cliques = 40\npeso_visualizacoes = 0\n",
+        encoding="utf-8",
+    )
+    serial = mod._serializaveis(carregar(arquivo), HOJE, None)
+    assert serial["procedencia"]["portal.peso_nota"] == "declarado"
+    assert serial["procedencia"]["portal.peso_cliques"] == "declarado"
+    assert serial["procedencia"]["portal.peso_visualizacoes"] == "adotado D-034"  # igual
+    assert serial["procedencia"]["conversao.janela_dias"] == "adotado D-034"  # ausente
+    assert serial["efetivo"]["portal.peso_nota"] == 60
+    assert serial["efetivo"]["conversao.janela_dias"] == 180
 
 
 def test_registro_grava_o_recorte_e_a_definicao_de_ativo(parametros, tmp_path):
@@ -410,8 +449,20 @@ def test_notas_abrem_com_estado_e_limitacoes(parametros):
     )
     assert notas[0] == "ESTADO DA RODADA: DEGRADADA"
     assert notas[1].startswith("LIMITAÇÃO 1: sem raspagem")
-    assert any("PROVISÓRIO" in n and ".toml" in n for n in notas)
+    # a linha dos parâmetros abre com a contagem de ADOTADOS e nomeia a origem
+    (linha,) = [n for n in notas if n.startswith("parâmetros da rodada")]
+    assert "adotados (D-034)" in linha and ".toml" in linha
+    assert "PROVISÓRIO" not in linha  # o modelo não declara nada diferente do adotado
     assert any("3 venda(s)" in n for n in notas)
+
+
+def test_notas_nomeiam_os_PROVISORIOS_declarados_diferentes_do_adotado(tmp_path):
+    arquivo = tmp_path / "p.toml"
+    arquivo.write_text("[desconto]\nsem_lead_180d = 25\n", encoding="utf-8")
+    notas = mod.notas_da_planilha(carregar(arquivo), Estado.COMPLETA, [])
+    (linha,) = [n for n in notas if n.startswith("parâmetros da rodada")]
+    assert "13 adotados (D-034)" in linha
+    assert "1 PROVISÓRIOS" in linha and "desconto.sem_lead_180d" in linha
 
 
 def test_notas_nao_afirmam_quem_declarou_os_parametros(parametros):
@@ -651,14 +702,17 @@ def test_sem_limiar_e_sem_historico_sao_limitacoes_DISTINTAS(parametros):
     assert any("LIMIAR DE RESULTADO" in x for x in limitacoes)  # o exemplo não declara o nº 14
 
 
-def test_razao_um_declara_a_divergencia_com_a_spec(tmp_path, parametros):
-    """A §6.4 diz que a penalidade decai. Razão 1.0 é aceita como escolha do dono,
-    mas a divergência aparece na planilha em vez de o código fingir que não existe."""
+def test_perdao_zero_declara_a_divergencia_com_a_spec(tmp_path, parametros):
+    """A §6.4 diz que a penalidade decai. Perdão de 0% por semana (razão 1.0) é aceito
+    como escolha do dono, mas a divergência aparece na planilha em vez de o código
+    fingir que não existe."""
     assert not any("não decai" in x for x in mod.limitacoes_da_fiacao(parametros, 0))
 
     arquivo = tmp_path / "p.toml"
+    texto = EXEMPLO.read_text(encoding="utf-8")
+    assert "perdao_por_semana = 50" in texto  # o modelo declara o adotado
     arquivo.write_text(
-        EXEMPLO.read_text(encoding="utf-8").replace("razao = 0.5", "razao = 1.0"), encoding="utf-8"
+        texto.replace("perdao_por_semana = 50", "perdao_por_semana = 0"), encoding="utf-8"
     )
     sem_decaimento = carregar(arquivo)
     assert any(
@@ -776,15 +830,10 @@ def test_o_modelo_recusado_ainda_ESCREVE_o_resultado(tmp_path):
 
 
 def test_parametro_faltando_ESCREVE_o_resultado(tmp_path):
+    """Desde a D-034 toda chave das seções tem adotado; o único `ParametroAusente`
+    que sobra é a régua nº 14 meio-declarada (um nível sem o outro)."""
     incompleto = tmp_path / "p.toml"
-    incompleto.write_text(
-        "\n".join(
-            linha
-            for linha in mod.MODELO_DE_DOCS.read_text(encoding="utf-8").splitlines()
-            if not linha.startswith("razao = ")
-        ),
-        encoding="utf-8",
-    )
+    incompleto.write_text("[resultado_esperado]\nsuper_destaque = 3\n", encoding="utf-8")
     alvo = tmp_path / "r.json"
     assert mod.main(["--parametros", str(incompleto), "--resultado", str(alvo)]) == 5
     r = _resultado(alvo)

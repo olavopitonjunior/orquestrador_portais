@@ -4,7 +4,8 @@ Contratos cobertos: cedência progressiva e mínima, ordem importada de
 elegibilidade (nunca própria), relatório apenas dos graus cedidos (com zero
 quando cabível), regra não relaxável nunca entra, déficit residual legítimo,
 consequência distributiva declarada, desempate D-009 dentro do grau,
-resultado sem nível (invariante 7) e determinismo sob permutação.
+resultado sem nível (invariante 7), determinismo sob permutação, o perfil de
+conversão como PRIMEIRO degrau (D-027) e a trava do login (D-029).
 Nenhum teste usa os ganhos medidos (+133/+569/+1.680/+1.747/+5.686) como
 valor exato — D-005: ordem de grandeza medida com outro parâmetro.
 """
@@ -28,15 +29,23 @@ def candidato(
     imovel_id: int,
     regras: frozenset[Regra] | set[Regra],
     nota: float = 50.0,
+    *,
+    sem_login: bool = False,
 ) -> CandidatoRelaxamento:
     return CandidatoRelaxamento(
-        imovel_id=imovel_id, nota_destaque=nota, regras_reprovadas=frozenset(regras)
+        imovel_id=imovel_id,
+        nota_destaque=nota,
+        regras_reprovadas=frozenset(regras),
+        gestor_sem_login=sem_login,
     )
 
 
+SO_PERFIL = {Regra.PERFIL_DE_CONVERSAO}
 SO_FOTOS = {Regra.FOTOS}
 SO_CADASTRO = {Regra.CADASTRO_COMPLETO}
+SO_GESTOR = {Regra.GESTOR_PRODUTIVO}
 SO_DISTRITO = {Regra.CAPACIDADE_DISTRITO}
+PERFIL_0 = LinhaRelatorio(regra=Regra.PERFIL_DE_CONVERSAO, posicoes_dependentes=0)
 
 
 # --- ordem de cedência: fonte única -------------------------------------------
@@ -58,19 +67,36 @@ def test_deficit_zero_nao_cede_nada():
 
 
 def test_grau_um_suficiente_nao_cede_o_segundo():
-    # Minimalidade: há candidato do grau 2 disponível, mas o déficit fecha
-    # no grau 1 — cadastro completo NÃO é cedido e não aparece no relatório.
-    resultado = relaxar(1, [candidato(1, SO_FOTOS), candidato(2, SO_CADASTRO)])
+    # Minimalidade: há candidato do grau 1 (perfil) e do grau 2 (fotos), mas o
+    # déficit fecha no grau 1 — fotos NÃO é cedida e não aparece no relatório.
+    resultado = relaxar(1, [candidato(1, SO_PERFIL), candidato(2, SO_FOTOS)])
     assert [r.imovel_id for r in resultado.recuperados] == [1]
-    assert resultado.relatorio == (LinhaRelatorio(regra=Regra.FOTOS, posicoes_dependentes=1),)
+    assert resultado.relatorio == (
+        LinhaRelatorio(regra=Regra.PERFIL_DE_CONVERSAO, posicoes_dependentes=1),
+    )
     assert resultado.deficit_restante == 0
 
 
+def test_o_perfil_e_o_PRIMEIRO_degrau_cedido():
+    """D-027, palavras do dono: "preferir um imóvel com cadastro impecável fora do
+    perfil a um dentro do perfil com nove fotos". Quem só reprova no perfil entra
+    antes de quem só reprova em fotos, mesmo com nota menor."""
+    fora_do_perfil = candidato(1, SO_PERFIL, nota=1.0)
+    poucas_fotos = candidato(2, SO_FOTOS, nota=99.0)
+    resultado = relaxar(1, [poucas_fotos, fora_do_perfil])
+    assert [r.imovel_id for r in resultado.recuperados] == [1]
+    assert resultado.recuperados[0].degrau is Regra.PERFIL_DE_CONVERSAO
+    assert resultado.relatorio == (
+        LinhaRelatorio(regra=Regra.PERFIL_DE_CONVERSAO, posicoes_dependentes=1),
+    )
+
+
 def test_grau_cedido_sem_recuperados_gera_linha_zero():
-    # Fotos é cedida (o déficit exige descer), não recupera ninguém, e a
-    # linha com zero registra a cedência efetivada.
+    # Perfil e fotos são cedidos (o déficit exige descer), não recuperam ninguém,
+    # e as linhas com zero registram a cedência efetivada.
     resultado = relaxar(1, [candidato(2, SO_CADASTRO)])
     assert resultado.relatorio == (
+        PERFIL_0,
         LinhaRelatorio(regra=Regra.FOTOS, posicoes_dependentes=0),
         LinhaRelatorio(regra=Regra.CADASTRO_COMPLETO, posicoes_dependentes=1),
     )
@@ -78,10 +104,11 @@ def test_grau_cedido_sem_recuperados_gera_linha_zero():
 
 
 def test_degrau_minimo_e_o_maior_indice_das_regras_reprovadas():
-    # FOTOS + ATUALIZACAO_90D exige ceder até o grau 3 (índice 2).
+    # FOTOS + ATUALIZACAO_90D exige ceder até o grau 4 (índice 3, com o perfil na frente).
     alvo = candidato(1, {Regra.FOTOS, Regra.ATUALIZACAO_90D})
     resultado = relaxar(1, [alvo])
     assert [linha.regra for linha in resultado.relatorio] == [
+        Regra.PERFIL_DE_CONVERSAO,
         Regra.FOTOS,
         Regra.CADASTRO_COMPLETO,
         Regra.ATUALIZACAO_90D,
@@ -106,10 +133,10 @@ def test_regra_nao_relaxavel_nunca_entra():
     assert resultado.deficit_restante == 2
 
 
-def test_deficit_residual_quando_os_cinco_graus_nao_bastam():
+def test_deficit_residual_quando_os_seis_graus_nao_bastam():
     resultado = relaxar(4, [candidato(1, SO_FOTOS), candidato(2, SO_DISTRITO)])
     assert len(resultado.recuperados) == 2
-    assert len(resultado.relatorio) == 5  # todos os graus foram cedidos
+    assert len(resultado.relatorio) == len(ORDEM_RELAXAMENTO) == 6  # todos os graus cedidos
     assert resultado.deficit_restante == 2
 
 
@@ -122,6 +149,84 @@ def test_selecao_dentro_do_grau_por_nota_com_desempate_d009():
     resultado = relaxar(2, lote)
     # Nota maior primeiro; empate resolvido por imovel_id decrescente (D-009).
     assert [r.imovel_id for r in resultado.recuperados] == [7, 9]
+
+
+# --- a trava do login (D-029) ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "regras",
+    [
+        SO_GESTOR,
+        {Regra.GESTOR_PRODUTIVO, Regra.FOTOS},
+        {Regra.GESTOR_PRODUTIVO, Regra.CAPACIDADE_DISTRITO},  # degrau depois do gestor
+        {Regra.PERFIL_DE_CONVERSAO, Regra.GESTOR_PRODUTIVO},
+    ],
+)
+def test_gestor_sem_login_reprovado_em_gestor_produtivo_e_irrecuperavel(regras):
+    """Quem não entra no sistema não vai atender o lead que a posição paga gerar. O
+    imóvel não entra em degrau NENHUM — nem no `capacidade_distrito`, que vem depois
+    de `gestor_produtivo` — e o resultado conta o bloqueio."""
+    travado = candidato(1, regras, nota=99.0, sem_login=True)
+    resultado = relaxar(3, [travado])
+    assert resultado.recuperados == ()
+    assert len(resultado.relatorio) == len(ORDEM_RELAXAMENTO)  # desceu tudo, sem achar
+    assert resultado.deficit_restante == 3
+    assert resultado.bloqueados_por_login == 1
+
+
+def test_a_trava_nao_muda_quem_mais_entra():
+    # O travado some do pool; os outros seguem a cedência normal.
+    lote = [
+        candidato(1, SO_GESTOR, nota=99.0, sem_login=True),
+        candidato(2, SO_GESTOR, nota=10.0),  # mesmo degrau, com login: entra
+        candidato(3, SO_FOTOS, nota=5.0),
+    ]
+    resultado = relaxar(2, lote)
+    assert [r.imovel_id for r in resultado.recuperados] == [3, 2]
+    assert resultado.bloqueados_por_login == 1
+
+
+def test_bloqueados_por_login_e_contado_MESMO_sem_deficit():
+    """A trava é fato sobre os candidatos, não sobre a cedência: a planilha declara
+    "N travados" ainda que ninguém tenha sido cedido."""
+    lote = [candidato(1, SO_GESTOR, sem_login=True), candidato(2, SO_FOTOS, sem_login=True)]
+    resultado = relaxar(0, lote)
+    assert resultado.recuperados == () and resultado.relatorio == ()
+    assert resultado.bloqueados_por_login == 1  # só o de gestor_produtivo
+
+
+def test_gestor_sem_login_SEM_gestor_produtivo_nas_reprovadas_nao_trava():
+    """A trava só morde no degrau `gestor_produtivo`: reprovado só em fotos, o imóvel
+    de gestor sem login é recuperado normalmente e não é contado."""
+    resultado = relaxar(1, [candidato(1, SO_FOTOS, sem_login=True)])
+    assert [r.imovel_id for r in resultado.recuperados] == [1]
+    assert resultado.bloqueados_por_login == 0
+
+
+def test_com_login_o_degrau_gestor_produtivo_recupera():
+    resultado = relaxar(1, [candidato(1, SO_GESTOR, sem_login=False)])
+    assert [r.imovel_id for r in resultado.recuperados] == [1]
+    assert resultado.recuperados[0].degrau is Regra.GESTOR_PRODUTIVO
+    assert resultado.bloqueados_por_login == 0
+
+
+def test_travado_com_regra_nao_relaxavel_nao_e_contado_como_bloqueado_pelo_login():
+    """Quem reprova em regra que nunca relaxa jamais entraria; o login não é o que o
+    barrou, e a contagem declarada é só dos que a trava barrou."""
+    resultado = relaxar(
+        1, [candidato(1, {Regra.GESTOR_PRODUTIVO, Regra.PRECO_GERAL}, sem_login=True)]
+    )
+    assert resultado.recuperados == ()
+    assert resultado.bloqueados_por_login == 0
+
+
+def test_o_default_de_gestor_sem_login_e_falso():
+    assert candidato(1, SO_GESTOR).gestor_sem_login is False
+    assert (
+        ResultadoRelaxamento(recuperados=(), relatorio=(), deficit_restante=0).bloqueados_por_login
+        == 0
+    )
 
 
 # --- invariante 7: sem nível no resultado ---------------------------------------
@@ -182,7 +287,7 @@ def test_permutacoes_da_entrada_produzem_saida_identica():
     lote = [
         candidato(
             i,
-            {ORDEM_RELAXAMENTO[i % 5]},
+            {ORDEM_RELAXAMENTO[i % len(ORDEM_RELAXAMENTO)]},
             nota=float(i % 4),
         )
         for i in range(1, 60)

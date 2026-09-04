@@ -91,6 +91,11 @@ SELECT
   -- (Sells é 365d), então venda entra só como flag — limitação declarada.
   (COALESCE(p.Captations_per_week_last_30d, 0)
      + COALESCE(p.LastSell >= NOW() - INTERVAL 30 DAY, 0))  AS produtividade_gestor_30d,
+  -- TRAVA do relaxamento (D-029): o gestor logou dentro da janela declarada? Campo
+  -- medido em 04/09/2026: `productivityrating.LastLogin` cobre 99,4% dos gestores de
+  -- ativos; NULL ≡ nunca logou na retenção (2025-05-25 em diante), então conta como
+  -- "sem login". A janela é parâmetro da rodada (inteiro validado antes de entrar aqui).
+  COALESCE(p.LastLogin >= NOW() - INTERVAL {login_janela_dias} DAY, 0) AS gestor_logou_na_janela,
   COALESCE(d.{coluna_ativo}, 0)                 AS ativos_no_distrito,
   (sc.realtyId IS NOT NULL)                     AS alguma_categoria_avaliada,
   f.Leads180D                                   AS leads_180d
@@ -181,6 +186,9 @@ def linha_para_candidato(row: dict[str, Any], notas: dict[str, int] | None) -> I
         produtividade_gestor_30d=int(row["produtividade_gestor_30d"] or 0),
         corretores_ativos_no_distrito=int(row["ativos_no_distrito"]),
         codigo_portal=texto_ou_none(row.get("codigo_portal")),
+        gestor_logou_na_janela=(
+            bool(row["gestor_logou_na_janela"]) if "gestor_logou_na_janela" in row else None
+        ),
     )
 
 
@@ -210,6 +218,7 @@ def coletar(
     definicao_ativo: DefinicaoAtivoDistrito,
     *,
     recorte: Collection[int] | None = None,
+    login_janela_dias: int = 30,
 ) -> tuple[list[ImovelCandidato], list[ImovelPenalizavel]]:
     """Lê o Newcore e devolve os candidatos e os penalizáveis dos imóveis ativos.
 
@@ -220,8 +229,16 @@ def coletar(
     I/O: não é testado no CI (precisa do banco); as conversões puras acima são o
     que os testes cobrem.
     """
+    if (
+        isinstance(login_janela_dias, bool)
+        or not isinstance(login_janela_dias, int)
+        or login_janela_dias < 1
+    ):
+        raise ValueError(f"login_janela_dias inválido: {login_janela_dias!r}")
     sql = _SQL_CANDIDATOS.format(
-        coluna_ativo=definicao_ativo.value, recorte=_clausula_recorte(recorte)
+        coluna_ativo=definicao_ativo.value,
+        recorte=_clausula_recorte(recorte),
+        login_janela_dias=login_janela_dias,
     )
     linhas = _dedup_por_imovel(consultar(sql))
     notas_por_imovel = _agrupar_notas(consultar(_SQL_NOTAS))

@@ -101,16 +101,23 @@ jobs:
             echo "Regere com: uv run rodada-contrato > console/lib/contrato-parametros.json"
             exit 1
           }
-      # A sexta precisa RECUSAR a rodada quando falta um parâmetro do dono. O alvo é
-      # um arquivo que EXISTE e a que falta uma chave: a primeira versão deste passo
-      # apontava para um caminho inexistente, que sai 5 pelo ramo de arquivo ilegível
-      # sem nunca chegar à validação — passo verde que não guardava nada.
-      - name: A sexta recusa rodar com parâmetro faltando
+      # A sexta precisa RECUSAR o que o carregador recusa. Desde a D-034 chave AUSENTE
+      # não é erro (cai no adotado), então a sonda antiga — apagar uma linha e esperar 5
+      # — deixou de provar qualquer coisa. O que ainda sai 5: o nº 14 meio-declarado
+      # (um nível só; nunca inventar o outro) e chave desconhecida (nome digitado errado
+      # nunca é descartado em silêncio). Os dois passam pela validação de verdade — a
+      # primeira versão deste passo apontava para um caminho inexistente, que saía 5
+      # pelo ramo de arquivo ilegível sem nunca chegar à validação.
+      - name: A sexta recusa parâmetro meio-declarado e chave desconhecida
         run: |
-          grep -v '^razao = ' docs/parametros-da-rodada.exemplo.toml > /tmp/incompleto.toml
+          printf '[resultado_esperado]\nsuper_destaque = 3\n' > /tmp/meio.toml
           codigo=0
-          uv run python -m executar.sexta --parametros /tmp/incompleto.toml || codigo=$?
-          test "$codigo" -eq 5 || { echo "esperado 5 (parâmetro faltando), veio $codigo"; exit 1; }
+          uv run python -m executar.sexta --parametros /tmp/meio.toml || codigo=$?
+          test "$codigo" -eq 5 || { echo "esperado 5 (nº 14 meio-declarado), veio $codigo"; exit 1; }
+          printf '[portal]\npeso_nota = 70\npeso_cliques = 30\npeso_visualizacoes = 0\nforma = "x"\n' > /tmp/estranha.toml
+          codigo=0
+          uv run python -m executar.sexta --parametros /tmp/estranha.toml || codigo=$?
+          test "$codigo" -eq 5 || { echo "esperado 5 (chave desconhecida), veio $codigo"; exit 1; }
       # E precisa recusar o MODELO como entrada real: ele carrega com sucesso, então
       # sem esta recusa sairia dele uma planilha de aparência normal, construída sobre
       # números que o próprio arquivo declara ilustrativos.
@@ -174,13 +181,13 @@ jobs:
       # aquele passo que diagnostica ("regere com..."), e este só sintomatiza com um
       # erro de TOML. O que diagnostica falha primeiro.
       #
-      # Confere DESTINO, não só estrutura: trocar `pesos.super_destaque` por
-      # `pesos.destaque` na serialização geraria TOML válido, que carrega limpo, com os
-      # dois níveis invertidos — e o CI ficaria verde sem a comparação de valores.
+      # Confere DESTINO, não só estrutura: trocar `portal.peso_nota` por
+      # `portal.peso_cliques` na serialização geraria TOML válido, que carrega limpo, com os
+      # dois pesos trocados — e o CI ficaria verde sem a comparação de valores.
       - name: O TOML que o console gera carrega na rodada
         run: |
           npm --prefix console ci --no-audit --no-fund
-          for caso in visualizacoes nota cliques_do_tipo com_opcionais; do
+          for caso in sem_opcionais com_opcionais; do
             (cd console && node --import tsx scripts/travessia.ts "$caso" "/tmp/t-$caso.toml")
             uv run python scripts/conferir_travessia.py "/tmp/t-$caso.toml" "/tmp/t-$caso.esperado.json"
           done

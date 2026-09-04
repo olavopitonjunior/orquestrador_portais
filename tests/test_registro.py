@@ -17,27 +17,37 @@ from dados.registro.leitura import contagem_por_nivel, ler_rodada, marcar_aprova
 from dominio.alocacao import Alocacao, PosicaoAlocada
 from dominio.penalidades import IntensidadesPenalidade
 from dominio.perfil import Dimensao, ImovelVendido, perfis_de_conversao
-from dominio.ranking import PesosNivel
+from dominio.ranking import PesosPortal
 from piloto.decisao import ParametrosDecisao, decidir
-from piloto.semelhanca import ParametrosSemelhanca
 
 HOJE = date(2026, 9, 1)
 
 PARAMS = ParametrosDecisao(
-    semelhanca=ParametrosSemelhanca(desconto_fragil=0.5, decaimento=0.6),
+    pesos_portal=PesosPortal(nota_anuncio=70, cliques=30, visualizacoes=0),
+    sem_anuncio="fim_da_fila",
+    ordem_sem_portal="leads_180d",
     intensidades=IntensidadesPenalidade(
-        janela_sem_resultado=0.15, sem_avaliacao_por_categoria=0.10, sem_lead_180d=0.10
+        janela_sem_resultado=20.0, sem_avaliacao_por_categoria=5.0, sem_lead_180d=10.0
     ),
     decaimento_janela=lambda _c: 1.0,
-    pesos_super=PesosNivel(
-        semelhanca_perfil=45, leads_positivo=30, desempenho_proprio=15, produtividade_gestor=10
-    ),
-    pesos_destaque=PesosNivel(
-        semelhanca_perfil=40, leads_positivo=40, desempenho_proprio=10, produtividade_gestor=10
-    ),
+    minimo_corretores_distrito=2,
+    exigir_dimensao_no_perfil=None,  # o perfil de região do fixture conta
 )
 
-PARAMS_SERIAL = {"decaimento": 0.6, "pesos_super": "45/30/15/10", "pesos_destaque": "40/40/10/10"}
+# O que o runner grava: o efetivo (adotados + declarados) e a procedência por chave.
+PARAMS_SERIAL = {
+    "efetivo": {
+        "portal.peso_nota": 70,
+        "portal.peso_cliques": 30,
+        "desconto.perdao_por_semana": 50,
+    },
+    "procedencia": {
+        "portal.peso_nota": "adotado D-034",
+        "portal.peso_cliques": "adotado D-034",
+        "desconto.perdao_por_semana": "adotado D-034",
+    },
+    "origem": "adotados (D-034)",
+}
 
 
 @pytest.fixture
@@ -114,6 +124,20 @@ def _resultado(cands):
     return decidir(cands, pen, dims, perfis, PARAMS, HOJE)
 
 
+# DEFEITO no código congelado: o DDL do Registro não conhece a nona regra.
+# `src/dados/registro/001_registro.sql:68-70` (decisao_imovel.regra_relaxada) e `:86-88`
+# (relaxamento.regra_cedida) restringem a lista às CINCO regras anteriores à D-027, e nenhuma
+# migração posterior (002–007) acrescenta `perfil_de_conversao`. Como `relaxar` grava uma
+# linha por degrau cedido — inclusive com zero, e desce os seis degraus sempre que há déficit
+# de destaque —, TODA rodada com déficit escreve `('perfil_de_conversao', 0, 0)` em
+# `registro.relaxamento` e o Postgres recusa (CheckViolation) — em produção, `SinkFalhou`
+# e rodada sem Registro. Recuperado por esse degrau, `regra_relaxada` cai no mesmo CHECK.
+DDL_SEM_PERFIL = (
+    "src/dados/registro/001_registro.sql:68-70 e :86-88 — os CHECKs de regra_relaxada/"
+    "regra_cedida não incluem 'perfil_de_conversao' (D-027); falta migração 008"
+)
+
+
 def _gravar(conn, resultado, estado="degradada"):
     return gravar_rodada_decisao(
         conn,
@@ -140,9 +164,13 @@ def test_round_trip_grava_e_le(conn):
     assert resumo["posicoes_vazias_destaque"] == 6495  # Spec §2.1: não perde o déficit
 
 
-def test_decisao_persiste_os_quatro_fatores(conn):
+def test_decisao_persiste_as_notas_com_os_valores_da_costura(conn):
+    """As colunas ainda têm os nomes da geração anterior (F1..F4); o que entra nelas
+    é o que existe hoje: casou o perfil (1/0), leads normalizado, a nota BRUTA do
+    portal em 0–1 (`nota_bruta / 100`) e a produtividade normalizada."""
     resultado = _resultado([_candidato(1)])
     rodada_id = _gravar(conn, resultado)
+    det = resultado.detalhes[1]
     with conn.cursor() as cur:
         cur.execute(
             "SELECT nota_perfil, nota_leads, nota_desempenho, nota_gestor, nota_final "
@@ -150,8 +178,14 @@ def test_decisao_persiste_os_quatro_fatores(conn):
             (rodada_id,),
         )
         linha = cur.fetchone()
-    assert linha is not None  # 5 colunas de nota, incluindo nota_leads (D-017)
+    assert linha is not None
     assert len(linha) == 5
+    nota_perfil, nota_leads, nota_desempenho, nota_gestor, nota_final = (float(v) for v in linha)
+    assert nota_perfil == (1.0 if det.fatores.casa_perfil else 0.0) == 1.0
+    assert nota_leads == det.fatores.leads
+    assert nota_desempenho == det.nota_bruta / 100.0
+    assert nota_gestor == det.fatores.produtividade_gestor
+    assert nota_final == det.nota_super_destaque
 
 
 def test_marcar_aprovada(conn):
@@ -199,15 +233,41 @@ def test_relaxamento_persiste_regra_e_deficit(conn):
             (rodada_id,),
         )
         assert cur.fetchone()[0] == "fotos"
-        # a tabela relaxamento tem a linha da cessão
+        # a tabela relaxamento tem UMA linha por degrau alcançado: com déficit que os
+        # seis degraus não cobrem, todos são cedidos — só fotos recuperou alguém
         cur.execute(
             "SELECT regra_cedida, posicoes_dependentes FROM registro.relaxamento "
             "WHERE rodada_id = %s",
             (rodada_id,),
         )
-        assert cur.fetchone() == ("fotos", 1)
+        por_regra = dict(cur.fetchall())
+        assert len(por_regra) == 6 and "perfil_de_conversao" in por_regra
+        assert por_regra == {r: (1 if r == "fotos" else 0) for r in por_regra}
     # déficit residual = 6495 - 1 recuperado, persistido na rodada (não perdido)
     assert ler_rodada(conn, rodada_id)["posicoes_vazias_destaque"] == 6494
+
+
+def test_o_ddl_aceita_o_perfil_de_conversao_como_regra_cedida_e_relaxada(conn):
+    """A nona regra (D-027) é o PRIMEIRO degrau do relaxamento: o Registro precisa
+    aceitá-la nas duas colunas — é o que a migração 008 acrescenta aos CHECKs da 001."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO registro.rodada (tipo, inicio) VALUES ('decisao', now()) RETURNING id"
+        )
+        rid = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO registro.relaxamento "
+            "(rodada_id, regra_cedida, posicoes_dependentes, posicoes_vazias) "
+            "VALUES (%s, 'perfil_de_conversao', 0, 0)",
+            (rid,),
+        )
+        cur.execute(
+            "INSERT INTO registro.decisao_imovel "
+            "(rodada_id, imovel_id, nivel, posicao_ranking, nota_perfil, nota_leads, "
+            "nota_desempenho, nota_gestor, nota_final, regra_relaxada) "
+            "VALUES (%s, 1, 'destaque', 1, 0, 0, 0, 0, 0, 'perfil_de_conversao')",
+            (rid,),
+        )
 
 
 def test_super_com_relaxamento_rejeitado_pelo_ddl(conn):

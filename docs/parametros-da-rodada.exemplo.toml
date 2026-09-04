@@ -1,135 +1,57 @@
-# MODELO — os NÚMEROS aqui são ILUSTRATIVOS e NÃO SÃO ADOTADOS.
+# MODELO — mostra a FORMA do arquivo de parâmetros de uma rodada. É recusado como
+# entrada: copie para fora do repositório e mude o que quiser mudar.
 #
-# Treze dos quatorze parâmetros da decisão são NULOS (tabela do CLAUDE.md; D-004, D-017).
-# Este arquivo mostra a FORMA do que o dono da decisão precisa declarar; nenhuma
-# evidência sustenta os valores. Substitua todos.
+# Desde 04/09/2026 (D-034) TODA chave tem um valor ADOTADO em `src/config/adotados.py`,
+# com decisão registrada. Este arquivo é OPCIONAL: sem ele, a rodada usa só os adotados.
+# O que você declarar aqui vale para ESTA rodada, é rotulado PROVISÓRIO na planilha e
+# no Registro quando difere do adotado, e NÃO muda o adotado — adotar é decisão em
+# `docs/decisoes.md` mais CHANGELOG.
 #
-# Uma primeira versão deste modelo usava valores uniformes (pesos iguais nos dois
-# níveis, decaimento 1.0, penalidade sem decaimento) na esperança de que ninguém os
-# confundisse com calibração. Era pior: uniformidade não é neutra. Pesos iguais nos
-# dois níveis fazem os dois perseguirem o MESMO objetivo, contra a tabela de
-# objetivos por nível da Spec §6.3 que a D-017 preserva; decaimento 1.0 anula a
-# ordem de dimensões que a D-017 ADOTOU; e não decair contradiz a §6.4. O modelo
-# passou a ilustrar a forma CERTA com números claramente redondos.
+# Chave desconhecida é erro; nome digitado errado nunca é descartado em silêncio.
+# Toda unidade é concreta: dias, pontos de 100, por cento, corretores, leads.
 #
 # Como usar:
-#   1. copie para fora do repositório (ex.: ~/parametros-2026-09-05.toml);
-#   2. substitua CADA número por uma escolha sua;
-#   3. rode:  uv run python -m executar.sexta --parametros ~/parametros-2026-09-05.toml \
-#               --externo /caminho/da/saida/do/raspador
-#      (sem --externo o F3 não entra, e o peso que você deu a `desempenho_proprio`
-#       fica morto — a rodada sai degradada nesse fator, com a limitação declarada.)
-#
-# O carregador RECUSA a rodada se faltar qualquer chave — não existe default. E
-# recusa chave desconhecida: um nome digitado errado vira erro, nunca um valor
-# descartado em silêncio.
-#
-# Tudo que passa por aqui é rotulado PROVISÓRIO na planilha, com a origem do arquivo.
-# Adotar um valor é outra coisa: exige decisão registrada em `docs/decisoes.md` e
-# entrada no CHANGELOG.
+#   uv run python -m executar.sexta --externo /caminho/da/saida/do/raspador \
+#       [--parametros ~/parametros-2026-09-05.toml]
 
-# --- Semelhança com o perfil de conversão (fator F1) --------------------------
-[semelhanca]
-# Peso reduzido de um perfil FRÁGIL (Spec §6.2: "não recebe peso pleno").
-# Fator em [0, 1] que multiplica o num_vendas do perfil frágil.
-desconto_fragil = 0.5
+# --- QUEM ENTRA: o banco decide ------------------------------------------------
+[conversao]
+# Olhamos para trás quantos dias para descobrir o que vende. Adotado: 180.
+janela_dias = 180
 
-# Parâmetro pendente nº 13: decaimento do peso por DIMENSÃO. A ORDEM é adotada
-# (preço > localização > metragem > dormitórios > vagas); só a MAGNITUDE é nula.
-# Precisa ficar em (0, 1] — e abaixo de 1.0 para que a ordem adotada produza
-# efeito: foi a saturação por uma única dimensão (443 dos 475 super destaques
-# puxados pelo mesmo perfil de dormitórios) que motivou a D-017.
-decaimento = 0.7
+[corretor]
+# Gestor sem login há mais dias que isto trava o relaxamento dos imóveis dele (D-029).
+login_janela_dias = 30
+# Quantos corretores ativos o distrito precisa ter (D-015).
+minimo_no_distrito = 2
 
-# --- Intensidade das três penalidades (parâmetro pendente nº 3) ---------------
-# Quanto cada penalidade desconta da nota.
-[intensidades]
-janela_sem_resultado = 0.20
-sem_avaliacao_por_categoria = 0.10
-sem_lead_180d = 0.10
+# --- EM QUE ORDEM: o portal classifica -----------------------------------------
+[portal]
+# Pontos de 100; os três somam 100. Visualizações mediram zero em 300/300 anúncios.
+peso_nota = 70
+peso_cliques = 30
+peso_visualizacoes = 0
+# A raspagem precisa cobrir esta fração dos candidatos (%) para a ordem vir do portal.
+cobertura_minima = 50
+# Dado do portal mais velho que isto (dias) não entra.
+idade_maxima_dias = 2
+# Imóvel elegível que a raspagem não trouxe: "fim_da_fila" ou "mediana".
+sem_anuncio = "fim_da_fila"
+# Se a raspagem não entrar: "leads_180d", "produtividade_gestor" ou "cadastro_mais_novo".
+ordem_quando_nao_entra = "leads_180d"
 
-# --- Decaimento da penalidade por janela (parâmetro pendente nº 3) ------------
-# A Spec §6.4 diz que a penalidade "decai ao longo dos ciclos". O fator multiplica
-# a intensidade: fator = razao ** ciclos, com `ciclos` contados desde a janela sem
-# resultado mais recente.
-#
-# Uma forma só, `geometrica`, com `razao` em (0, 1]. Razão 1.0 é aceita e significa
-# NÃO decair — o que diverge da §6.4, e por isso a rodada declara essa divergência
-# como limitação na planilha em vez de o código fingir que não existe.
-[decaimento_janela]
-forma = "geometrica"
-razao = 0.5
+# --- EM QUE ORDEM: os descontos, em pontos de 100 ------------------------------
+[desconto]
+janela_sem_resultado = 20
+sem_avaliacao = 5
+sem_lead_180d = 10
+# Quanto o desconto da janela anterior encolhe a cada carga (% por carga).
+perdao_por_semana = 50
 
-# --- Pesos dos quatro fatores do ranking (parâmetro pendente nº 12) -----------
-# Os pesos da Spec §6.3 DEIXARAM de ser adotados na D-017. Somam 100 por nível.
-#
-# Os dois níveis perseguem objetivos DIFERENTES e por isso os conjuntos divergem —
-# essa assimetria é a parte do modelo que você deve preservar; os números, não.
-# Super destaque: disputa real (mais de dez candidatos por vaga), o objetivo é
-# valor esperado. Destaque: sobra de posição, o objetivo é probabilidade de lead.
-[pesos.super_destaque]
-semelhanca_perfil = 40
-leads_positivo = 20
-desempenho_proprio = 30
-produtividade_gestor = 10
-
-[pesos.destaque]
-semelhanca_perfil = 20
-leads_positivo = 50
-desempenho_proprio = 20
-produtividade_gestor = 10
-
-# --- Coleta externa (Canal Pro) ----------------------------------------------
-[externo]
-# Parâmetro pendente nº 7: taxa mínima de amarração para a coleta ENTRAR no
-# ranking. Abaixo dela o desempenho de portal não entra e a rodada sai DEGRADADA
-# nesse fator, com o motivo declarado.
-limiar_amarracao = 0.5
-
-# Parâmetro pendente nº 5: idade máxima aceitável da coleta externa, em dias.
-idade_maxima_dias = 8
-
-# Como o sinal F3 é composto a partir do que a raspagem traz por anúncio.
-# Formas aceitas (lista fechada):
-#   forma = "visualizacoes"
-#   forma = "nota"            + quando_ausente (a nota é opcional na coleta; o
-#                               valor do anúncio SEM nota é escolha declarada, para
-#                               que um zero implícito não puna a ausência do dado)
-#   forma = "cliques_do_tipo" + tipo, um de: cliqueContato, cliqueTelefone,
-#                               cliqueProposta, cliqueWhatsapp, cliqueAgendamento.
-#                               Os cliques NUNCA são somados entre tipos: tipos
-#                               diferentes medem intenções diferentes.
-[externo.desempenho]
-forma = "visualizacoes"
-
-# --- Resultado esperado por nível (parâmetro pendente nº 14, D-022) -----------
-# SEÇÃO OPCIONAL — a única do arquivo, e a exceção é deliberada.
-#
-# A Spec §6.4 penaliza a janela de destaque que "não atingiu o resultado esperado
-# PARA O NÍVEL", e nenhum documento jamais quantificou isso. Enquanto a seção estiver
-# ausente, o limiar é NULO: nenhuma janela é julgada, e a rodada DECLARA na planilha
-# que o limiar não foi definido — porque não penalizar por falta de régua não é o
-# mesmo que passar no critério.
-#
-# Se você declarar a seção, declare os DOIS níveis: meio-declarado julgaria metade
-# das janelas e deixaria a outra metade sem julgamento, com a planilha dizendo
-# "limiar não definido" numa rodada que penalizou parte do estoque.
-#
-# O valor é a contagem de leads que a janela precisa ter gerado para NÃO ser
-# penalizada, e precisa ser >= 1: ZERO é RECUSADO pelo carregador. Sob zero,
-# `leads >= 0` é sempre verdadeiro, a coluna sairia 0,0 para todo imóvel e nenhuma
-# limitação seria emitida — indistinguível de "nenhum imóvel penalizado", que é o
-# "nunca 0,0 silencioso" que a D-022 proíbe. Para deixar a penalidade desligada,
-# OMITA a seção: aí a rodada declara o limiar como nulo, na cara de quem aprova.
-#
-# Referência histórica, descritiva e NÃO normativa: 88% das janelas terminaram com
-# zero lead, e a média foi de 0,21 lead por janela. Ressalva de procedência: esses
-# números vêm de uma tabela do Newcore morta desde 27/06/2023 (ver mapa-de-dados) —
-# descrevem um histórico congelado, não o estoque vivo. O histórico próprio do
-# Registro, que a D-021 começou a produzir, é o que vai substituí-los.
-#
-# ATENÇÃO: os leads que a janela acumula são AMOSTRA (a segunda mede três dias de um
-# ciclo de sete), então um limiar calibrado contra o total real penalizaria a mais.
+# --- QUANTOS: a régua de resultado por nível (nº 14) ---------------------------
+# NULA por decisão do dono (04/09/2026): 88% das janelas históricas geraram zero lead.
+# Declare os DOIS níveis (super > destaque) para ligá-la nesta rodada; omita para
+# deixá-la nula — a planilha declara "régua nula" em toda linha.
 #
 # [resultado_esperado]
 # super_destaque = 3

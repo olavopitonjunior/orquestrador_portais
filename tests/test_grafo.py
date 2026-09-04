@@ -19,26 +19,26 @@ from dominio.alocacao import Alocacao, PosicaoAlocada
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, Penalidade
 from dominio.perfil import Dimensao, ImovelVendido, perfis_de_conversao
-from dominio.ranking import PesosNivel
+from dominio.ranking import PesosPortal, nota_portal
 from grafo.estado import Estado, Fontes, estado_final
 from grafo.fluxo import _rota_pos_crivo, _rota_pos_finalizar, construir_grafo, no_crivo
-from piloto.decisao import ParametrosDecisao, decidir
-from piloto.semelhanca import ParametrosSemelhanca
+from piloto.decisao import ParametrosDecisao, decidir, degradacao_sem_portal
 
 HOJE = date(2026, 9, 1)
 
+# "O banco manda, o portal classifica" (D-027/D-028): visualizações com peso > 0 aqui
+# de propósito, para o fixture de anúncios (que varia só as views) mover a nota.
 PARAMS = ParametrosDecisao(
-    semelhanca=ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0),
+    pesos_portal=PesosPortal(nota_anuncio=60, cliques=20, visualizacoes=20),
+    sem_anuncio="fim_da_fila",
+    ordem_sem_portal="leads_180d",
     intensidades=IntensidadesPenalidade(
-        janela_sem_resultado=0.15, sem_avaliacao_por_categoria=0.10, sem_lead_180d=0.10
+        janela_sem_resultado=20.0, sem_avaliacao_por_categoria=5.0, sem_lead_180d=10.0
     ),
     decaimento_janela=lambda _c: 1.0,
-    pesos_super=PesosNivel(
-        semelhanca_perfil=45, leads_positivo=30, desempenho_proprio=15, produtividade_gestor=10
-    ),
-    pesos_destaque=PesosNivel(
-        semelhanca_perfil=40, leads_positivo=40, desempenho_proprio=10, produtividade_gestor=10
-    ),
+    minimo_corretores_distrito=2,
+    # None: o perfil de região do fixture conta (em produção exige-se FAIXA_PRECO).
+    exigir_dimensao_no_perfil=None,
 )
 
 
@@ -124,9 +124,7 @@ def test_rodada_com_externo_stub_fica_degradada():
 
 # --- G4: com raspagem fresca e amarrada → COMPLETA ---------------------------
 
-PARAMS_EXT = ParametrosExterno(
-    limiar_amarracao=0.5, idade_maxima_dias=8, compor_desempenho=lambda a: a.visualizacoes
-)
+PARAMS_EXT = ParametrosExterno(limiar_amarracao=0.5, idade_maxima_dias=8)
 
 
 def _anuncio(imovel_id, views):
@@ -176,9 +174,16 @@ def test_rodada_com_raspagem_fresca_fica_completa():
     # AUSENTE" numa rodada que teve coleta.
     assert final["externo_taxa_amarracao"] == 1.0  # 2 de 2 candidatos amarrados
     assert final["externo_idade_dias"] == 0  # coletada no mesmo dia de HOJE
-    # o desempenho de portal (F3) entrou no cálculo: min-max, o de mais views = 1.0
-    assert final["resultado"].detalhes[1].fatores.desempenho_proprio == 1.0
-    assert final["resultado"].detalhes[2].fatores.desempenho_proprio == 0.0
+    # o portal ENTROU e classifica: os sinais do anúncio (min-max sobre os elegíveis)
+    # são os do fixture — mesma nota (8000) para os dois, views 300 vs 50 — e a nota
+    # bruta é a `nota_portal` desses sinais, não um desempate de banco.
+    d1, d2 = final["resultado"].detalhes[1], final["resultado"].detalhes[2]
+    assert (d1.fatores.visualizacoes, d2.fatores.visualizacoes) == (1.0, 0.0)
+    assert d1.fatores.nota_anuncio == d2.fatores.nota_anuncio == 0.0  # notas iguais
+    assert d1.nota_bruta == nota_portal(d1.fatores, PARAMS.pesos_portal) == 20.0
+    assert d2.nota_bruta == nota_portal(d2.fatores, PARAMS.pesos_portal) == 0.0
+    assert d1.nota_bruta > d2.nota_bruta
+    assert not any("desempate de banco" in d for d in final["resultado"].degradacoes)
 
 
 def test_coletor_externo_meio_fiado_falha():
@@ -201,8 +206,12 @@ def test_raspagem_com_amarracao_baixa_degrada():
     assert final["estado"] == Estado.DEGRADADA  # performance externa não entra
     assert final["prontos"]["externo"] is False
     assert any("amarração" in d for d in final["degradacoes"])
-    # sem F3: desempenho zerado (degradado)
-    assert final["resultado"].detalhes[1].fatores.desempenho_proprio == 0.0
+    # o portal NÃO entrou: a nota vem do desempate de banco declarado (leads, todos
+    # iguais no fixture → 0) e a costura declara a degradação
+    res = final["resultado"]
+    assert degradacao_sem_portal("leads_180d") in res.degradacoes
+    assert {det.nota_bruta for det in res.detalhes.values()} == {0.0}
+    assert res.detalhes[1].nota_bruta == 100.0 * res.detalhes[1].fatores.leads
 
 
 def test_decisao_dentro_das_cotas():

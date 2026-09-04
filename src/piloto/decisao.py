@@ -1,53 +1,41 @@
-"""Costura da decisão da piloto: encadeia as seis etapas do domínio.
+"""Costura da decisão: encadeia as etapas do domínio sob "o banco manda, o portal
+classifica" (D-027 a D-030, 04/09/2026).
 
-Rodada de TESTE fora do ciclo (não é o grafo de produção). Encadeia, como
-cálculo puro (invariantes 4/5), as funções já revisadas do domínio:
+  filtro de perfil (D-027) → elegibilidade (nove regras) → sinais do portal e do
+  banco, normalizados SOBRE OS ELEGÍVEIS → descontos (pontos de 100) → nota (o
+  portal; sem portal, o desempate de banco declarado) → alocação (cotas, piso,
+  desempate por leads) → relaxamento (perfil é o primeiro degrau; trava do login).
 
-  elegibilidade → fatores (semelhança ponderada por dimensão + leads + produtividade;
-  desempenho degradado) → penalidades → ranking (nota por nível, pesos INJETADOS)
-  → alocação (cotas) → relaxamento.
+Leituras estruturais, declaradas — não inventadas:
 
-Leituras estruturais desta rodada (D-016/D-017), declaradas — não inventadas:
-
-1. NORMALIZAÇÃO sobre os ELEGÍVEIS (forma do parâmetro nº 2, provisória). Os
-   fatores são reescalados [0,1] por min-max SOBRE OS ELEGÍVEIS, para que o
-   ranking das 475/6.495 posições NÃO dependa de imóveis reprovados (que nunca
-   serão colocados). O pool de reprovados do relaxamento é normalizado ENTRE SI
-   — e como min-max preserva ordem, isso não altera a saída do relaxamento
-   (que ordena dentro do grau, sem comparar com corte). Vale para os quatro
-   fatores, incluindo o F2 leads.
-2. semelhança PONDERADA POR DIMENSÃO (F1, D-017): a contribuição de cada perfil
-   é escalada pela importância das suas dimensões (preço > … > vagas), com o
-   `decaimento` injetado (nº 13). É o que de-satura o sinal. A combinação para
-   perfis de duas dimensões (máximo dos pesos) é leitura declarada em
-   `piloto.semelhanca`.
-3. F2 leads = min-max de `Leads180D` (fator POSITIVO vivo, do banco, via
-   ImovelPenalizavel — D-017). Lead deixa de ser só penalidade e vira sinal.
-4. desempenho_proprio = 0 para todos: a piloto não raspa o portal, então o
-   fator roda DEGRADADO (D-017: é reforço, não bloqueia). Zerar uniformemente é
-   order-preserving — declarado na saída.
-5. produtividade_gestor = intensidade CONTÍNUA em 30d (F4, D-017):
-   `produtividade_gestor_30d` (taxa semanal de captação + flag de venda recente),
-   normalizada min-max. Substitui o binário morto (redundante com a
-   elegibilidade). Limitação declarada: a base não expõe CONTAGEM de vendas em
-   30d (Sells é de 365d), então a venda entra só como flag; a captação é a
-   dimensão genuinamente contínua. O binário `gestor_captou_ou_vendeu_30d` segue
-   como REGRA de elegibilidade, intocado.
-
-Os pesos dos quatro fatores (nº 12) e o decaimento por dimensão (nº 13) são
-INJETADOS run-local via `ParametrosDecisao`/`ParametrosSemelhanca` — fecha o
-mandato de injeção da D-017 (invariante 5). Junto dos provisórios nº 2 (forma da
-normalização) e nº 3 (intensidades), nunca em src/config, nunca adotados
-(D-014). Todos rotulados na saída para a planilha.
+1. NORMALIZAÇÃO min-max sobre os ELEGÍVEIS (forma do parâmetro nº 2, provisória):
+   o ranking das 475/6.495 posições não depende de imóveis reprovados. O pool de
+   reprovados do relaxamento é normalizado ENTRE SI (D-016); a apuração diz de qual
+   população cada nota veio.
+2. O PERFIL é regra, não fator (D-027): a costura calcula `casa_perfil_de_conversao`
+   para cada candidato — contra os perfis robustos que CONTÊM a dimensão exigida — e
+   entrega o veredito à elegibilidade. Nenhum candidato chega a `regras_reprovadas`
+   com o veredito em None.
+3. A NOTA é do portal (D-028): pesos em pontos de 100 sobre nota do anúncio, cliques
+   (somados entre tipos) e visualizações; imóvel SEM anúncio recebe o tratamento
+   declarado (`sem_anuncio`). Quando o portal NÃO entrou (portas do Coletor Externo),
+   a nota vem do desempate de banco declarado (`ordem_sem_portal`) e a rodada
+   declara isso — nunca "todos zerados" em silêncio.
+4. O DESEMPATE da alocação é o banco (leads em 180 dias, normalizado), depois o
+   cadastro mais novo (D-009).
+5. A TRAVA do login (D-029): reprovado em gestor_produtivo com gestor sem login não
+   é recuperado pelo relaxamento; o resultado conta quantos.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
+from statistics import median
 
+from dados.coletor_externo import DesempenhoAnuncio
 from dominio.alocacao import COTA_DESTAQUE, Alocacao, CandidatoAlocacao, alocar
 from dominio.elegibilidade import ImovelCandidato, Regra, regras_reprovadas
 from dominio.penalidades import (
@@ -56,37 +44,50 @@ from dominio.penalidades import (
     Penalidade,
     descontos_por_penalidade,
 )
-from dominio.perfil import PerfilConversao
-from dominio.ranking import (
-    FatoresNormalizados,
-    PesosNivel,
-    nota_final,
-)
+from dominio.perfil import Dimensao, PerfilConversao
+from dominio.ranking import FatoresNormalizados, PesosPortal, nota_final, nota_portal
 from dominio.relaxamento import CandidatoRelaxamento, ResultadoRelaxamento, relaxar
-from piloto.semelhanca import (
-    DimensoesImovel,
-    ParametrosSemelhanca,
-    perfil_que_puxou,
-    semelhanca_por_imovel,
+from piloto.semelhanca import DimensoesImovel, casa_algum, perfil_que_puxou, perfis_que_contam
+
+FORMAS_SEM_ANUNCIO: tuple[str, ...] = ("fim_da_fila", "mediana")
+FORMAS_DE_ORDEM_SEM_PORTAL: tuple[str, ...] = (
+    "leads_180d",
+    "produtividade_gestor",
+    "cadastro_mais_novo",
 )
 
 
 @dataclass(frozen=True)
 class ParametrosDecisao:
-    """Os provisórios da rodada, injetados run-local (nunca em src/config).
+    """Os parâmetros que a costura consome, já validados pelo carregador.
 
-    `pesos_super`/`pesos_destaque` são os pesos dos quatro fatores por nível
-    (D-017, parâmetro nulo nº 12): INJETADOS aqui, não lidos de constante em
-    `src/dominio` — é o que fecha o mandato de injeção da D-017 (invariante 5:
-    pesos injetados, não constantes escondidas). Provisórios da rodada,
-    rotulados PROVISÓRIO na saída; nunca adotados.
+    `pesos_portal`: pontos de 100 sobre nota do anúncio, cliques e visualizações.
+    `sem_anuncio`: o que o imóvel sem anúncio raspado vale — "fim_da_fila" (o mínimo
+    da população) ou "mediana" (a mediana de quem tem anúncio).
+    `ordem_sem_portal`: quando as portas do Coletor Externo fecham, o que ordena —
+    "leads_180d", "produtividade_gestor" ou "cadastro_mais_novo".
+    `minimo_corretores_distrito`: a régua de capacidade do distrito (D-033).
+    `exigir_dimensao_no_perfil`: a dimensão que o perfil precisa conter (D-027);
+    None = qualquer perfil robusto conta (o que a medição mostrou não filtrar nada).
     """
 
-    semelhanca: ParametrosSemelhanca
+    pesos_portal: PesosPortal
+    sem_anuncio: str  # um de FORMAS_SEM_ANUNCIO (validado abaixo)
+    ordem_sem_portal: str  # um de FORMAS_DE_ORDEM_SEM_PORTAL (validado abaixo)
     intensidades: IntensidadesPenalidade
     decaimento_janela: Callable[[int], float]
-    pesos_super: PesosNivel
-    pesos_destaque: PesosNivel
+    minimo_corretores_distrito: int
+    exigir_dimensao_no_perfil: Dimensao | None
+
+    def __post_init__(self) -> None:
+        if self.sem_anuncio not in FORMAS_SEM_ANUNCIO:
+            raise ValueError(f"sem_anuncio desconhecido: {self.sem_anuncio!r}")
+        if self.ordem_sem_portal not in FORMAS_DE_ORDEM_SEM_PORTAL:
+            raise ValueError(f"ordem_sem_portal desconhecida: {self.ordem_sem_portal!r}")
+        if self.minimo_corretores_distrito < 1:
+            raise ValueError(
+                f"minimo_corretores_distrito inválido: {self.minimo_corretores_distrito}"
+            )
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,9 @@ class DetalheImovel:
     nota_super_destaque: float | None
     nota_destaque: float
     perfil_que_puxou: PerfilConversao | None
+    # A nota ANTES dos descontos (0–100): a do portal, ou a do desempate de banco quando
+    # o portal não entrou. A planilha mostra as duas; o Registro grava esta.
+    nota_bruta: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -147,60 +151,98 @@ def _normalizar_minmax(bruto: dict[int, float]) -> dict[int, float]:
     return {iid: (v - menor) / faixa for iid, v in bruto.items()}
 
 
-def _leads_do(imovel_id: int, penalizaveis: Mapping[int, ImovelPenalizavel]) -> int:
-    """`Leads180D` do imóvel (via ImovelPenalizavel, onde o dado já é coletado).
-
-    Falha alta se o imóvel não tem penalizável — a mesma garantia que `_descontos`
-    exige, para não montar o fator de leads sobre coleta desalinhada.
-    """
+def _penalizavel(
+    imovel_id: int, penalizaveis: Mapping[int, ImovelPenalizavel]
+) -> ImovelPenalizavel:
     pen = penalizaveis.get(imovel_id)
     if pen is None:
         raise ValueError(f"imóvel {imovel_id} sem ImovelPenalizavel: coleta desalinhada")
-    return pen.leads_180d
+    return pen
+
+
+def _sinal_do_portal(
+    imoveis: Sequence[ImovelCandidato],
+    anuncios: Mapping[int, DesempenhoAnuncio],
+    extrair: Callable[[DesempenhoAnuncio], float | None],
+    sem_anuncio: str,
+) -> dict[int, float]:
+    """Um sinal cru do portal por imóvel desta população, com o tratamento declarado
+    para quem não tem anúncio (ou tem anúncio sem o dado): "fim_da_fila" recebe o
+    MÍNIMO de quem tem (vira 0 no min-max — o pior, declarado, não silencioso);
+    "mediana" recebe a mediana de quem tem. Sem ninguém com o dado, todos 0."""
+    com_dado: dict[int, float] = {}
+    for im in imoveis:
+        an = anuncios.get(im.imovel_id)
+        v = extrair(an) if an is not None else None
+        if v is not None:
+            com_dado[im.imovel_id] = float(v)
+    if com_dado:
+        substituto = (
+            min(com_dado.values())
+            if sem_anuncio == "fim_da_fila"
+            else float(median(com_dado.values()))
+        )
+    else:
+        substituto = 0.0
+    return {im.imovel_id: com_dado.get(im.imovel_id, substituto) for im in imoveis}
 
 
 def _fatores(
     imoveis: Sequence[ImovelCandidato],
-    dims_por_imovel: Mapping[int, DimensoesImovel],
-    perfis: tuple[PerfilConversao, ...],
-    params_sem: ParametrosSemelhanca,
+    anuncios: Mapping[int, DesempenhoAnuncio],
     penalizaveis: Mapping[int, ImovelPenalizavel],
-    desempenho_por_imovel: Mapping[int, float],
+    sem_anuncio: str,
 ) -> dict[int, FatoresNormalizados]:
-    """Monta os QUATRO fatores normalizados SOBRE ESTA população (D-017).
-
-    Os quatro são normalizados (min-max) ENTRE os imóveis passados — sobre os
-    elegíveis no ranking primário, entre os reprovados no relaxamento (D-016).
-    F1 semelhança; F2 leads = min-max de `Leads180D` (fator POSITIVO vivo, do
-    banco); F3 desempenho_proprio = min-max do sinal de portal `desempenho_por_
-    imovel` (composto pelo nó do Coletor Externo a partir da raspagem — nota/
-    visualizações/cliques; imóvel sem raspagem entra com 0, o pior); F4
-    produtividade = min-max de `produtividade_gestor_30d` (intensidade CONTÍNUA
-    em 30d — captação como taxa + venda como flag, D-017), NÃO mais o binário
-    (que é a regra de elegibilidade, à parte).
-    Passe os elegíveis para o ranking primário e os reprovados para o relaxamento.
-    """
-    dims_pop = {im.imovel_id: dims_por_imovel.get(im.imovel_id, {}) for im in imoveis}
-    semelhanca = semelhanca_por_imovel(dims_pop, perfis, params_sem)
-    produtividade = _normalizar_minmax(
-        {im.imovel_id: float(im.produtividade_gestor_30d) for im in imoveis}
+    """Os sinais normalizados (min-max) SOBRE ESTA população: os três do portal e os
+    dois do banco. Passe os elegíveis para o ranking e os reprovados para o
+    relaxamento (D-016). `casa_perfil` vem pronto no candidato (D-027)."""
+    nota = _normalizar_minmax(_sinal_do_portal(imoveis, anuncios, lambda a: a.nota, sem_anuncio))
+    # Cliques SOMADOS entre tipos (D-028: "mais cliques" — divergência registrada com o
+    # contrato anterior do coletor, que nunca os somava).
+    cliques = _normalizar_minmax(
+        _sinal_do_portal(imoveis, anuncios, lambda a: float(sum(a.cliques.values())), sem_anuncio)
+    )
+    visualizacoes = _normalizar_minmax(
+        _sinal_do_portal(imoveis, anuncios, lambda a: float(a.visualizacoes), sem_anuncio)
     )
     leads = _normalizar_minmax(
-        {im.imovel_id: float(_leads_do(im.imovel_id, penalizaveis)) for im in imoveis}
+        {im.imovel_id: float(_penalizavel(im.imovel_id, penalizaveis).leads_180d) for im in imoveis}
     )
-    desempenho = _normalizar_minmax(
-        {im.imovel_id: float(desempenho_por_imovel.get(im.imovel_id, 0.0)) for im in imoveis}
+    produtividade = _normalizar_minmax(
+        {im.imovel_id: float(im.produtividade_gestor_30d) for im in imoveis}
     )
     return {
         im.imovel_id: FatoresNormalizados(
             imovel_id=im.imovel_id,
-            semelhanca_perfil=semelhanca.get(im.imovel_id, 0.0),
-            desempenho_proprio=desempenho[im.imovel_id],
-            produtividade_gestor=produtividade[im.imovel_id],
+            nota_anuncio=nota[im.imovel_id],
+            cliques=cliques[im.imovel_id],
+            visualizacoes=visualizacoes[im.imovel_id],
             leads=leads[im.imovel_id],
+            produtividade_gestor=produtividade[im.imovel_id],
+            casa_perfil=im.casa_perfil_de_conversao,  # tri-estado: None = não avaliado
         )
         for im in imoveis
     }
+
+
+def _nota_bruta(fat: FatoresNormalizados, p: ParametrosDecisao, portal_entrou: bool) -> float:
+    """A nota antes dos descontos: do portal, ou do desempate de banco quando ele não
+    entrou (em pontos de 100, para os descontos valerem o mesmo nos dois casos)."""
+    if portal_entrou:
+        return nota_portal(fat, p.pesos_portal)
+    if p.ordem_sem_portal == "leads_180d":
+        return 100.0 * fat.leads
+    if p.ordem_sem_portal == "produtividade_gestor":
+        return 100.0 * fat.produtividade_gestor
+    return 0.0  # cadastro_mais_novo: todos empatam e o desempate por imovel_id decide
+
+
+def _desempate(fat: FatoresNormalizados, p: ParametrosDecisao, portal_entrou: bool) -> float:
+    """D-028: o banco desempata por leads — exceto sob `cadastro_mais_novo` sem portal,
+    forma que promete SÓ o cadastro mais novo: aí o desempate é o próprio imovel_id."""
+    if not portal_entrou and p.ordem_sem_portal == "cadastro_mais_novo":
+        return 0.0
+    return fat.leads
 
 
 def _descontos(
@@ -213,26 +255,34 @@ def _descontos(
     return descontos_por_penalidade(pen, p.intensidades, p.decaimento_janela)
 
 
-# Declarada SÓ quando o F3 de fato não entrou. Era incondicional, e desde que o
-# ponto de entrada da sexta passou a poder alimentar F3 com raspagem viva, uma
-# rodada COMPLETA saía declarando "desempenho de portal ausente" duas linhas abaixo
-# do próprio estado — limitação falsa na planilha que sustenta a aprovação (§7.2).
-DEGRADACAO_SEM_PORTAL = (
-    "desempenho próprio observado (portal) ausente (rodada sem raspagem): "
-    "rodada DEGRADADA nesse fator, que roda zerado (D-017: é reforço, não bloqueia)."
-)
+def degradacao_sem_portal(ordem: str) -> str:
+    return (
+        "desempenho de portal ausente (a coleta não entrou): a ordem desta rodada veio do "
+        f"desempate de banco declarado — {ordem} — e não do anúncio (D-028). Rodada DEGRADADA."
+    )
+
+
+def degradacao_sem_perfil(exigir: Dimensao | None) -> str:
+    exigencia = f" que contenha `{exigir.value}`" if exigir is not None else ""
+    return (
+        f"perfil de conversão sem evidência robusta: nenhum perfil com N ≥ 3{exigencia}. "
+        "O filtro de perfil (D-027) NÃO incidiu — ninguém foi reprovado por perfil — e a "
+        "rodada opera sem a regra (Spec §7.3). Rodada DEGRADADA."
+    )
+
+
+def degradacao_sem_dimensoes(quantos: int) -> str:
+    return (
+        f"{quantos} candidato(s) sem dimensões na coleta de perfil: perfil não avaliado "
+        "para eles (não reprovam por dado ausente) — limitação declarada."
+    )
+
 
 DEGRADACOES = (
-    "F2 leads = min-max de Leads180D (fator POSITIVO vivo, do banco — D-017).",
-    "F4 produtividade do gestor agora CONTÍNUA (D-017): taxa semanal de captação "
-    "+ flag de venda recente em 30d, normalizada. Limitação: a base não expõe "
-    "contagem de vendas em 30d (Sells é de 365d), então a venda entra só como flag.",
-    "pesos dos quatro fatores por nível (parâmetro nº 12) e decaimento por dimensão "
-    "do F1 (parâmetro nº 13): PROVISÓRIOS desta rodada, injetados run-local, NÃO adotados (D-017).",
-    "forma de normalização (parâmetro nº 2) = min-max: PROVISÓRIA, não adotada "
-    "pelo dono — a forma não foi decidida (D-016).",
-    "intensidades das penalidades e decaimento por janela (parâmetro nº 3): PROVISÓRIOS "
-    "desta rodada, não adotados.",
+    "forma de normalização (parâmetro nº 2) = min-max sobre os elegíveis: PROVISÓRIA, "
+    "não adotada pelo dono (D-016).",
+    "produtividade do gestor em 30 dias: a base não expõe contagem de vendas em 30d "
+    "(Sells é de 365d), então a venda entra só como marca — limitação declarada.",
 )
 
 
@@ -243,55 +293,76 @@ def decidir(
     perfis: tuple[PerfilConversao, ...],
     parametros: ParametrosDecisao,
     data_referencia: date,
-    desempenho_por_imovel: Mapping[int, float] | None = None,
+    anuncios: Mapping[int, DesempenhoAnuncio] | None = None,
+    portal_entrou: bool = False,
 ) -> ResultadoDecisao:
-    """Encadeia as seis etapas e devolve a alocação + o relaxamento (Spec §6).
+    """Encadeia as etapas e devolve a alocação + o relaxamento.
 
-    `desempenho_por_imovel` é o sinal de portal por imóvel (F3), composto pelo nó
-    do Coletor Externo a partir da raspagem; None/omisso = sem raspagem, F3 = 0
-    para todos (rodada degradada nesse fator, como a piloto).
+    `anuncios` é o que a raspagem trouxe cru por imóvel; `portal_entrou` diz se as
+    portas do Coletor Externo passaram. Sem portal, a nota vem do desempate de banco
+    declarado e a rodada declara a degradação.
 
-    Determinístico (invariante 5): mesma entrada e mesmos parâmetros ⇒ mesma
-    saída. As cotas (invariante 6) e o relaxamento só-destaque (invariante 7)
-    são garantidos pelos módulos do domínio, não reimplementados aqui.
+    Determinístico (invariante 5): mesma entrada e mesmos parâmetros ⇒ mesma saída.
+    As cotas (invariante 6) e o relaxamento só-destaque (invariante 7) são garantidos
+    pelos módulos do domínio, não reimplementados aqui.
     """
-    # imovel_id único no lote: alocar/relaxar detectam duplicata dentro do seu
-    # lote, mas um id que atravessasse elegível↔reprovado escaparia das duas
-    # guardas e sobrescreveria silenciosamente em `detalhes`. A costura fecha isso.
     contagem = Counter(c.imovel_id for c in candidatos)
     dups = sorted(i for i, n in contagem.items() if n > 1)
     if dups:
         raise ValueError(f"imovel_id duplicado no lote de candidatos: {dups}")
 
-    desempenho = desempenho_por_imovel or {}  # sem raspagem → F3 = 0 para todos
+    anuncios = anuncios or {}
+    if not anuncios:
+        portal_entrou = False  # sem anúncio nenhum não há ordem de portal, entrou ou não
+
+    # D-027: o filtro de perfil é calculado AQUI (só a costura conhece os perfis) e
+    # entregue à elegibilidade como veredito. None = NÃO AVALIADO, e a elegibilidade
+    # não reprova None: sem nenhum perfil que conte (Spec §7.3: "sem robustez opera sem
+    # o fator") ou sem dimensões do candidato, a regra não incide — e a rodada declara.
+    contam = perfis_que_contam(perfis, parametros.exigir_dimensao_no_perfil)
+    sem_dimensoes = sum(1 for c in candidatos if c.imovel_id not in dims_por_imovel)
+
+    def _veredito(c: ImovelCandidato) -> bool | None:
+        dims = dims_por_imovel.get(c.imovel_id)
+        if not contam or dims is None:
+            return None
+        return casa_algum(dims, contam)
+
+    candidatos = [replace(c, casa_perfil_de_conversao=_veredito(c)) for c in candidatos]
+    extras: list[str] = []
+    if not contam:
+        extras.append(degradacao_sem_perfil(parametros.exigir_dimensao_no_perfil))
+    if sem_dimensoes:
+        extras.append(degradacao_sem_dimensoes(sem_dimensoes))
 
     elegiveis: list[ImovelCandidato] = []
     reprovados: list[tuple[ImovelCandidato, frozenset[Regra]]] = []
     for c in candidatos:
-        rr = regras_reprovadas(c, data_referencia)
+        rr = regras_reprovadas(
+            c, data_referencia, minimo_corretores_distrito=parametros.minimo_corretores_distrito
+        )
         if rr:
             reprovados.append((c, rr))
         else:
             elegiveis.append(c)
 
-    # Ranking primário: fatores normalizados SOBRE OS ELEGÍVEIS.
-    fatores_el = _fatores(
-        elegiveis, dims_por_imovel, perfis, parametros.semelhanca, penalizaveis, desempenho
-    )
+    # Ranking primário: sinais normalizados SOBRE OS ELEGÍVEIS.
+    fatores_el = _fatores(elegiveis, anuncios, penalizaveis, parametros.sem_anuncio)
     detalhes: dict[int, DetalheImovel] = {}
     aloc_entrada: list[CandidatoAlocacao] = []
     for c in elegiveis:
         fat = fatores_el[c.imovel_id]
         descontos = _descontos(c.imovel_id, penalizaveis, parametros)  # uma vez por imóvel
         desc_total = sum(descontos.values(), 0.0)
-        nota_super = nota_final(fat, parametros.pesos_super, desc_total)
-        nota_dest = nota_final(fat, parametros.pesos_destaque, desc_total)
+        bruta = _nota_bruta(fat, parametros, portal_entrou)
+        nota = nota_final(bruta, desc_total)
         aloc_entrada.append(
             CandidatoAlocacao(
                 imovel_id=c.imovel_id,
                 preco=c.preco,
-                nota_super_destaque=nota_super,
-                nota_destaque=nota_dest,
+                nota_super_destaque=nota,
+                nota_destaque=nota,
+                desempate=_desempate(fat, parametros, portal_entrou),  # D-028
             )
         )
         detalhes[c.imovel_id] = DetalheImovel(
@@ -299,30 +370,35 @@ def decidir(
             fatores=fat,
             descontos_por_penalidade=descontos,
             desconto_total=desc_total,
-            nota_super_destaque=nota_super,
-            nota_destaque=nota_dest,
-            perfil_que_puxou=perfil_que_puxou(
-                dims_por_imovel.get(c.imovel_id, {}), perfis, parametros.semelhanca
-            ),
+            nota_super_destaque=nota,
+            nota_destaque=nota,
+            perfil_que_puxou=perfil_que_puxou(dims_por_imovel.get(c.imovel_id, {}), contam),
+            nota_bruta=bruta,
         )
     alocacao = alocar(aloc_entrada)
 
-    # Relaxamento (só destaque): reprovados normalizados ENTRE SI.
+    # Relaxamento (só destaque): reprovados normalizados ENTRE SI. O pool é montado
+    # mesmo sem déficit: a trava do login (D-029) é contada sobre os candidatos, e a
+    # apuração mostra a nota dos reprovados de qualquer jeito.
     deficit = COTA_DESTAQUE - len(alocacao.destaque)
-    if deficit > 0 and reprovados:
+    if reprovados:
         so_reprovados = [c for c, _ in reprovados]
-        fatores_rep = _fatores(
-            so_reprovados, dims_por_imovel, perfis, parametros.semelhanca, penalizaveis, desempenho
-        )
+        fatores_rep = _fatores(so_reprovados, anuncios, penalizaveis, parametros.sem_anuncio)
         pool: list[CandidatoRelaxamento] = []
         for c, rr in reprovados:
             fat = fatores_rep[c.imovel_id]
             descontos = _descontos(c.imovel_id, penalizaveis, parametros)
             desc_total = sum(descontos.values(), 0.0)
-            nota_dest = nota_final(fat, parametros.pesos_destaque, desc_total)
+            bruta = _nota_bruta(fat, parametros, portal_entrou)
+            nota_dest = nota_final(bruta, desc_total)
             pool.append(
                 CandidatoRelaxamento(
-                    imovel_id=c.imovel_id, nota_destaque=nota_dest, regras_reprovadas=rr
+                    imovel_id=c.imovel_id,
+                    nota_destaque=nota_dest,
+                    regras_reprovadas=rr,
+                    desempate=_desempate(fat, parametros, portal_entrou),
+                    # D-029: só a marca; a trava é aplicada pelo relaxamento.
+                    gestor_sem_login=c.gestor_logou_na_janela is False,
                 )
             )
             detalhes[c.imovel_id] = DetalheImovel(
@@ -332,9 +408,8 @@ def decidir(
                 desconto_total=desc_total,
                 nota_super_destaque=None,  # reprovado só disputa destaque (relaxamento)
                 nota_destaque=nota_dest,
-                perfil_que_puxou=perfil_que_puxou(
-                    dims_por_imovel.get(c.imovel_id, {}), perfis, parametros.semelhanca
-                ),
+                perfil_que_puxou=perfil_que_puxou(dims_por_imovel.get(c.imovel_id, {}), contam),
+                nota_bruta=bruta,
             )
         relaxamento = relaxar(deficit, pool)
     else:
@@ -349,5 +424,9 @@ def decidir(
         n_elegiveis=len(elegiveis),
         n_reprovados=len(reprovados),
         # A limitação do portal só é declarada se o portal REALMENTE não entrou.
-        degradacoes=DEGRADACOES if desempenho_por_imovel else (DEGRADACAO_SEM_PORTAL, *DEGRADACOES),
+        degradacoes=(
+            *extras,
+            *(() if portal_entrou else (degradacao_sem_portal(parametros.ordem_sem_portal),)),
+            *DEGRADACOES,
+        ),
     )

@@ -37,6 +37,7 @@ from dominio.penalidades import JanelaCrua, com_janelas, julgar_janelas
 from dominio.perfil import perfis_de_conversao
 from grafo.estado import Estado, EstadoRodada, Fontes, estado_final
 from piloto.decisao import ParametrosDecisao, decidir
+from piloto.semelhanca import perfis_que_contam
 
 
 def no_coletor_interno(estado: EstadoRodada, *, fontes: Fontes) -> dict:
@@ -58,17 +59,22 @@ def no_coletor_interno(estado: EstadoRodada, *, fontes: Fontes) -> dict:
     }
 
 
-def no_analista_perfil(estado: EstadoRodada, *, fontes: Fontes) -> dict:
+def no_analista_perfil(
+    estado: EstadoRodada, *, fontes: Fontes, parametros: ParametrosDecisao
+) -> dict:
     """Descobre os perfis de conversão por contagem (Spec §6.2, determinístico).
-    PRONTO: ao menos um perfil robusto. Sem robustez a priorização opera sem o
-    fator, registrado como degradação (Spec §7.3), não aborta."""
+    PRONTO: ao menos um perfil que CONTA para o filtro — robusto E contendo a
+    dimensão exigida (D-027), o mesmo critério que `decidir` aplica. Sem isso o
+    filtro não incide e a rodada segue degradada (Spec §7.3), não aborta; a
+    degradação nomeada é acrescentada pelo decisor."""
     vendas, _descartadas = fontes.coletar_vendas()
     perfis = perfis_de_conversao(vendas)
-    robusto = any(not p.fragil for p in perfis)
+    robusto = bool(perfis_que_contam(perfis, parametros.exigir_dimensao_no_perfil))
     saida: dict = {"perfis": perfis, "prontos": {"perfil": robusto}}
     if not robusto:
         saida["degradacoes"] = [
-            "perfil de conversão sem evidência robusta — priorização sem o fator (Spec §7.3)"
+            "perfil de conversão sem evidência robusta que conte para o filtro — "
+            "o filtro de perfil não incide nesta rodada (Spec §7.3, D-027)"
         ]
     return saida
 
@@ -108,7 +114,6 @@ def no_coletor_externo(
         return {
             "externo_presente": True,
             "anuncios_por_imovel": anuncios,
-            "desempenho_por_imovel": dict(r.desempenho_por_imovel),
             # Sobem MESMO no sucesso: a Spec §3.1 exige os dois na aba de resumo, e
             # antes eles só existiam embutidos no motivo da rejeição — a rodada
             # completa era justamente a que não tinha os números obrigatórios.
@@ -190,7 +195,8 @@ def no_decisor(
         estado["perfis"],
         parametros,
         estado["data_referencia"],
-        desempenho_por_imovel=estado.get("desempenho_por_imovel"),
+        anuncios=estado.get("anuncios_por_imovel"),
+        portal_entrou=bool(estado.get("externo_presente")),
     )
     return {
         "resultado": resultado,
@@ -343,7 +349,7 @@ def construir_grafo(
         )
     g = StateGraph(EstadoRodada)
     g.add_node("coletor_interno", partial(no_coletor_interno, fontes=fontes))
-    g.add_node("analista_perfil", partial(no_analista_perfil, fontes=fontes))
+    g.add_node("analista_perfil", partial(no_analista_perfil, fontes=fontes, parametros=parametros))
     g.add_node(
         "coletor_externo",
         partial(no_coletor_externo, fontes=fontes, parametros_externo=parametros_externo),

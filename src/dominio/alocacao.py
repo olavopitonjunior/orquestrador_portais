@@ -63,11 +63,15 @@ class CandidatoAlocacao:
     preco: int  # em REAIS, como em elegibilidade.ImovelCandidato
     nota_super_destaque: float
     nota_destaque: float
+    # D-028: "o banco desempata". Empate de nota é decidido por este sinal do banco
+    # (leads em 180 dias, normalizado) ANTES do cadastro mais novo (D-009). Default 0
+    # preserva o comportamento de quem não o preenche.
+    desempate: float = 0.0
 
     def __post_init__(self) -> None:
         if self.preco < 0:
             raise ValueError(f"preco negativo: {self.preco}")
-        for campo in ("nota_super_destaque", "nota_destaque"):
+        for campo in ("nota_super_destaque", "nota_destaque", "desempate"):
             valor = getattr(self, campo)
             if not math.isfinite(valor):
                 raise ValueError(f"nota não finita para {campo}: {valor}")
@@ -99,13 +103,15 @@ def alocar(candidatos: Sequence[CandidatoAlocacao]) -> Alocacao:
 
     # Fase 1 — super destaque: piso de nível, nota do nível, cota 475.
     aptos_super = [c for c in candidatos if c.preco >= PRECO_MINIMO_SUPER_DESTAQUE]
-    ordem_super = sorted(aptos_super, key=lambda c: (-c.nota_super_destaque, -c.imovel_id))
+    ordem_super = sorted(
+        aptos_super, key=lambda c: (-c.nota_super_destaque, -c.desempate, -c.imovel_id)
+    )
     escolhidos_super = ordem_super[:COTA_SUPER_DESTAQUE]
     super_ids = {c.imovel_id for c in escolhidos_super}
 
     # Fase 2 — destaque: TODOS os restantes, nota do nível, cota 6.495.
     restantes = [c for c in candidatos if c.imovel_id not in super_ids]
-    ordem_destaque = sorted(restantes, key=lambda c: (-c.nota_destaque, -c.imovel_id))
+    ordem_destaque = sorted(restantes, key=lambda c: (-c.nota_destaque, -c.desempate, -c.imovel_id))
     escolhidos_destaque = ordem_destaque[:COTA_DESTAQUE]
 
     return Alocacao(

@@ -31,6 +31,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from config.parametros import ParametrosDaRodada
 from dados.coletor_externo import DesempenhoAnuncio
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import (
@@ -41,8 +42,7 @@ from dominio.penalidades import (
     julgar_janelas,
 )
 from dominio.perfil import Dimensao, PerfilConversao
-from dominio.ranking import PesosNivel
-from piloto.decisao import DetalheImovel, ParametrosDecisao, ResultadoDecisao
+from piloto.decisao import DetalheImovel, ResultadoDecisao
 from piloto.semelhanca import DimensoesImovel
 
 # As três penalidades, em ordem fixa de coluna (Spec §3.2, grupo Penalidades).
@@ -127,9 +127,11 @@ def _colunas_justificativa(
     os QUATRO fatores (D-017), cada penalidade, o desconto total e o perfil que
     puxou com sua evidência. Tudo lido do DetalheImovel — nada recalculado."""
     colunas: dict[str, object] = {
-        "semelhanca_perfil": det.fatores.semelhanca_perfil,
+        "nota_portal": det.nota_bruta,
+        "nota_anuncio": det.fatores.nota_anuncio,
+        "cliques": det.fatores.cliques,
+        "visualizacoes": det.fatores.visualizacoes,
         "leads": det.fatores.leads,
-        "desempenho_proprio": det.fatores.desempenho_proprio,
         "produtividade_gestor": det.fatores.produtividade_gestor,
     }
     for pen in _PENALIDADES_COLUNAS:
@@ -263,63 +265,53 @@ def linhas_relaxamento(
     return linhas
 
 
-def _texto_pesos(pesos: PesosNivel) -> str:
-    """Os quatro pesos do nível como texto, na ordem semelhança/leads/desempenho/
-    produtividade (mesma ordem do rótulo da linha)."""
-    return (
-        f"{pesos.semelhanca_perfil}/{pesos.leads_positivo}/"
-        f"{pesos.desempenho_proprio}/{pesos.produtividade_gestor}"
-    )
-
-
 def linhas_parametros_e_limitacoes(
     resultado: ResultadoDecisao,
-    parametros: ParametrosDecisao,
+    parametros: ParametrosDaRodada,
     notas_coleta: Sequence[str] = (),
 ) -> list[dict[str, object]]:
-    """Os provisórios da rodada (rotulados PROVISÓRIO) e as limitações declaradas.
+    """Cada parâmetro com a sua PROCEDÊNCIA — ADOTADO (D-034) ou PROVISÓRIO (declarado
+    nesta rodada, diferente do adotado) — e as limitações declaradas.
 
-    O que faz o dono ler a piloto como TESTE DE CRITÉRIO, não lista final.
-    `notas_coleta` são limitações vindas da COLETA (ex.: vendas descartadas por
-    Realty_Id nulo) — contadas na rodada, declaradas aqui, nunca silenciosas.
+    É o que faz o dono ler a lista como decisão rastreável: um número sem procedência
+    numa planilha aprovada é indistinguível de um número adotado. `notas_coleta` são
+    limitações vindas da COLETA, contadas na rodada e declaradas aqui.
     """
-    linhas: list[dict[str, object]] = [
-        {
-            "tipo": "PROVISÓRIO",
-            "item": "penalidade: janela sem resultado",
-            "valor": parametros.intensidades.janela_sem_resultado,
-        },
-        {
-            "tipo": "PROVISÓRIO",
-            "item": "penalidade: sem avaliação por categoria",
-            "valor": parametros.intensidades.sem_avaliacao_por_categoria,
-        },
-        {
-            "tipo": "PROVISÓRIO",
-            "item": "penalidade: sem lead em 180d",
-            "valor": parametros.intensidades.sem_lead_180d,
-        },
-        {
-            "tipo": "PROVISÓRIO",
-            "item": "desconto de perfil frágil",
-            "valor": parametros.semelhanca.desconto_fragil,
-        },
-        {
-            "tipo": "PROVISÓRIO",
-            "item": "decaimento do peso por dimensão do F1 (parâmetro nº 13)",
-            "valor": parametros.semelhanca.decaimento,
-        },
-        {
-            "tipo": "PROVISÓRIO",
-            "item": ("pesos super destaque (nº 12) — semelhança/leads/desempenho/produtividade"),
-            "valor": _texto_pesos(parametros.pesos_super),
-        },
-        {
-            "tipo": "PROVISÓRIO",
-            "item": ("pesos destaque (nº 12) — semelhança/leads/desempenho/produtividade"),
-            "valor": _texto_pesos(parametros.pesos_destaque),
-        },
-    ]
+    linhas: list[dict[str, object]] = []
+    for caminho, valor in parametros.efetivo.items():
+        proc = parametros.procedencia[caminho]
+        linhas.append(
+            {
+                "tipo": "PROVISÓRIO" if proc == "declarado" else "ADOTADO",
+                "item": f"{caminho} ({proc})",
+                "valor": valor,
+            }
+        )
+    if parametros.resultado_esperado is None:
+        linhas.append(
+            {"tipo": "NULO", "item": "resultado_esperado (régua por nível, nº 14)", "valor": ""}
+        )
+    else:
+        for nivel, valor in parametros.resultado_esperado.items():
+            linhas.append(
+                {
+                    "tipo": "PROVISÓRIO",
+                    "item": f"resultado_esperado.{nivel} (declarado)",
+                    "valor": valor,
+                }
+            )
+    if resultado.relaxamento.bloqueados_por_login:
+        linhas.append(
+            {
+                "tipo": "LIMITAÇÃO",
+                "item": (
+                    f"{resultado.relaxamento.bloqueados_por_login} imóvel(is) reprovado(s) em "
+                    "gestor produtivo ficaram fora do relaxamento pela trava do login (D-029): "
+                    "gestor sem login na janela declarada"
+                ),
+                "valor": "",
+            }
+        )
     for limitacao in resultado.degradacoes:
         linhas.append({"tipo": "LIMITAÇÃO", "item": limitacao, "valor": ""})
     for nota in notas_coleta:
@@ -475,14 +467,23 @@ def linhas_apuracao(
                 if d
                 else (det.nota_destaque if situacao == "nao_coube" and det is not None else "")
             ),
+            "nota_portal": det.nota_bruta if det else "",
             # Discriminador AUTORITATIVO: quem reprovou está em `reprovados_regras` (é
             # literalmente o split de elegibilidade) — não o proxy `nota_super is None`,
             # que `fluxo.py` já registra como dívida.
             "notas_entre": ("" if det is None else ("reprovados" if regras else "elegíveis")),
-            "semelhanca_perfil": det.fatores.semelhanca_perfil if det else "",
+            "nota_anuncio": det.fatores.nota_anuncio if det else "",
+            "cliques": det.fatores.cliques if det else "",
+            "visualizacoes": det.fatores.visualizacoes if det else "",
             "leads": det.fatores.leads if det else "",
-            "desempenho_proprio": det.fatores.desempenho_proprio if det else "",
             "produtividade_gestor": det.fatores.produtividade_gestor if det else "",
+            # O veredito AUTORITATIVO é o dos fatores: `decidir` calcula o casamento por
+            # `replace` sobre cópias e o candidato do contexto continua com None.
+            "casa_perfil": (
+                _sim_nao(det.fatores.casa_perfil)
+                if det is not None and det.fatores.casa_perfil is not None
+                else ""
+            ),
             "perfil_que_puxou": _perfil_texto(perfil),
             "perfil_num_vendas": perfil.num_vendas if perfil is not None else "",
             "perfil_fragil": perfil.fragil if perfil is not None else "",
@@ -503,6 +504,9 @@ def linhas_apuracao(
         )
         # o corretor
         linha["gestor_produtivo"] = _sim_nao(c.gestor_captou_ou_vendeu_30d)
+        linha["gestor_logou_na_janela"] = (
+            _sim_nao(c.gestor_logou_na_janela) if c.gestor_logou_na_janela is not None else ""
+        )
         linha["corretores_no_distrito"] = c.corretores_ativos_no_distrito
         linhas.append(linha)
     return linhas
@@ -518,7 +522,7 @@ _ABAS = {
 
 def escrever_planilha(
     resultado: ResultadoDecisao,
-    parametros: ParametrosDecisao,
+    parametros: ParametrosDaRodada,
     destino: Path,
     *,
     historico_janelas: Mapping[int, tuple[JanelaCrua, ...]] | None,

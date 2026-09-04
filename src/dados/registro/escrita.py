@@ -60,9 +60,12 @@ def _linha_decisao(rodada_id, imovel_id, nivel, posicao, nota_final, det, regra_
         imovel_id,
         nivel,
         posicao,
-        f.semelhanca_perfil,
+        # Colunas com nomes da geração anterior (F1..F4), preenchidas com o que existe
+        # hoje: casou o perfil (1/0), leads normalizado, a nota bruta do portal (0–1) e a
+        # produtividade normalizada. Renomear as colunas é migração própria.
+        1.0 if f.casa_perfil else 0.0,
         f.leads,
-        f.desempenho_proprio,
+        det.nota_bruta / 100.0,
         f.produtividade_gestor,
         p.get(Penalidade.JANELA_SEM_RESULTADO, 0.0),
         p.get(Penalidade.SEM_AVALIACAO_POR_CATEGORIA, 0.0),

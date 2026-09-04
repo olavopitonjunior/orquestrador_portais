@@ -8,19 +8,19 @@ saiu de um desses. Aqui a fiação é commitada, reproduzível e auditável.
                                     [--recorte-pela-raspagem] [--destino DIR]
                                     [--dry-run] [--hoje AAAA-MM-DD]
 
-## Por que `--parametros` é OBRIGATÓRIO e não tem default
+## `--parametros` é OPCIONAL desde a D-034: sem arquivo, valem os ADOTADOS
 
-Treze dos quatorze parâmetros da decisão são NULOS (D-004, D-017) e o CLAUDE.md proíbe
-preenchê-los com valor inventado. A sexta não calcula nada sem eles. A saída não é
-embutir um default "razoável" — seria exatamente o valor inventado que a regra
-proíbe, com o agravante de ficar invisível numa planilha aprovada. É exigir que o
-dono da decisão declare os valores num arquivo, fora do repositório, e recusar a
-rodada quando faltar qualquer um (`src/config/parametros.py` faz o exame).
+Os catorze parâmetros da decisão têm valor ADOTADO pelo dono (D-034, em
+`src/config/adotados.py`, cada um com procedência). O arquivo da semana só precisa
+declarar o que DIFERE — e o que declarar sai rotulado "declarado" na planilha, ao lado
+do adotado, para o dono ver o que mudou. O que segue NULO (a régua de resultado, nº 14)
+continua proibido de receber valor inventado: só entra se o TOML o declarar, nos dois
+níveis, e enquanto não entrar a penalidade por janela não incide e a planilha diz isso.
 
-Tudo que entra por ali é PROVISÓRIO: carregar não é adotar. A procedência viaja para
-a planilha (nota de abertura) e o TOML declarado vai verbatim para o Registro, junto
-da data de referência e da definição de gestor ativo, para que **os parâmetros e o
-recorte** da rodada sejam reconstituíveis a partir do que ficou gravado.
+A procedência (adotado / declarado / nulo) viaja para a planilha (nota de abertura) e o
+efetivo vai para o Registro, junto da data de referência e da definição de gestor
+ativo, para que **os parâmetros e o recorte** da rodada sejam reconstituíveis a partir
+do que ficou gravado.
 
 Note o que essa frase NÃO diz: que a rodada é reproduzível. O estoque não é
 reconstituível — as janelas de 30 dias do gestor e as vendas de 180 dias saem de
@@ -162,6 +162,8 @@ def _fontes(
     dry_run: bool = False,
     recorte: Collection[int] | None = None,
     coleta: ColetaExterna | None = None,
+    janela_conversao_dias: int = 180,
+    login_janela_dias: int = 30,
 ) -> tuple[Fontes, list[tuple[list[ImovelVendido], int]]]:
     """As fontes da sexta, mais o cache das vendas.
 
@@ -175,13 +177,15 @@ def _fontes(
 
     def vendas_memoizadas() -> tuple[list[ImovelVendido], int]:
         if not cache:
-            cache.append(coletar_vendas())
+            cache.append(coletar_vendas(janela_conversao_dias))
         return cache[0]
 
     fontes = Fontes(
         # `coletar` recebe a definição de ativo; o grafo espera zero-argumento. O
         # recorte amostral vai junto: a coleta interna responde só sobre ele.
-        coletar_interno=partial(coletar, DEFINICAO_ATIVO, recorte=recorte),
+        coletar_interno=partial(
+            coletar, DEFINICAO_ATIVO, recorte=recorte, login_janela_dias=login_janela_dias
+        ),
         coletar_dimensoes=coletar_dimensoes_candidatos,
         coletar_vendas=vendas_memoizadas,
         # Tudo ou nada: o grafo recusa meia-fiação, e o nó declara a degradação
@@ -247,7 +251,10 @@ def _serializaveis(
       aqui — lacuna DECLARADA, não resolvida.
     """
     return {
-        "rotulo": parametros.rotulo,
+        # O que a rodada de fato USOU (adotados + declarados) e a procedência de cada
+        # chave: é isto que torna a rodada reproduzível a partir do Registro.
+        "efetivo": dict(parametros.efetivo),
+        "procedencia": dict(parametros.procedencia),
         "origem": parametros.origem,
         "data_referencia": hoje.isoformat(),
         "definicao_ativo_distrito": DEFINICAO_ATIVO.value,
@@ -441,11 +448,10 @@ def limitacoes_da_fiacao(
             "penaliza a janela que não atingiu 'o resultado esperado para o nível', e os "
             "dois valores seguem nulos. Nenhuma janela é julgada — não é 'todas passaram'"
         )
-    if parametros.declarado.get("decaimento_janela", {}).get("razao") == 1.0:
+    if parametros.efetivo.get("desconto.perdao_por_semana") == 0:
         limitacoes.append(
-            "decaimento da penalidade por janela com razão 1.0: a penalidade NÃO "
-            "decai ao longo dos ciclos, divergindo da Spec §6.4 — escolha declarada "
-            "do dono nesta rodada"
+            "perdão por semana = 0%: o desconto da janela anterior NÃO decai ao longo dos "
+            "ciclos, divergindo da Spec §6.4 — escolha declarada nesta rodada"
         )
     limitacoes.append(
         f"gestor ativo do distrito = {DEFINICAO_ATIVO.value} (D-015): cobertura de "
@@ -486,12 +492,17 @@ def notas_da_planilha(
     notas += [f"LIMITAÇÃO {i}: {d}" for i, d in enumerate(degradacoes, 1)] or [
         "LIMITAÇÕES: nenhuma"
     ]
+    declarados = parametros.declarados_diferentes_do_adotado
+    adotados = len(parametros.procedencia) - len(declarados)
     notas.append(
-        # Sem afirmar autoria: o runner sabe de qual ARQUIVO os valores vieram, não
-        # quem os escreveu. Dizer "declarados pelo dono" viraria mentira no dia em
-        # que alguém apontasse `--parametros` para um arquivo de exemplo.
-        f"parâmetros da rodada: rótulo {parametros.rotulo}, carregados de "
-        f"{parametros.origem} — valores desta rodada, NÃO adotados pelo sistema"
+        # A procedência de cada valor está na aba (ADOTADO / PROVISÓRIO); aqui o resumo.
+        f"parâmetros da rodada: {adotados} adotados (D-034)"
+        + (
+            f" e {len(declarados)} PROVISÓRIOS declarados nesta rodada, diferentes do "
+            f"adotado ({', '.join(declarados)}), carregados de {parametros.origem}"
+            if declarados
+            else f"; nenhum declarado diferente do adotado (origem: {parametros.origem})"
+        )
     )
     notas.append(
         f"idade do dado do portal: {idade_dias} dia(s)"
@@ -560,7 +571,14 @@ def executar(
         _recorte_da_raspagem(externo) if recorte_pela_raspagem and externo else (None, None)
     )
     amostral = recorte is not None
-    fontes, cache_vendas = _fontes(externo, dry_run=dry_run, recorte=recorte, coleta=coleta)
+    fontes, cache_vendas = _fontes(
+        externo,
+        dry_run=dry_run,
+        recorte=recorte,
+        coleta=coleta,
+        janela_conversao_dias=parametros.coleta.janela_conversao_dias,
+        login_janela_dias=parametros.coleta.login_janela_dias,
+    )
     registrar, capturado = _registrador(
         parametros, hoje, externo, agora, dry_run=dry_run, avisar=avisar, recorte=recorte
     )
@@ -653,7 +671,7 @@ def executar(
         try:
             caminhos = escrever_planilha(
                 final["resultado"],
-                parametros.decisao,
+                parametros,
                 destino_da_rodada,
                 notas_coleta=notas_da_planilha(
                     parametros,
@@ -720,10 +738,9 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--parametros",
         type=Path,
-        required=True,
-        help="TOML com os parâmetros PROVISÓRIOS da rodada, declarados pelo dono da "
-        "decisão. Obrigatório e sem default: treze dos quatorze parâmetros são nulos, e "
-        "embutir um valor aqui seria inventá-lo. Modelo em docs/.",
+        help="TOML com parâmetros declarados para ESTA rodada, por cima dos adotados "
+        "(D-034). Ausente, a rodada usa só os adotados; a régua de resultado (nº 14) "
+        "segue nula. Modelo em docs/.",
     )
     p.add_argument(
         "--externo",
@@ -887,7 +904,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
-    if args.parametros.resolve() == MODELO_DE_DOCS:
+    if args.parametros is not None and args.parametros.resolve() == MODELO_DE_DOCS:
         # O modelo carrega com sucesso e mora no repositório: sem esta recusa, sairia
         # dele uma planilha completa, de aparência normal, construída sobre números
         # que o próprio arquivo declara ilustrativos.
