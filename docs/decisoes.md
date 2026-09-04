@@ -781,3 +781,115 @@ Redigir reduz republicação casual e **não** é fechamento — o menu de ediç
 **O que NÃO é resolvido por esta decisão.** A recusa foi sobre **girar a senha**, e só. A outra metade do [P-17] segue pendente e não foi tocada: o item do cofre guarda uma linha de comando no campo da senha e não tem `POSTGRES_URL`, e a credencial de produção vive em texto claro em arquivos de configuração de MCP. O [P-17] permanece na fila do dono por essa metade.
 
 Decisão de **processo**, não regra de decisão: nenhum invariante é afetado.
+
+## D-027 a D-034 — "o banco manda, o portal classifica" (2026-09-04)
+
+Em 04/09/2026 o dono, ao usar o resultado das primeiras rodadas, pediu três coisas: a apuração inteira num CSV só (entregue, PR #72), parâmetros que uma pessoa consiga julgar ("não dá pra entender o que é excludente, o que é classificatório e o que é decisório"), e uma cadeia de decisão em seis passos que ele descreveu por extenso — o que vende no banco, com que cara, quem está ativo para vender, e o portal ordenando o que sobrou. As oito decisões abaixo registram o que ele escolheu, o que foi medido antes de cada escolha virar código, e o que cada uma supera nos documentos. Todas foram tomadas com os números na frente: **duas premissas do pedido original caíram por medição e o dono re-decidiu** (D-027 e D-029).
+
+Nenhum invariante muda. O caminho da decisão continua cálculo puro (4 e 5); as cotas continuam lidas do Registro (6); o super destaque continua sem relaxamento (7), inclusive para a regra nova.
+
+## D-027 — O perfil de conversão passa a ser regra ELIMINATÓRIA, exige a faixa de preço e é o primeiro degrau cedido
+
+**Data**: 2026-09-04 · **Resolve**: o papel do perfil de conversão (Spec §6.2) no critério — fator de nota (§6.3, D-017 F1) ou filtro.
+
+**Decisão do dono: o perfil filtra, nos dois níveis.** Só entra na vitrine quem se parece com o que vendeu. `Regra.PERFIL_DE_CONVERSAO` entra em `dominio.elegibilidade`: reprova o candidato que não casa nenhum perfil que conta. O casamento é o mesmo de antes (bucketização única para venda e candidato, match exato em todas as dimensões do perfil); o que muda é o consumo — vira veredito, não nota.
+
+**Medição que mudou a decisão antes de ela virar código (04/09/2026, `investigador-de-dados`, reusando os módulos do sistema):** 184 vendas assinadas em 180 dias produzem 187 perfis robustos (N ≥ 3, D-014). Com o filtro como pedido — "casa pelo menos um perfil robusto" — **100,0 % dos 8.230 elegíveis passam**, porque a faixa de metragem sozinha cobre o estoque inteiro; subir N não filtra (N ≥ 10 ainda dá 100 %). O que filtra é a especificidade. Apresentadas as alternativas, **o dono escolheu exigir que o perfil contenha a faixa de preço** — a dimensão que ele mesmo pôs em primeiro lugar na D-017. Com isso passam **83,8 % dos elegíveis e 64 % dos candidatos ao super destaque**. A exigência é `config.parametros.DIMENSAO_EXIGIDA_NO_PERFIL = Dimensao.FAIXA_PRECO`, constante de decisão (não parâmetro da semana): mudá-la é nova decisão.
+
+**Perfil frágil não conta.** Um perfil com N < 3 não entra no filtro — nem pesa menos, nem pesa nada: simplesmente não existe para a regra. Por isso **o desconto de fragilidade ([P-16]) deixa de existir**: era o mecanismo que dava "peso não pleno" a um perfil que agora não pesa. Junto com ele somem `semelhanca.desconto_fragil` e `semelhanca.decaimento` do contrato.
+
+**Primeiro degrau do relaxamento — decisão do dono, "antes das regras de cadastro".** `ORDEM_RELAXAMENTO` passa a ser: **perfil de conversão → fotos → cadastro completo → atualização em 90 dias → gestor produtivo → capacidade do distrito**. A consequência foi dita ao dono com todas as letras e aceita: como o perfil é o primeiro degrau cedido, ele morde de verdade no **super destaque**, que nunca relaxa (invariante 7); no destaque é a primeira coisa de que o sistema abre mão quando faltam imóveis — e, pela folga medida em 02/09 (12 %), vai faltar quase toda semana. O "perfil que puxou" sobrevive como rótulo da justificativa (Spec §2.1): o perfil robusto de mais vendas entre os que o candidato casa.
+
+**Quando a regra NÃO incide (elaboração da revisão de código, 04/09/2026).** Se nenhum perfil conta — nenhum robusto contendo a faixa de preço — o filtro reprovaria 100 % do estoque e o super destaque sairia vazio. A Spec §7.3 manda o contrário: "sem robustez a priorização opera sem o fator". O código segue a Spec: o veredito fica `None` (não avaliado), a elegibilidade não reprova `None`, e a rodada sai **degradada com a limitação nomeada**. O mesmo vale para candidato sem dimensões na coleta de perfil (contado e declarado, não reprovado por dado ausente). O critério de pronto do nó de perfil passa a ser o mesmo do filtro: ao menos um perfil que conte. Se o dono preferir abortar a rodada nesse caso, é decisão a registrar.
+
+**O que esta decisão supera, declarado:** a Spec §6.2 ("não recebe peso pleno") e §6.3 (semelhança como fator com peso) e o **F1 da D-017** (semelhança ponderada por dimensão, com decaimento). A ordem das dimensões da D-017 deixa de ter efeito no cálculo — sobrevive só como critério de exibição. **A Spec §6.2/§6.3 precisa ser reescrita** (fatia própria); até lá esta decisão prevalece sobre o trecho divergente.
+
+## D-028 — O portal CLASSIFICA: a nota é a soma ponderada de três sinais do anúncio, em pontos de 100
+
+**Data**: 2026-09-04 · **Resolve**: o que ordena os elegíveis. A D-017 dizia "o primário é o banco; a raspagem é reforço que soma, não pré-requisito"; o dono, em 04/09, inverteu: **"o banco manda, o portal classifica"** — o banco decide QUEM entra (elegibilidade, agora com o perfil), o portal decide EM QUE ORDEM.
+
+**A nota.** `dominio.ranking.nota_portal` = `peso_nota × nota_anuncio + peso_cliques × cliques + peso_visualizacoes × visualizacoes`, cada sinal normalizado para [0, 1] a montante (min-max sobre os elegíveis, forma provisória do nº 2, D-016) e os três pesos em **pontos de 100, somando exatamente 100** (`PesosPortal` recusa qualquer outra soma). A nota bruta vive em [0, 100]; os descontos (D-030) são subtraídos dela. **Os dois níveis usam a mesma nota** — o que separa o super destaque é o piso de R$ 700.000 na alocação (D-002), não uma nota diferente.
+
+**Os valores, por medição (03/09/2026, primeira raspagem real, 300 anúncios):** visualizações = **0 em 300 de 300**; cliques quase todos zero; a nota do anúncio (LQS) é o único sinal com variância, 14 valores distintos. Daí os pesos adotados (D-034): **nota 70, cliques 30, visualizações 0**. O zero é **declarado, não omitido** — fica visível na tela com a razão ao lado, para voltar a pesar quando o raspador achar o campo. Isso **fecha a [P-15]** (composição do sinal de portal) com dado, não com preferência.
+
+**Cliques somados entre os tipos — divergência declarada.** O contrato anterior do coletor exigia escolher UM tipo de clique (`cliques_do_tipo` + `tipo`) e nunca os somava. A nota nova soma contato, telefone, WhatsApp, proposta e agendamento. É leitura nova, registrada aqui; nenhum documento definia a composição.
+
+**Imóvel sem anúncio raspado deixa de virar zero em silêncio.** Antes recebia 0,0 fixo e, como a nota do portal vivia numa faixa alta, ia para o fim da fila por um zero que ninguém escolheu. Vira escolha declarada — `portal.sem_anuncio` ∈ {`fim_da_fila`, `mediana`}, adotado `fim_da_fila` (é o que já acontecia, agora dito).
+
+**Quando o portal não entra, a ordem cai para um sinal do banco — e a rodada declara.** As quatro portas de `avaliar_coleta` (Spec §7.3) continuam. Fechadas, a nota bruta passa a ser o sinal escolhido em `portal.ordem_quando_nao_entra` ∈ {`leads_180d`, `produtividade_gestor`, `cadastro_mais_novo`}, adotado `leads_180d` (o sinal de banco mais próximo do objetivo do destaque, que é gerar lead), e a rodada sai **degradada com a limitação nomeada**. É remendo de segurança declarado, não o modelo.
+
+**Leads e produtividade do gestor viram DESEMPATE, não fator.** A alocação e o relaxamento ordenam por `(-nota, -leads normalizados, -imovel_id)`: leads primeiro, depois cadastro mais novo (D-009 preservada como último critério). Exceção coerente com o rótulo: sob `ordem_quando_nao_entra = cadastro_mais_novo`, que promete SÓ o cadastro mais novo, o desempate por leads é desligado e a ordem é o próprio `imovel_id`. Os dois sinais continuam gravados no Registro e mostrados na planilha.
+
+**O que esta decisão supera, declarado:** a **Spec §6.3 inteira** (quatro fatores com pesos por nível) e a **D-017** no ponto "raspagem é reforço, não pré-requisito" e nos fatores F2/F3/F4 com peso. Os objetivos por nível da §6.3 (valor esperado no super destaque, probabilidade de lead no destaque) não são contraditos: o piso separa os níveis e o desempate por leads serve ao segundo. **A Spec §6.3 precisa ser reescrita**; até lá esta decisão prevalece. Consequência para a lista de parâmetros: ver D-031.
+
+## D-029 — "Corretor inativo" é trava do relaxamento, não regra de exclusão
+
+**Data**: 2026-09-04 · **Resolve**: o pedido do dono de excluir "corretores inativos", definido por ele como **quem não loga há 30 dias**.
+
+**Medição que mudou a decisão (04/09/2026):** o campo é `newcore_bi.productivityrating.LastLogin` (join 1:1 por `User_Id = FT_RealtyRelation.BrokerID`, cobertura 99,4 %; `NULL` ≡ nunca logou dentro da retenção de `userlogs`, que começa em 2025-05-25). Resultado: **"sem login em 30, 60 ou 90 dias" é subconjunto estrito de "gestor não produtivo"** — como regra de exclusão adicional, exclui **0 imóveis** (três fontes concordam). A regra pedida, implementada como pedida, seria código correto que não faz nada.
+
+**Onde o login morde:** no relaxamento. Dos 2.092 imóveis recuperáveis pelo degrau `gestor_produtivo`, **105** têm gestor sem login na janela — imóveis que a cedência devolveria à vitrine para um corretor que não entra no sistema e não vai atender o lead que a posição paga gerar.
+
+**Decisão do dono (recomendada e escolhida): o login vira TRAVA do relaxamento.** O degrau `gestor_produtivo` — e qualquer degrau posterior, que o inclui — **não recupera** imóvel cujo gestor não logou dentro de `corretor.login_janela_dias` (adotado 30, D-034). O imóvel fica irrecuperável, e `ResultadoRelaxamento.bloqueados_por_login` conta quantos foram travados, declarado na planilha mesmo quando ninguém foi cedido. A D-015 fica **reafirmada**: a capacidade do distrito continua contando corretores **produtivos** (captou ou vendeu), fiel à Spec §6.1.
+
+**Armadilhas de dado registradas para quem vier depois** (a incorporar ao `docs/mapa-de-dados.md`): `userbrokerrelationships.LastLogin` está **morta desde 2021**; `FT_Broker.Logged30D` é **falso-negativo** em 282 gestores / 7.075 imóveis; `productivityrating.DaysLastLogin` é derivada fiel de `LastLogin`.
+
+## D-030 — Descontos das penalidades em PONTOS DE 100; decaimento como "perdão por semana" em por cento
+
+**Data**: 2026-09-04 · **Resolve**: a escala das três penalidades da Spec §6.4 (parâmetro nº 3), que o dono não conseguia julgar ("o formato de 0 a 1").
+
+**O defeito que a escala escondia:** a nota bruta vai de 0 a 100 e as intensidades provisórias, em [0, 1], somavam **0,4 de 100** — as três penalidades estavam **duas ordens de grandeza abaixo** da nota, praticamente inertes, e nada avisava.
+
+**Decisão:** cada penalidade é um **desconto em pontos de 100**, subtraído da nota bruta (`dominio.ranking.nota_final`); o decaimento da penalidade por janela (D-021/D-023) vira **perdão por semana, em por cento** — quanto o desconto encolhe a cada carga aprovada em que o imóvel permanece. Valores adotados (D-034): janela anterior sem resultado **20**, sem avaliação por categoria **5**, sem lead em 180 dias **10**, perdão **50 %** por semana. O de avaliação é baixo de propósito: o pipeline de avaliação parou em 16/10/2025 e 99,76 % do estoque novo não tem nota — descontar alto puniria o estoque novo por defeito da base. **Com isso o nº 3 passa a DEFINIDO.**
+
+**A penalidade por janela continua INERTE, e declarada.** O dono decidiu em 04/09 que a régua de resultado (nº 14, D-022) **segue nula**. O desconto de 20 pontos existe, é mostrado, e não incide até a régua ser definida — a planilha diz isso em toda rodada.
+
+## D-031 — Os parâmetros nº 12 e nº 13 DEIXAM DE EXISTIR
+
+**Data**: 2026-09-04 · **Resolve**: a lista canônica de parâmetros pendentes (D-004, CLAUDE.md) depois das D-027 e D-028.
+
+O nº 12 (pesos dos quatro fatores por nível) e o nº 13 (decaimento por dimensão do F1) eram os pendentes criados pela D-017. Com o perfil virando filtro (D-027) e o portal virando a nota (D-028), **as perguntas desapareceram**: não há quatro fatores a pesar nem dimensões a decair. Os dois saem da tabela **sem receber valor** — não foram resolvidos, foram dissolvidos. A numeração não é reaproveitada: os números 12 e 13 ficam vagos, para que citações antigas continuem apontando para o que apontavam. Os pesos do portal (D-028) não entram como pendente novo: são adotados pela D-034 e declaráveis na semana.
+
+## D-032 — Limitações de dado declaradas: o que NÃO virou parâmetro nesta fatia
+
+**Data**: 2026-09-04 · **Resolve**: dois campos do desenho aprovado pelo dono que não entraram no contrato, e por quê.
+
+- **"Gestor produtivo: janela".** A Spec §6.1 diz 30 dias, e a fonte (`FT_Districts.BrokersProductivity` e a produtividade do gestor em `productivityrating`) já vem **agregada em 30 dias pelo Newcore** — não há como pedir outra janela sem reconstruir a produtividade a partir dos eventos. Não é parâmetro: é o número da Spec, fixo, e a tela o mostra como texto.
+- **"Base do perfil: vendas ou vendas e leads".** O passo 1 do dono dizia "mais leads OU vendas". São 184 vendas em 180 dias contra ~5.200 leads em 30: misturar faz os leads dominarem cerca de **30 para 1** e o perfil deixa de descrever o que vende. O perfil fica **só de vendas assinadas**, como a Spec §6.2 define; a alternativa não entra como escolha nesta fatia. Reabrir é decisão nova.
+
+## D-033 — Janelas e mínimo do distrito viram PARÂMETROS declaráveis, com adotado igual ao texto da Spec
+
+**Data**: 2026-09-04 · **Resolve**: o pedido do dono de "período configurável" para o que vende e para a atividade do corretor.
+
+Entram no contrato, todos em unidade que uma pessoa julga: `conversao.janela_dias` (dias; adotado **180**, Spec §6.2), `corretor.login_janela_dias` (dias; adotado **30**, D-029), `corretor.minimo_no_distrito` (corretores; adotado **2**, Spec §6.1 e D-015). Enquanto a semana não declarar outro valor, vale o adotado e **nenhuma divergência existe com a Spec**. Declarar valor diferente é permitido, sai rotulado "declarado" na planilha e **diverge da Spec no texto** — divergência visível, não silenciosa.
+
+## D-034 — Parametrização padrão ADOTADA: catorze valores com procedência, declaráveis na semana
+
+**Data**: 2026-09-04 · **Resolve**: o pedido do dono — "propor opções e entregar uma parametrização padrão com explicações". Adotada pelo dono ao aprovar o plano que a listava, valor a valor, com a razão de cada um.
+
+**Onde vive:** `src/config/adotados.py` — a única lista de valores adotados, cada um com decisão de procedência. O contrato (`src/config/contrato.py`) expõe cada campo com **unidade** (dias, pontos de 100, por cento, corretores), **valor adotado** e uma linha **"se aumentar"** no imperativo; o console herda o JSON e o CI compara byte a byte. **Três funções, não sete:** excludente (decide quem entra; vem do banco), classificatório (decide a ordem; vem do portal), decisório (decide onde e quantos; vem do contrato). **Nenhum campo em escala de 0 a 1.**
+
+| Campo | Adotado | Por quê |
+|---|---|---|
+| `conversao.janela_dias` | 180 dias | a janela medida, com 184 vendas; em 30 dias seriam ~25, evidência de menos |
+| `corretor.login_janela_dias` | 30 dias | mesma janela da irmã produtiva, para a trava ficar coerente (D-029) |
+| `corretor.minimo_no_distrito` | 2 corretores | D-015: de 3 para 2 elevou a cobertura de vendas de 62 % para 75 % |
+| `portal.peso_nota` | 70 pontos | único sinal com variância medida: 14 valores em 300 anúncios |
+| `portal.peso_cliques` | 30 pontos | sinal fraco mas real, e é intenção de compra, não curiosidade |
+| `portal.peso_visualizacoes` | 0 pontos | medido zero em 300 de 300; zero declarado, não omitido |
+| `portal.cobertura_minima` | 50 % | abaixo da metade, a ordem seria decidida por menos da metade do estoque (nº 7) |
+| `portal.idade_maxima_dias` | 2 dias | a rodada raspa no mesmo dia; 2 tolera um retry sem aceitar dado da semana passada (nº 5) |
+| `portal.sem_anuncio` | fim da fila | é o que já acontecia, agora dito (D-028) |
+| `portal.ordem_quando_nao_entra` | leads em 180 dias | o sinal de banco mais próximo do objetivo do destaque (D-028) |
+| `desconto.janela_sem_resultado` | 20 pontos | inerte enquanto o nº 14 for nulo, e declarado (D-030) |
+| `desconto.sem_avaliacao` | 5 pontos | baixo de propósito: 99,76 % do estoque novo não tem nota (D-030) |
+| `desconto.sem_lead_180d` | 10 pontos | D-030 |
+| `desconto.perdao_por_semana` | 50 % | o desconto cai pela metade a cada carga; some em cerca de três semanas |
+
+**Consequências na lista canônica:** **nº 3, nº 5 e nº 7 passam a DEFINIDOS** por esta decisão; nº 12 e nº 13 deixam de existir (D-031); **nº 14 segue NULO** por decisão expressa do dono; **nº 2 continua provisório** (min-max fixo no código, D-016) — não é adotado aqui. O que o TOML da semana declarar diferente do adotado sai na planilha com procedência "declarado"; o que não declarar usa o adotado com procedência "adotado D-034". A planilha deixa de rotular PROVISÓRIO o que é adotado; rotula só o que segue nulo.
+
+**Trocar qualquer adotado exige decisão nova + CHANGELOG** — a regra da convenção continua.
+
+### [P-13] Adendo (2026-09-04) — o código do portal existe no banco
+
+A pendência estava registrada como refutada ("não existe id nem URL de anúncio do portal em tabela nenhuma"). A primeira raspagem real (03/09/2026) mostrou `realties.NewIdMarketingRotation` **igual ao `codigoImovel` do Canal Pro em 300 de 300** anúncios amarrados. A apuração já o entrega como `codigo_portal` (PR #72). O que resta é fato do dono, não medição: **é esse o código que quem aplica a carga usa para achar o anúncio?** Se sim, a [P-13] fecha; a planilha entregue passa a ser aplicável sem consulta ao banco.

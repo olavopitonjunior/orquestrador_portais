@@ -75,32 +75,30 @@ Divergência entre código e documento é **bug do código** até prova em contr
 
 - **Agente do produto**: um dos sete — Orquestrador, Coletor Interno, Coletor Externo, Analista de Perfil de Conversão, Decisor, Redator da Entrega, Monitor Operacional. São nós do grafo LangGraph, escritos em Python, executados em produção às sextas e segundas. **Nunca viram arquivos em `.claude/agents/`.**
 - **Subagente de desenvolvimento**: vive em `.claude/agents/`, existe apenas para ajudar a construir este projeto e **nunca roda em produção**. Nenhum subagente pode ter o nome de um agente do produto. O mesmo vale para skills: `.claude/skills/` é ferramenta de desenvolvimento; as competências dos agentes do produto viram código Python.
-- **Elegibilidade**: conjunto de **oito** regras eliminatórias gerais, binárias e sem compensação, aplicadas antes do ranking; reprovar em uma basta para excluir. O piso de R$ 700.000 é condição de nível do super destaque aplicada na alocação, e o status impeditivo é regra de saída imediata — não regras de elegibilidade (decisões D-002 e D-003; onde os documentos dizem "nove regras", leia-se assim).
+- **Elegibilidade**: conjunto de **oito** regras eliminatórias gerais, binárias e sem compensação, aplicadas antes do ranking, **mais o perfil de conversão como nona regra desde a D-027** (2026-09-04: só entra quem casa um perfil robusto que contenha a faixa de preço); reprovar em uma basta para excluir. O piso de R$ 700.000 é condição de nível do super destaque aplicada na alocação, e o status impeditivo é regra de saída imediata — não regras de elegibilidade (decisões D-002 e D-003; onde os documentos dizem "nove regras", leia-se assim).
 - **Perfil de conversão**: combinação de características de imóvel que demonstradamente gera venda no período analisado (vendas assinadas em 180 dias), sempre acompanhada do número de casos que a sustenta. Analisa uma ou duas dimensões por vez, nunca as cinco simultaneamente.
 - **Janela de destaque**: intervalo em que um imóvel ocupou posição paga. Histórico que alimenta a penalidade por janela anterior sem resultado.
-- **Relaxamento**: cedência controlada de regras de elegibilidade, apenas nas posições de destaque, com relatório obrigatório. Ordem de cedência: fotos, cadastro completo, atualização em 90 dias, gestor produtivo, capacidade do distrito.
+- **Relaxamento**: cedência controlada de regras de elegibilidade, apenas nas posições de destaque, com relatório obrigatório. Ordem de cedência: perfil de conversão (D-027), fotos, cadastro completo, atualização em 90 dias, gestor produtivo, capacidade do distrito. Gestor sem login na janela trava a cedência de `gestor produtivo` (D-029).
 - **Rodada degradada**: estado da rodada em que alguma fonte falhou e a decisão prosseguiu com dado parcial, com a limitação declarada de forma visível na planilha. Os outros estados são completa (todas as etapas prontas) e abortada (a coleta interna não ficou pronta; sem estoque não há decisão).
 - **Pronto**: conjunto de condições verificáveis que uma etapa cumpre antes de entregar para a seguinte. Nenhum agente entrega para o próximo sem estar pronto.
 
 ## Parâmetros ainda sem valor
 
-Quinze parâmetros. Os onze primeiros foram consolidados pela decisão D-004 a partir de Spec §8, Ferramentas §6 e da tabela de parâmetros do PRD, que divergiam entre si; a **D-017** acrescentou o nº 12 e o nº 13, que a Spec §6.3 dava como **definidos** e o redesenho do ranking tornou nulos; a **D-022** acrescentou o nº 14, que a Spec §6.4 exige ("o resultado esperado **para o nível**") e nenhum documento jamais quantificou; a **D-025** acrescentou o nº 15, o "relevante" de "alteração relevante de preço" (§6.7), que nenhum documento quantifica. O nº 1 foi resolvido pelo dono em 2026-08-31 (D-014); os outros **catorze seguem pendentes**. **Nenhum pendente pode ser preenchido com valor inventado** — permanecem explicitamente nulos até serem definidos pelo dono da decisão. Os provisórios da planilha-piloto (nº 2, nº 3, nº 12 e nº 13) são run-local, rotulados PROVISÓRIO na própria planilha e **não adotados**: seguem nulos aqui e nunca entram em `src/config`.
+Quinze números foram atribuídos; **treze linhas** seguem na tabela. Os onze primeiros foram consolidados pela decisão D-004 a partir de Spec §8, Ferramentas §6 e da tabela de parâmetros do PRD, que divergiam entre si; a **D-017** acrescentou o nº 12 e o nº 13, que a **D-031** dissolveu sem valor (o perfil virou filtro e o portal virou a nota — a pergunta desapareceu; os números ficam vagos, nunca reaproveitados); a **D-022** acrescentou o nº 14, que a Spec §6.4 exige ("o resultado esperado **para o nível**") e nenhum documento jamais quantificou; a **D-025** acrescentou o nº 15, o "relevante" de "alteração relevante de preço" (§6.7). Resolvidos: o nº 1 pelo dono em 2026-08-31 (D-014); o nº 3, o nº 5 e o nº 7 pela parametrização adotada em 2026-09-04 (**D-034**, valores em `src/config/adotados.py`). **Nove seguem pendentes.** **Nenhum pendente pode ser preenchido com valor inventado** — permanecem explicitamente nulos até serem definidos pelo dono da decisão. O nº 2 é o único com forma provisória fixa no código (min-max, D-016), rotulada PROVISÓRIO na planilha e **não adotada**.
 
 | # | Parâmetro | Valor |
 |---|---|---|
 | 1 | Evidência mínima por combinação de perfil | **N ≥ 3** (D-014, 2026-08-31) |
 | 2 | Forma de normalização de cada fator do ranking | nulo |
-| 3 | Intensidade das três penalidades e decaimento da penalidade por janela | nulo |
+| 3 | Descontos das três penalidades e decaimento da penalidade por janela | **20 / 5 / 10 pontos de 100; perdão de 50 % por semana** (D-030, D-034, 2026-09-04) |
 | 4 | Tentativas e intervalo de repetição do Orquestrador | nulo |
-| 5 | Idade máxima aceitável da coleta externa de reserva | nulo |
+| 5 | Idade máxima aceitável da coleta externa de reserva | **2 dias** (D-034, 2026-09-04) |
 | 6 | Limiar de variação de volume que dispara sinalização | nulo |
-| 7 | Limiar mínimo de taxa de amarração | nulo |
+| 7 | Limiar mínimo de taxa de amarração | **50 %** (D-034, 2026-09-04) |
 | 8 | Horários exatos de execução na sexta e na segunda | nulo |
 | 9 | Política de retenção do Registro | nulo |
 | 10 | Prazo da aprovação tácita | nulo |
 | 11 | Prazo de atendimento de lead e limite de inatividade | nulo |
-| 12 | Pesos dos quatro fatores do ranking por nível (semelhança, leads, desempenho, produtividade) — antes definidos na Spec §6.3 | nulo (D-017) |
-| 13 | Decaimento do peso por dimensão do F1 (magnitude da queda na ordem preço > localização > metragem > dormitórios > vagas; a ordem é adotada, a magnitude é nula) | nulo (D-017) |
 | 14 | Resultado esperado por nível para a janela não ser penalizada (§6.4) — **dois** valores, super destaque e destaque | nulo (D-022) |
 | 15 | Magnitude da "alteração relevante de preço" que dispara a saída da carga (§6.7) — e **se é um valor só ou um por nível**, que a §6.7 não diz | nulo (D-025) |
 

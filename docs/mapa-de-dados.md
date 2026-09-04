@@ -309,3 +309,36 @@ Primeira raspagem real, canário de 300 anúncios pelo trabalhador do console:
 | `codigoImovel` (o `externalId` da API `listings` do painel) | Canal Pro | Formato `{Id}{letra}`: seis dígitos + uma letra maiúscula (ex.: `431347A`). **300 de 300** com o prefixo em `newcore.realties.Id`, todos `Ativo` no espelho. A letra varia (21 letras em 300; A=57, Z=42, S=21…) — não é tipo de transação. |
 | `realties.NewIdMarketingRotation` | Newcore (`newcore.realties`, varchar) | **Igual ao `codigoImovel` em 300 de 300.** É o id sob o qual a Newcore republica o anúncio (rotação de marketing; `MarketingRotatedAt` não nulo nos 300). A chave da amarração é o **prefixo numérico** (`realties.Id`); a letra é descartada por `dados/coletor_externo._imovel_id_de`. |
 | `visualizacoes` (API `listings`) | Canal Pro | **0 em 300 de 300.** A forma `visualizacoes` do F3 não tem sinal nesta API; `nota` (LQS) tem 14 valores distintos. Registrado em `bug.md`; a forma é parâmetro declarado (`externo.desempenho.forma`). |
+
+## Login do corretor e alcance do filtro de perfil — medição 04/09/2026 (D-027, D-029)
+
+Medido pelo `investigador-de-dados` reusando os módulos do sistema (`coletor_interno.coletar`, `elegibilidade.regras_reprovadas`, `perfil.perfis_de_conversao`), antes de as decisões virarem código.
+
+### Onde está o último login do gestor
+
+| Fonte | Veredito |
+|---|---|
+| **`newcore_bi.productivityrating.LastLogin`** | **É o campo.** Join 1:1 por `User_Id = FT_RealtyRelation.BrokerID`; cobertura 99,4 % dos imóveis ativos. `NULL` ≡ nunca logou dentro da retenção de `userlogs`, que começa em **2025-05-25** — não é "sem dado". `DaysLastLogin` é derivada fiel e serve de contraprova. |
+| `newcore.userbrokerrelationships.LastLogin` | **Morta desde 2021.** Nome sugere o dado certo; nenhum valor recente. |
+| `newcore_bi.FT_Broker.Logged30D` | **Falso-negativo** em 282 gestores / 7.075 imóveis (diz "não logou" para quem logou segundo `productivityrating`). Não usar. |
+
+O Coletor Interno lê `LastLogin` com janela `{login_janela_dias}` (adotado 30, D-034) e entrega `gestor_logou_na_janela` — tri-estado: `True`, `False`, `None` (sem linha em `productivityrating`).
+
+### O que o login NÃO faz: excluir
+
+"Sem login em 30, 60 ou 90 dias" é **subconjunto estrito** de "gestor não produtivo" (captou ou vendeu em 30 dias, D-015) — três fontes concordam. Como regra de exclusão adicional exclui **0 imóveis**. Só morde no relaxamento: dos 2.092 imóveis recuperáveis pelo degrau `gestor_produtivo`, **105** têm gestor sem login na janela. É por isso que a D-029 fez do login uma **trava do relaxamento**, não uma regra de elegibilidade.
+
+### Alcance do filtro de perfil
+
+184 vendas assinadas em 180 dias → 187 perfis robustos (N ≥ 3, D-014). Sobre os 8.230 elegíveis do dia (deriva em relação aos 10.290 do PRD — ver o aviso em `docs/perguntas-abertas.md`; fatia própria):
+
+| Exigência do filtro | Elegíveis que passam | Candidatos ao super destaque (≥ R$ 700 mil, 3.715) |
+|---|---|---|
+| casa ≥ 1 perfil robusto (qualquer dimensão) | **100,0 %** — `faixa_metragem` sozinha cobre tudo; N ≥ 10 ainda 100 % | 100 % |
+| perfil com 2 dimensões | 98 % | — |
+| perfil contendo **`faixa_preco`** (**adotado, D-027**) | **83,8 %** | **64 %** |
+| 2 dimensões contendo `regiao` | 27 % | — |
+| `regiao` + (`preco` ou `metragem`) | 9,9 % | **18** candidatos para 475 vagas — descartado |
+
+A lição para quem mexer no filtro: **N não filtra, especificidade filtra** — e a dimensão exigida decide se o super destaque tem candidatos.
+

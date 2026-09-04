@@ -22,7 +22,8 @@ function tabelaDoDocumento(): { numero: number; valor: string }[] {
 test("a tabela do CLAUDE.md é encontrada e não está vazia", () => {
   // Guarda da própria guarda: se a regex parar de casar (a tabela mudou de forma),
   // os testes abaixo passariam por vacuidade, comparando duas listas vazias.
-  assert.ok(tabelaDoDocumento().length >= 14, "regex não casou a tabela do CLAUDE.md");
+  // 13 desde a D-031 (nº 12 e nº 13 deixaram de existir).
+  assert.ok(tabelaDoDocumento().length >= 13, "regex não casou a tabela do CLAUDE.md");
 });
 
 test("a lista do console tem os MESMOS números da tabela do CLAUDE.md", () => {
@@ -32,10 +33,15 @@ test("a lista do console tem os MESMOS números da tabela do CLAUDE.md", () => {
   );
 });
 
-test("numeração contígua a partir de 1, sem buraco nem duplicata", () => {
+test("numeração contígua a partir de 1, sem duplicata — só os buracos DECLARADOS", () => {
+  // D-031: nº 12 e nº 13 deixaram de existir e os números nunca são reaproveitados.
+  // Qualquer outro buraco é erro de cópia.
+  const DISSOLVIDOS = new Set([12, 13]);
+  const esperado = Array.from({ length: PARAMETROS.length + DISSOLVIDOS.size }, (_, i) => i + 1)
+    .filter((n) => !DISSOLVIDOS.has(n));
   assert.deepEqual(
     PARAMETROS.map((p) => p.numero),
-    Array.from({ length: PARAMETROS.length }, (_, i) => i + 1),
+    esperado,
   );
 });
 
