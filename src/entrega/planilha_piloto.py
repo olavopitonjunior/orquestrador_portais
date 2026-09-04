@@ -1,4 +1,4 @@
-"""Serialização da planilha-piloto: o ResultadoDecisao vira quatro CSVs.
+"""Serialização da planilha-piloto: o ResultadoDecisao vira os CSVs da rodada.
 
 SERIALIZA, não recomputa (condição do orchestrator): lê o ResultadoDecisao /
 DetalheImovel / ResultadoRelaxamento produzidos pela costura e escreve — nota,
@@ -6,7 +6,9 @@ fator, penalidade, perfil e degrau de relaxamento já são autoritativos, nunca
 recalculados aqui. Se algo fosse recalculado, a planilha justificaria um
 recálculo parecido, não a decisão real.
 
-Quatro abas (um CSV cada, mapeando 1:1 no Google Sheets do B4):
+Cinco abas (um CSV cada, mapeando 1:1 no Google Sheets do B4) mais `apuracao.csv`,
+o resultado total — uma linha por candidato, inclusive os excluídos, com as
+características do imóvel (`linhas_apuracao`):
   1. super_destaque   — as posições de super destaque, com a justificativa.
   2. destaque         — as posições de destaque (ranking + recuperados por
                         relaxamento, com o degrau que cedeu).
@@ -14,21 +16,34 @@ Quatro abas (um CSV cada, mapeando 1:1 no Google Sheets do B4):
   4. parametros_e_limitacoes — os provisórios (rotulados PROVISÓRIO) e as
                         limitações declaradas da rodada.
 
-Privacidade (invariante 3): só imóvel, posição, notas e perfil — NUNCA corretor,
-comprador ou lead. A saída vai para `saida/piloto/` (ignorada pelo .gitignore):
-é dado de rodada, não código; nenhum CSV de saída é commitado.
+Privacidade (invariante 3): só imóvel, posição, notas e perfil — NUNCA identidade
+de corretor, comprador ou lead. A apuração acrescenta atributos AGREGADOS do gestor
+(produtivo sim/não, contagem de corretores no distrito) e a contagem de leads, sem
+nome nem id de pessoa; e é arquivo local lido por gente, nunca payload de modelo.
+A saída vai para `saida/sexta/<data>/` (ignorada pelo .gitignore): é dado de rodada,
+não código; nenhum CSV de saída é commitado.
 """
 
 from __future__ import annotations
 
 import csv
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-from dominio.penalidades import JanelaCrua, Penalidade, eleger_ultima_janela, julgar_janelas
-from dominio.perfil import PerfilConversao
+from dados.coletor_externo import DesempenhoAnuncio
+from dominio.elegibilidade import ImovelCandidato
+from dominio.penalidades import (
+    ImovelPenalizavel,
+    JanelaCrua,
+    Penalidade,
+    eleger_ultima_janela,
+    julgar_janelas,
+)
+from dominio.perfil import Dimensao, PerfilConversao
 from dominio.ranking import PesosNivel
 from piloto.decisao import DetalheImovel, ParametrosDecisao, ResultadoDecisao
+from piloto.semelhanca import DimensoesImovel
 
 # As três penalidades, em ordem fixa de coluna (Spec §3.2, grupo Penalidades).
 _PENALIDADES_COLUNAS = (
@@ -323,6 +338,176 @@ def linhas_parametros_e_limitacoes(
     return linhas
 
 
+@dataclass(frozen=True)
+class ContextoApuracao:
+    """O que o CSV único precisa ALÉM do ResultadoDecisao: as características de CADA
+    candidato — inclusive de quem ficou fora, que o resultado só conhece pelas regras
+    reprovadas — e o que o portal trouxe cru. Tudo lido do estado da rodada; nada é
+    recalculado aqui (a mesma condição das outras abas)."""
+
+    candidatos: Sequence[ImovelCandidato]
+    dims: Mapping[int, DimensoesImovel]
+    penalizaveis: Mapping[int, ImovelPenalizavel]
+    anuncios: Mapping[int, DesempenhoAnuncio]
+    # Se o desempenho de portal ENTROU no cálculo (as quatro portas passaram). Os
+    # anúncios acima existem mesmo quando não entrou; esta marca é que diz se pesaram.
+    externo_entrou: bool
+
+
+def _cliques_texto(cliques: Mapping[str, int]) -> str:
+    """Os cliques por tipo, só os não-zero, como texto — NUNCA somados: tipos diferentes
+    medem intenções diferentes (contrato do Coletor Externo)."""
+    return "; ".join(f"{tipo}={n}" for tipo, n in sorted(cliques.items()) if n)
+
+
+def _sim_nao(v: bool) -> str:
+    return "sim" if v else "não"
+
+
+def linhas_apuracao(
+    resultado: ResultadoDecisao,
+    historico: Mapping[int, tuple[JanelaCrua, ...]] | None,
+    resultado_esperado: Mapping[str, int] | None,
+    contexto: ContextoApuracao,
+) -> list[dict[str, object]]:
+    """O resultado TOTAL da apuração: uma linha por imóvel candidato, inclusive os que
+    ficaram fora, ordenada por imovel_id. É a união das abas de super destaque, destaque
+    e excluídos num esquema só, mais as características que só existiam no banco.
+
+    `desfecho` tem cinco valores, porque "fora" esconde três situações diferentes:
+    `super_destaque` e `destaque` (ocupou posição); `nao_coube` (elegível, pontuado no
+    ranking, mas as posições acabaram antes dele — `nota_final` é a nota de destaque com
+    que disputou); `reprovado` (caiu em regra e nenhum degrau o recuperou); e
+    `nao_avaliado` (candidato que a decisão não pontuou — não deveria acontecer numa
+    rodada íntegra, e por isso é dito em vez de virar "fora").
+
+    Regra das colunas de nota: **vazias quando o imóvel não foi pontuado, nunca
+    zeradas** — zero é uma nota, vazio é a ausência dela. E há DUAS populações de
+    pontuação (D-016): os elegíveis, normalizados entre si para o ranking, e os
+    reprovados, normalizados ENTRE SI quando faltou posição de destaque, para ordenar o
+    relaxamento. Os números das duas não são comparáveis entre si, por isso a coluna
+    `notas_entre` diz de qual população cada linha veio. Um reprovado por regra que
+    nunca relaxa (categoria, preço, status) também é pontuado nesse segundo grupo — a
+    nota existe, mas nenhum degrau poderia admiti-lo. Os recuperados carregam as regras
+    em que reprovaram, porque entraram apesar delas.
+    """
+    desfecho: dict[int, dict[str, object]] = {}
+
+    def _um_so(imovel_id: int) -> None:
+        # Alocados e recuperados são disjuntos por construção (alocar recusa id
+        # duplicado; o relaxamento só recebe reprovados). Se essa disjunção quebrar a
+        # montante, um dict sobrescreveria em silêncio e a apuração rotularia um super
+        # destaque como "destaque · relaxamento" — escondendo o estado que o invariante 7
+        # proíbe. Falha alto, aqui, onde os dois lados são visíveis.
+        if imovel_id in desfecho:
+            raise ValueError(f"imóvel {imovel_id} aparece em mais de um desfecho da decisão")
+
+    for pos in resultado.alocacao.super_destaque:
+        _um_so(pos.imovel_id)
+        desfecho[pos.imovel_id] = {
+            "desfecho": "super_destaque",
+            "posicao": pos.posicao,
+            "nota_final": pos.nota,
+            "entrou_por": "ranking",
+            "regra_cedida": "",
+        }
+    for pos in resultado.alocacao.destaque:
+        _um_so(pos.imovel_id)
+        desfecho[pos.imovel_id] = {
+            "desfecho": "destaque",
+            "posicao": pos.posicao,
+            "nota_final": pos.nota,
+            "entrou_por": "ranking",
+            "regra_cedida": "",
+        }
+    proxima = len(resultado.alocacao.destaque)  # a mesma numeração da aba de destaque
+    for rec in resultado.relaxamento.recuperados:
+        proxima += 1
+        _um_so(rec.imovel_id)
+        desfecho[rec.imovel_id] = {
+            "desfecho": "destaque",
+            "posicao": proxima,
+            "nota_final": rec.nota_destaque,
+            "entrou_por": "relaxamento",
+            "regra_cedida": rec.degrau.value,
+        }
+
+    linhas: list[dict[str, object]] = []
+    for c in sorted(contexto.candidatos, key=lambda c: c.imovel_id):
+        d = desfecho.get(c.imovel_id)
+        det = resultado.detalhes.get(c.imovel_id)
+        regras = resultado.reprovados_regras.get(c.imovel_id, frozenset())
+        if d is None:
+            if regras:
+                situacao = "reprovado"
+            elif det is not None:
+                situacao = "nao_coube"  # elegível e pontuado; a cota acabou antes
+            else:
+                situacao = "nao_avaliado"
+        else:
+            situacao = str(d["desfecho"])
+        dims = contexto.dims.get(c.imovel_id, {})
+        an = contexto.anuncios.get(c.imovel_id)
+        pen = contexto.penalizaveis.get(c.imovel_id)
+        perfil = det.perfil_que_puxou if det is not None else None
+        linha: dict[str, object] = {
+            # o desfecho
+            "imovel_id": c.imovel_id,
+            "codigo_portal": c.codigo_portal or "",
+            "desfecho": situacao,
+            "posicao": d["posicao"] if d else "",
+            "entrou_por": d["entrou_por"] if d else "",
+            "regra_cedida": d["regra_cedida"] if d else "",
+            "regras_reprovadas": "; ".join(sorted(r.value for r in regras)),
+            # o imóvel
+            "preco": c.preco,
+            "distrito": dims.get(Dimensao.REGIAO, ""),
+            "categoria": c.categoria,
+            "faixa_metragem": dims.get(Dimensao.FAIXA_METRAGEM, ""),
+            "dormitorios": dims.get(Dimensao.DORMITORIOS, ""),
+            "vagas": dims.get(Dimensao.VAGAS, ""),
+            "qtd_fotos": c.qtd_fotos,
+            "atualizado_em": c.atualizado_em.isoformat(),
+            "leads_180d": pen.leads_180d if pen is not None else "",
+            # a ordem — vazias quando não houve pontuação
+            "nota_final": (
+                d["nota_final"]
+                if d
+                else (det.nota_destaque if situacao == "nao_coube" and det is not None else "")
+            ),
+            # Discriminador AUTORITATIVO: quem reprovou está em `reprovados_regras` (é
+            # literalmente o split de elegibilidade) — não o proxy `nota_super is None`,
+            # que `fluxo.py` já registra como dívida.
+            "notas_entre": ("" if det is None else ("reprovados" if regras else "elegíveis")),
+            "semelhanca_perfil": det.fatores.semelhanca_perfil if det else "",
+            "leads": det.fatores.leads if det else "",
+            "desempenho_proprio": det.fatores.desempenho_proprio if det else "",
+            "produtividade_gestor": det.fatores.produtividade_gestor if det else "",
+            "perfil_que_puxou": _perfil_texto(perfil),
+            "perfil_num_vendas": perfil.num_vendas if perfil is not None else "",
+            "perfil_fragil": perfil.fragil if perfil is not None else "",
+            # o portal, cru
+            "tem_anuncio": _sim_nao(an is not None),
+            "portal_pesou": _sim_nao(contexto.externo_entrou),
+            "portal_nota_anuncio": an.nota if an is not None and an.nota is not None else "",
+            "portal_visualizacoes": an.visualizacoes if an is not None else "",
+            "portal_cliques": _cliques_texto(an.cliques) if an is not None else "",
+            # os descontos
+            "desconto_total": det.desconto_total if det else "",
+        }
+        for p in _PENALIDADES_COLUNAS:
+            linha[f"pen_{p.value}"] = det.descontos_por_penalidade.get(p, 0.0) if det else ""
+        linha["ultima_janela"] = descrever_ultima_janela(
+            None if historico is None else historico.get(c.imovel_id, ()),
+            resultado_esperado,
+        )
+        # o corretor
+        linha["gestor_produtivo"] = _sim_nao(c.gestor_captou_ou_vendeu_30d)
+        linha["corretores_no_distrito"] = c.corretores_ativos_no_distrito
+        linhas.append(linha)
+    return linhas
+
+
 _ABAS = {
     "super_destaque": linhas_super_destaque,
     "destaque": linhas_destaque,
@@ -339,8 +524,12 @@ def escrever_planilha(
     historico_janelas: Mapping[int, tuple[JanelaCrua, ...]] | None,
     resultado_esperado: Mapping[str, int] | None,
     notas_coleta: Sequence[str] = (),
+    contexto: ContextoApuracao,
 ) -> list[Path]:
-    """Escreve os cinco CSVs em `destino` e devolve os caminhos gerados.
+    """Escreve os seis CSVs em `destino` e devolve os caminhos: as cinco abas e o
+    `apuracao.csv` (uma linha por candidato). `contexto` é OBRIGATÓRIO: o arquivo que
+    a pessoa leva para aplicar a carga não pode depender de um kwarg que dá para
+    esquecer — fail-closed, como o resto da fiação.
 
     I/O de ARQUIVO LOCAL (entregável, não estado — invariante 2 é sobre o
     Registro, preservado). Vai para `saida/piloto/` (ignorada pelo .gitignore):
@@ -367,6 +556,12 @@ def escrever_planilha(
         _escrever_csv(
             destino / "parametros_e_limitacoes.csv",
             linhas_parametros_e_limitacoes(resultado, parametros, notas_coleta),
+        )
+    )
+    escritos.append(
+        _escrever_csv(
+            destino / "apuracao.csv",
+            linhas_apuracao(resultado, historico_janelas, resultado_esperado, contexto),
         )
     )
     return escritos

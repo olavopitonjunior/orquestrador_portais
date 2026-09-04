@@ -8,6 +8,9 @@ usa tmp_path (fora do repo) só para confirmar que os quatro arquivos saem.
 import csv
 from datetime import date
 
+import pytest
+
+from dados.coletor_externo import DesempenhoAnuncio
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import (
     ImovelPenalizavel,
@@ -20,8 +23,10 @@ from entrega.planilha_piloto import (
     NAO_CONSULTADO,
     NAO_JULGADA,
     SEM_JANELA,
+    ContextoApuracao,
     descrever_ultima_janela,
     escrever_planilha,
+    linhas_apuracao,
     linhas_destaque,
     linhas_excluidos_por_regra,
     linhas_parametros_e_limitacoes,
@@ -165,10 +170,16 @@ def test_penalidade_serializada_bate_com_o_detalhe():
 def test_escrever_planilha_gera_os_cinco_csvs(tmp_path):
     r = _resultado()
     caminhos = escrever_planilha(
-        r, PARAMS, tmp_path / "piloto", historico_janelas=None, resultado_esperado=None
+        r,
+        PARAMS,
+        tmp_path / "piloto",
+        historico_janelas=None,
+        resultado_esperado=None,
+        contexto=_contexto(_cands_da_apuracao()),
     )
     nomes = sorted(p.name for p in caminhos)
     assert nomes == [
+        "apuracao.csv",
         "destaque.csv",
         "excluidos_por_regra.csv",
         "parametros_e_limitacoes.csv",
@@ -191,6 +202,7 @@ def test_escrever_planilha_inclui_nota_de_coleta_no_csv(tmp_path):
         historico_janelas=None,
         resultado_esperado=None,
         notas_coleta=(nota,),
+        contexto=_contexto(_cands_da_apuracao()),
     )
     with (tmp_path / "piloto" / "parametros_e_limitacoes.csv").open(encoding="utf-8") as f:
         itens = [ln["item"] for ln in csv.DictReader(f)]
@@ -319,3 +331,240 @@ def test_o_TEXTO_da_coluna_concorda_com_o_veredito_da_penalidade():
     cruas = (("super_destaque", 2, 4), ("destaque", 1, 4))
     assert "NÃO atingiu" in descrever_ultima_janela(cruas, LIMIAR)
     assert "super destaque" in descrever_ultima_janela(cruas, LIMIAR)
+
+
+# --- apuracao.csv: o resultado total, uma linha por candidato --------------------
+
+
+def _contexto(resultado_cands, *, anuncios=None, externo_entrou=False):
+    # Candidatos EMBARALHADOS de propósito: a ordenação por imovel_id da apuração tem de
+    # fazer trabalho, senão remover o `sorted` passa em silêncio.
+    return ContextoApuracao(
+        candidatos=list(reversed(resultado_cands)),
+        dims={
+            c.imovel_id: {
+                Dimensao.REGIAO: "Centro",
+                Dimensao.DORMITORIOS: "3",
+                Dimensao.FAIXA_METRAGEM: "60 - 80m2",
+                Dimensao.VAGAS: "1",
+            }
+            for c in resultado_cands
+        },
+        penalizaveis={c.imovel_id: _pen(c.imovel_id) for c in resultado_cands},
+        anuncios=anuncios or {},
+        externo_entrou=externo_entrou,
+    )
+
+
+def _cands_da_apuracao():
+    return [
+        _cand(10),
+        _cand(11, preco=400_000),
+        _cand(12, preco=400_000, fotos=3),
+        _cand(13, preco=400_000, categoria="Casa de Vila"),
+    ]
+
+
+def test_apuracao_tem_uma_linha_por_candidato_sem_sobreposicao():
+    cands = _cands_da_apuracao()
+    r = _resultado()
+    linhas = linhas_apuracao(r, {}, None, _contexto(cands))
+    assert [ln["imovel_id"] for ln in linhas] == [10, 11, 12, 13]  # todos, ordenados
+    por_id = {ln["imovel_id"]: ln for ln in linhas}
+    assert por_id[10]["desfecho"] == "super_destaque" and por_id[10]["posicao"] == 1
+    assert por_id[11]["desfecho"] == "destaque" and por_id[11]["entrou_por"] == "ranking"
+    assert por_id[12]["desfecho"] == "destaque" and por_id[12]["entrou_por"] == "relaxamento"
+    assert por_id[12]["regra_cedida"] == "fotos" and por_id[12]["regras_reprovadas"] == "fotos"
+    assert por_id[13]["desfecho"] == "reprovado" and por_id[13]["regras_reprovadas"] == "categoria"
+    # as características que quem aplica a carga confere, fio a fio
+    assert por_id[12]["qtd_fotos"] == 3 and por_id[10]["qtd_fotos"] == 20
+    assert por_id[10]["faixa_metragem"] == "60 - 80m2" and por_id[10]["vagas"] == "1"
+    assert por_id[10]["perfil_fragil"] is False
+    # a numeração do destaque continua a da aba de destaque
+    assert por_id[12]["posicao"] == len(r.alocacao.destaque) + 1
+
+
+def test_apuracao_diz_entre_quem_cada_nota_foi_normalizada():
+    """D-016: elegíveis e reprovados são normalizados em populações diferentes; a
+    apuração não pode pôr os dois na mesma coluna sem dizer qual é qual."""
+    cands = _cands_da_apuracao()
+    linhas = {
+        ln["imovel_id"]: ln for ln in linhas_apuracao(_resultado(), {}, None, _contexto(cands))
+    }
+    assert linhas[10]["notas_entre"] == "elegíveis" and linhas[11]["notas_entre"] == "elegíveis"
+    # reprovados: pontuados entre si para ordenar o relaxamento — o recuperado e o que
+    # ficou fora por regra que nunca relaxa
+    assert linhas[12]["notas_entre"] == "reprovados"
+    fora = linhas[13]
+    assert fora["desfecho"] == "reprovado" and fora["notas_entre"] == "reprovados"
+    assert fora["nota_final"] == "" and fora["posicao"] == ""  # nunca teve posição
+    # mas as características do imóvel estão lá — é o que quem aplica a carga confere
+    assert fora["preco"] == 400_000 and fora["categoria"] == "Casa de Vila"
+    assert fora["distrito"] == "Centro" and fora["dormitorios"] == "3"
+    assert fora["leads_180d"] == 7 and fora["gestor_produtivo"] == "sim"
+
+
+def test_apuracao_quem_nao_foi_pontuado_tem_nota_VAZIA_nunca_zero():
+    """Candidato que a decisão não pontuou (nem no ranking nem no relaxamento) sai com
+    as colunas de nota vazias — zero seria uma afirmação sobre um número que não existe."""
+    cands = [*_cands_da_apuracao(), _cand(14, preco=400_000)]  # 14 não passou pela decisão
+    linhas = {
+        ln["imovel_id"]: ln for ln in linhas_apuracao(_resultado(), {}, None, _contexto(cands))
+    }
+    sem = linhas[14]
+    assert sem["desfecho"] == "nao_avaliado" and sem["notas_entre"] == ""
+    for col in (
+        "nota_final",
+        "semelhanca_perfil",
+        "leads",
+        "desempenho_proprio",
+        "produtividade_gestor",
+        "desconto_total",
+        "pen_janela_sem_resultado",
+        "perfil_que_puxou",
+        "perfil_num_vendas",
+    ):
+        assert sem[col] == "", col
+    assert sem["preco"] == 400_000 and sem["distrito"] == "Centro"
+
+
+def test_apuracao_notas_batem_com_as_abas_por_nivel():
+    """Serializa, não recomputa: a nota da apuração é a MESMA das abas de nível."""
+    cands = _cands_da_apuracao()
+    r = _resultado()
+    apur = {ln["imovel_id"]: ln for ln in linhas_apuracao(r, {}, None, _contexto(cands))}
+    for ln in linhas_super_destaque(r, {}, None) + linhas_destaque(r, {}, None):
+        assert apur[ln["imovel_id"]]["nota_final"] == ln["nota"]
+        assert apur[ln["imovel_id"]]["posicao"] == ln["posicao"]
+        assert apur[ln["imovel_id"]]["desconto_total"] == ln["desconto_total"]
+
+
+def test_apuracao_traz_o_portal_cru_e_diz_se_pesou():
+    cands = _cands_da_apuracao()
+    an = {
+        10: DesempenhoAnuncio(
+            imovel_id=10,
+            id_portal="x",
+            nota=9580.0,
+            visualizacoes=0,
+            cliques={"cliqueContato": 2, "cliqueTelefone": 0},
+            url=None,
+        )
+    }
+    linhas = linhas_apuracao(
+        _resultado(), {}, None, _contexto(cands, anuncios=an, externo_entrou=False)
+    )
+    por_id = {ln["imovel_id"]: ln for ln in linhas}
+    assert por_id[10]["tem_anuncio"] == "sim" and por_id[10]["portal_nota_anuncio"] == 9580.0
+    assert por_id[10]["portal_cliques"] == "cliqueContato=2"  # só os não-zero, nunca somados
+    assert por_id[10]["portal_pesou"] == "não"  # tinha anúncio, mas o portal não entrou
+    assert por_id[11]["tem_anuncio"] == "não" and por_id[11]["portal_nota_anuncio"] == ""
+
+
+def test_apuracao_codigo_do_portal_vem_do_candidato():
+    cands = _cands_da_apuracao()
+    cands[0] = ImovelCandidato(**{**cands[0].__dict__, "codigo_portal": "10A"})
+    linhas = linhas_apuracao(_resultado(), {}, None, _contexto(cands))
+    assert linhas[0]["codigo_portal"] == "10A" and linhas[1]["codigo_portal"] == ""
+
+
+def test_escrever_planilha_exige_o_contexto_e_escreve_o_sexto_arquivo(tmp_path):
+    r = _resultado()
+    with pytest.raises(TypeError):  # sem contexto não há apuração — e não há planilha
+        escrever_planilha(
+            r, PARAMS, tmp_path / "sem", historico_janelas={}, resultado_esperado=None
+        )
+    com = escrever_planilha(
+        r,
+        PARAMS,
+        tmp_path / "com",
+        historico_janelas={},
+        resultado_esperado=None,
+        contexto=_contexto(_cands_da_apuracao()),
+    )
+    assert [p.name for p in com][-1] == "apuracao.csv"
+    texto = (tmp_path / "com" / "apuracao.csv").read_text(encoding="utf-8")
+    cabecalho = texto.splitlines()[0].split(",")
+    assert cabecalho[:3] == ["imovel_id", "codigo_portal", "desfecho"]
+    assert len(texto.splitlines()) == 1 + 4  # cabeçalho + os quatro candidatos
+
+
+def test_apuracao_elegivel_que_nao_coube_na_cota_e_dito_como_tal():
+    """A ressalva da revisão: um elegível pontuado sem posição não é "fora" nem
+    "reprovado" — é `nao_coube`, e leva a nota de destaque com que disputou."""
+    from dataclasses import replace
+
+    from dominio.alocacao import Alocacao
+    from dominio.relaxamento import ResultadoRelaxamento
+
+    r = _resultado()
+    # Tira o imóvel 11 da alocação de destaque, como se a cota tivesse acabado antes dele.
+    aloc = Alocacao(
+        super_destaque=r.alocacao.super_destaque,
+        destaque=tuple(p for p in r.alocacao.destaque if p.imovel_id != 11),
+    )
+    apertado = replace(r, alocacao=aloc, relaxamento=ResultadoRelaxamento((), (), 0))
+    linhas = {
+        ln["imovel_id"]: ln
+        for ln in linhas_apuracao(apertado, {}, None, _contexto(_cands_da_apuracao()))
+    }
+    assert linhas[11]["desfecho"] == "nao_coube" and linhas[11]["regras_reprovadas"] == ""
+    assert linhas[11]["posicao"] == "" and linhas[11]["notas_entre"] == "elegíveis"
+    assert linhas[11]["nota_final"] == r.detalhes[11].nota_destaque
+
+
+def test_apuracao_recusa_imovel_em_dois_desfechos():
+    """Guarda da auditoria de invariantes: se a disjunção alocado↔recuperado quebrar a
+    montante, a apuração falha alto em vez de rotular um super destaque como
+    relaxamento (o estado que o invariante 7 proíbe)."""
+    from dataclasses import replace
+
+    from dominio.elegibilidade import Regra
+    from dominio.relaxamento import ImovelRecuperado, ResultadoRelaxamento
+
+    r = _resultado()
+    super_id = r.alocacao.super_destaque[0].imovel_id
+    furado = replace(
+        r,
+        relaxamento=ResultadoRelaxamento(
+            (ImovelRecuperado(imovel_id=super_id, nota_destaque=1.0, degrau=Regra.FOTOS),), (), 0
+        ),
+    )
+    with pytest.raises(ValueError, match="mais de um desfecho"):
+        linhas_apuracao(furado, {}, None, _contexto(_cands_da_apuracao()))
+
+
+def test_apuracao_regras_reprovadas_saem_ordenadas_mesmo_com_duas():
+    """`frozenset[Regra]` itera em ordem que varia entre processos; sem o `sorted` a
+    mesma entrada daria bytes diferentes em duas rodadas (invariante 5)."""
+    velho = ImovelCandidato(
+        **{**_cand(15, preco=400_000, fotos=3).__dict__, "atualizado_em": date(2025, 1, 1)}
+    )
+    cands = [*_cands_da_apuracao(), velho]
+    pen = {c.imovel_id: _pen(c.imovel_id) for c in cands}
+    dims = {c.imovel_id: {Dimensao.REGIAO: "Centro"} for c in cands}
+    r = decidir(cands, pen, dims, PERFIS, PARAMS, HOJE)
+    linhas = {ln["imovel_id"]: ln for ln in linhas_apuracao(r, {}, None, _contexto(cands))}
+    assert linhas[15]["regras_reprovadas"] == "atualizacao_90d; fotos"
+
+
+def test_apuracao_ultima_janela_distingue_nao_consultado_de_sem_janela():
+    cands = _cands_da_apuracao()
+    r = _resultado()
+    nao_consultado = linhas_apuracao(r, None, None, _contexto(cands))
+    assert all(ln["ultima_janela"] == NAO_CONSULTADO for ln in nao_consultado)
+    consultado = linhas_apuracao(r, {}, None, _contexto(cands))
+    assert all(ln["ultima_janela"] == SEM_JANELA for ln in consultado)
+
+
+def test_apuracao_ultima_janela_julga_com_o_limiar_como_as_abas():
+    """A coluna sai do MESMO domínio que as abas por nível: com histórico e limiar, o
+    veredito da apuração é o das abas, palavra por palavra."""
+    cands = _cands_da_apuracao()
+    r = _resultado()
+    historico = {10: (("super_destaque", 1, 1),)}  # JanelaCrua = (nível, leads, ciclos)
+    limiar = {"super_destaque": 2, "destaque": 1}
+    apur = {ln["imovel_id"]: ln for ln in linhas_apuracao(r, historico, limiar, _contexto(cands))}
+    aba = {ln["imovel_id"]: ln for ln in linhas_super_destaque(r, historico, limiar)}
+    assert apur[10]["ultima_janela"] == aba[10]["ultima_janela"]
+    assert "NÃO atingiu" in apur[10]["ultima_janela"]

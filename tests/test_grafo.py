@@ -621,3 +621,34 @@ def test_o_progresso_reporta_o_estado_DEPOIS_do_no_concluido():
     # E o progresso precisa ser monótono: etapa nenhuma "desprontifica".
     contagens = [n for _, n in vistos]
     assert contagens == sorted(contagens), f"o progresso andou para trás: {vistos}"
+
+
+# --- os anúncios crus no estado (para o CSV da apuração) ---------------------------
+
+
+def test_os_anuncios_crus_sobem_ao_estado_quando_o_portal_entra():
+    fontes = _fontes_com_externo([_candidato(1), _candidato(2)], {1: 300, 2: 50})
+    final = construir_grafo(fontes, PARAMS, parametros_externo=PARAMS_EXT).invoke(_estado_inicial())
+    assert final["externo_presente"] is True
+    assert set(final["anuncios_por_imovel"]) == {1, 2}
+    assert final["anuncios_por_imovel"][1].visualizacoes == 300
+
+
+def test_os_anuncios_crus_sobem_MESMO_quando_o_portal_nao_entra():
+    """Descritivo: a apuração mostra o que a raspagem trouxe ainda que as portas tenham
+    fechado. `externo_presente` é que diz se pesou."""
+    fontes = _fontes_com_externo([_candidato(1), _candidato(2)], {1: 300, 2: 50})
+    quebrada = replace(
+        fontes, coletar_externo=lambda: replace(_coleta_ok({1: 300, 2: 50}), estado="error")
+    )
+    final = construir_grafo(quebrada, PARAMS, parametros_externo=PARAMS_EXT).invoke(
+        _estado_inicial()
+    )
+    assert final["externo_presente"] is False
+    assert set(final["anuncios_por_imovel"]) == {1, 2}
+
+
+def test_sem_raspagem_os_anuncios_sao_um_mapa_vazio():
+    final = construir_grafo(_fontes([_candidato(1)]), PARAMS).invoke(_estado_inicial())
+    assert final["externo_presente"] is False
+    assert final["anuncios_por_imovel"] == {}
