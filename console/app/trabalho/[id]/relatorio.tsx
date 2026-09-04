@@ -1,9 +1,9 @@
-// Seção "Relatório dos agentes" — usada por /trabalho/[id] (rodada em curso) e por
-// /rodada/[id] (a rodada inteira num lugar só).
-// Requer: `Evento.resumo: Record<string, unknown> | null` e `eventosDoTrabalho` lendo a
-// coluna `resumo`. A seção mostra, por etapa da lista de apresentação, o resumo do
-// evento com `no_grafo = etapa` e `resumo` não nulo — chave/valor, sem conhecer o
-// esquema de cada agente (varia por nó, e é isso que o jsonb comporta).
+// Seção "O que cada agente fez" — usada por /trabalho/[id] (rodada em curso) e por
+// /rodada/[id] (a rodada inteira num lugar só). Um cartão por etapa da lista de
+// apresentação, com o resumo gravado em `operacao.trabalho_evento.resumo` (jsonb):
+// chave/valor, sem conhecer o esquema de cada agente (varia por nó, e é isso que o
+// jsonb comporta). `porNo` vem de `resumosDoTrabalho` — consulta própria, não do log
+// cortado em 300.
 
 // O que cada agente é, para quem lê o relatório sem a Spec ao lado.
 const SOBRE_O_AGENTE: Record<string, string> = {
@@ -16,12 +16,22 @@ const SOBRE_O_AGENTE: Record<string, string> = {
   finalizar: "Declara o estado da rodada a partir do que cada etapa reportou.",
 };
 
+const NOME_DO_AGENTE: Record<string, string> = {
+  coletor_interno: "Coletor Interno",
+  analista_perfil: "Analista de Perfil",
+  coletor_externo: "Coletor Externo",
+  decisor: "Decisor",
+  crivo: "Crivo",
+  redator: "Redator",
+  finalizar: "Monitor",
+};
+
 function Valor({ v }: { v: unknown }) {
-  if (v === null || v === undefined) return <span className="vazio-inline">—</span>;
+  if (v === null || v === undefined) return <span className="discreto">—</span>;
   if (typeof v === "boolean") return <span className={v ? "pill pill-ok" : "pill pill-bad"}>{v ? "sim" : "não"}</span>;
-  if (typeof v === "number") return <span className="id">{Number.isInteger(v) ? v : v.toFixed(3)}</span>;
+  if (typeof v === "number") return <b>{Number.isInteger(v) ? v.toLocaleString("pt-BR") : v.toFixed(3)}</b>;
   if (Array.isArray(v)) {
-    if (v.length === 0) return <span className="vazio-inline">nenhuma</span>;
+    if (v.length === 0) return <span className="discreto">nenhuma</span>;
     return (
       <ul>
         {v.map((x, i) => (
@@ -34,12 +44,12 @@ function Valor({ v }: { v: unknown }) {
   }
   if (typeof v === "object") {
     const entradas = Object.entries(v as Record<string, unknown>);
-    if (entradas.length === 0) return <span className="vazio-inline">—</span>;
+    if (entradas.length === 0) return <span className="discreto">—</span>;
     return (
       <ul>
         {entradas.map(([k, x]) => (
           <li key={k}>
-            {k}: <Valor v={x} />
+            {k.replace(/_/g, " ")}: <Valor v={x} />
           </li>
         ))}
       </ul>
@@ -48,7 +58,6 @@ function Valor({ v }: { v: unknown }) {
   return <>{String(v)}</>;
 }
 
-// `porNo` vem de `resumosDoTrabalho` — consulta própria, não do log cortado em 300.
 export function RelatorioDosAgentes({
   etapas,
   porNo,
@@ -56,70 +65,73 @@ export function RelatorioDosAgentes({
   etapas: readonly string[];
   porNo: Map<string, Record<string, unknown>>;
 }) {
-  if (porNo.size === 0) {
-    return (
-      <section className="secao">
-        <h2>Relatório dos agentes</h2>
-        <p className="campo-ajuda">
-          Nenhum agente reportou ainda. Cada etapa concluída traz aqui o que o agente leu, o que
-          produziu e o que não conseguiu — contado a partir do estado da rodada, sem modelo e sem
-          cifra inventada.
-        </p>
-      </section>
-    );
-  }
   return (
-    <section className="secao">
-      <h2>Relatório dos agentes</h2>
-      <p className="campo-ajuda">
-        O que cada agente leu, produziu e não conseguiu — derivado do estado da rodada a cada
-        etapa. Só contagens e limitações: nenhum id de imóvel sai daqui.
-      </p>
-      {etapas.map((etapa) => {
-        const r = porNo.get(etapa);
-        if (!r) return null;
-        const { degradacoes, indisponivel, ...resto } = r as {
-          degradacoes?: unknown;
-          indisponivel?: unknown;
-        } & Record<string, unknown>;
-        const degs = Array.isArray(degradacoes) ? degradacoes : [];
-        return (
-          <details key={etapa} open>
-            <summary>
-              <strong>{etapa.replace(/_/g, " ")}</strong>
-              {degs.length ? <span className="pill pill-warn"> {degs.length} limitação(ões)</span> : null}
-            </summary>
-            <p className="campo-ajuda">{SOBRE_O_AGENTE[etapa] ?? ""}</p>
-            {indisponivel ? (
-              <p>
-                <span className="pill pill-warn">relatório indisponível</span> o resumo deste agente
-                não pôde ser montado ({String(indisponivel)}); a etapa em si concluiu.
-              </p>
-            ) : null}
-            <table>
-              <tbody>
-                {Object.entries(resto).map(([k, v]) => (
-                  <tr key={k}>
-                    <td>{k.replace(/_/g, " ")}</td>
-                    <td>
-                      <Valor v={v} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {degs.length ? (
-              <ul>
-                {degs.map((d, i) => (
-                  <li key={i} className="linha-erro">
-                    {String(d)}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </details>
-        );
-      })}
+    <section className="secao ancora" id="agentes">
+      <div className="secao-cabecalho">
+        <h2>O que cada agente fez</h2>
+        <span className="nota">Contagens tiradas do estado da rodada a cada etapa. Nada aqui é redigido por modelo, e nenhum id de imóvel sai daqui.</span>
+      </div>
+      {porNo.size === 0 ? (
+        <p className="nota" style={{ margin: 0 }}>
+          Nenhum agente reportou ainda. Cada etapa concluída traz aqui o que o agente leu, o que
+          produziu e o que não conseguiu.
+        </p>
+      ) : (
+        <div className="agentes-grid">
+          {etapas.map((etapa) => {
+            const r = porNo.get(etapa);
+            if (!r) return null;
+            const { degradacoes, indisponivel, ...resto } = r as {
+              degradacoes?: unknown;
+              indisponivel?: unknown;
+            } & Record<string, unknown>;
+            const degs = Array.isArray(degradacoes) ? degradacoes : [];
+            return (
+              <article key={etapa} className="agente">
+                <div className="agente-cabecalho">
+                  <span>{NOME_DO_AGENTE[etapa] ?? etapa.replace(/_/g, " ")}</span>
+                  {indisponivel ? (
+                    <span className="pill pill-warn">relatório indisponível</span>
+                  ) : degs.length ? (
+                    <span className="pill pill-warn">{degs.length} {degs.length === 1 ? "limitação" : "limitações"}</span>
+                  ) : (
+                    <span className="pill pill-ok">pronto</span>
+                  )}
+                </div>
+                <div className="agente-sobre">{SOBRE_O_AGENTE[etapa] ?? ""}</div>
+                {indisponivel ? (
+                  <div className="agente-sobre">
+                    O resumo deste agente não pôde ser montado ({String(indisponivel)}); a etapa em si concluiu.
+                  </div>
+                ) : null}
+                {Object.keys(resto).length ? (
+                  <table>
+                    <tbody>
+                      {Object.entries(resto).map(([k, v]) => (
+                        <tr key={k}>
+                          <td>{k.replace(/_/g, " ")}</td>
+                          <td>
+                            <Valor v={v} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : null}
+                {degs.length ? (
+                  <ul>
+                    {degs.map((d, i) => (
+                      <li key={i} className="linha-erro">
+                        {String(d)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

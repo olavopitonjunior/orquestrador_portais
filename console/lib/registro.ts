@@ -18,6 +18,7 @@ export type RodadaResumo = {
   posicoesVaziasDestaque: number;
   superDestaque: number; // posições gravadas por nível
   destaque: number;
+  amostral: boolean; // decidiu sobre o recorte da raspagem, não sobre o estoque (A2)
 };
 
 type LinhaRodada = {
@@ -32,6 +33,7 @@ type LinhaRodada = {
   posicoes_vazias_destaque: number;
   super_destaque: string;
   destaque: string;
+  amostral: boolean;
 };
 
 function mapRodada(l: LinhaRodada): RodadaResumo {
@@ -47,6 +49,7 @@ function mapRodada(l: LinhaRodada): RodadaResumo {
     posicoesVaziasDestaque: Number(l.posicoes_vazias_destaque),
     superDestaque: Number(l.super_destaque), // count() volta bigint (string)
     destaque: Number(l.destaque),
+    amostral: l.amostral,
   };
 }
 
@@ -54,7 +57,10 @@ const SELECT_RODADA = `
   SELECT r.id, r.tipo, r.estado, r.inicio, r.fim, r.aprovada_em, r.aprovada_por,
          r.motivo_degradacao, r.posicoes_vazias_destaque,
          count(*) FILTER (WHERE d.nivel = 'super_destaque') AS super_destaque,
-         count(*) FILTER (WHERE d.nivel = 'destaque') AS destaque
+         count(*) FILTER (WHERE d.nivel = 'destaque') AS destaque,
+         EXISTS (SELECT 1 FROM registro.parametros_da_rodada p
+                 WHERE p.rodada_id = r.id
+                   AND p.parametros ->> 'recorte_pela_raspagem' IS NOT NULL) AS amostral
   FROM registro.rodada r
   LEFT JOIN registro.decisao_imovel d ON d.rodada_id = r.id`;
 

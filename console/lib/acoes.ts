@@ -13,6 +13,8 @@ export type Acao = {
   titulo: string;
   descricao: string;
   detalhe?: string; // passos, quando houver (ex.: runbook de login)
+  href?: string; // para onde o botão leva; sem href, a ação é só aviso
+  rotulo?: string; // o texto do botão
 };
 
 const PASSOS_LOGIN =
@@ -39,6 +41,8 @@ export function montarAcoes(
         "A sessão do raspador caiu (Cloudflare). Sem re-login, a rodada de sexta fica " +
         "sem desempenho de portal e degrada.",
       detalhe: PASSOS_LOGIN,
+      href: "/coleta",
+      rotulo: "Abrir a coleta",
     });
   } else if (saude.estado === "error") {
     acoes.push({
@@ -48,6 +52,8 @@ export function montarAcoes(
       descricao:
         "A última coleta terminou em erro (não é bloqueio de sessão). Veja os logs do " +
         "raspador antes da rodada de sexta — sem coleta, a rodada degrada.",
+      href: "/coleta",
+      rotulo: "Abrir a coleta",
     });
   } else if (saude.estado === "corrompido") {
     acoes.push({
@@ -57,6 +63,8 @@ export function montarAcoes(
       descricao:
         "O status da última coleta está ilegível (o raspador rodou e não fechou o " +
         "arquivo). Rode a coleta de novo antes da sexta.",
+      href: "/coleta",
+      rotulo: "Abrir a coleta",
     });
   }
 
@@ -70,6 +78,8 @@ export function montarAcoes(
         // filtra estado IN ('completa','degradada'), mas o tipo admite null.
         `Rodada de decisão ${r.estado ?? ""} aguardando sua aprovação (D-001). ` +
         "Enquanto não aprovada, a carga não deve ser aplicada.",
+      href: `/rodada/${r.id}`,
+      rotulo: "Ver a rodada",
     });
   }
 
@@ -81,6 +91,8 @@ export function montarAcoes(
       descricao:
         "Parâmetros de decisão ainda nulos (nunca preenchidos com valor inventado). " +
         "A rodada roda com provisórios rotulados até você defini-los.",
+      href: "/parametros",
+      rotulo: "Definir",
     });
   }
 

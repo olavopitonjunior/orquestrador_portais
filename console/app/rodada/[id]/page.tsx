@@ -8,8 +8,10 @@ import {
   trabalhoDaRodada,
 } from "@/lib/operacao";
 import { ABAS, lerPlanilha, type Aba, type Tabela } from "@/lib/planilha";
+import { cotasDoRegistro } from "@/lib/cotas";
 import { lerRodada, limitacoesDe, parametrosDaRodada } from "@/lib/registro";
-import { dataHora, PilulaEstado } from "../../estado";
+import { dataHora, duracao, PilulaEstado } from "../../estado";
+import { IconeAlerta } from "../../icones";
 import { RelatorioDosAgentes } from "../../trabalho/[id]/relatorio";
 
 export const dynamic = "force-dynamic";
@@ -97,9 +99,10 @@ function Tabela({ aba, t }: { aba: Aba; t: Tabela }) {
           </tbody>
         </table>
       </div>
-      <p className="campo-ajuda">
-        {t.linhas.length} linhas
-        {t.linhas.length > LINHAS_NA_TELA ? ` — as ${LINHAS_NA_TELA} primeiras na tela; o CSV inteiro está em disco` : ""}
+      <p className="nota" style={{ margin: 0, padding: "10px 20px", borderTop: "1px solid var(--border)" }}>
+        {t.linhas.length > LINHAS_NA_TELA
+          ? `${LINHAS_NA_TELA} de ${t.linhas.length} linhas na tela; o CSV inteiro está em disco`
+          : `${t.linhas.length} ${t.linhas.length === 1 ? "linha" : "linhas"}`}
         . Passe o mouse no cabeçalho para ver o que cada coluna significa.
       </p>
     </>
@@ -111,10 +114,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!/^\d+$/.test(bruto)) return <h1>Rodada inválida</h1>;
   const id = Number(bruto);
 
-  const [rodada, parametros, trabalhoId] = await Promise.all([
+  const [rodada, parametros, trabalhoId, cotas] = await Promise.all([
     lerRodada(id).catch(() => null),
     parametrosDaRodada(id).catch(() => null),
     trabalhoDaRodada(id).catch(() => null),
+    cotasDoRegistro().catch(() => null),
   ]);
   if (rodada === null) {
     return (
@@ -145,80 +149,206 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const amostral = recorte != null;
   const limitacoes = limitacoesDe(rodada.motivoDegradacao);
 
+  // "pelo ranking + por relaxamento": contado na aba `destaque` da planilha (coluna
+  // `origem`), quando ela está em disco. O Registro só guarda a contagem por nível.
+  const abaDestaque = planilha?.abas.destaque;
+  const iOrigem = abaDestaque ? abaDestaque.colunas.indexOf("origem") : -1;
+  const relaxados =
+    abaDestaque && iOrigem >= 0 ? abaDestaque.linhas.filter((l) => l[iOrigem] === "relaxamento").length : null;
+
   return (
     <>
-      <h1>
-        Rodada {rodada.id} · {rodada.tipo} <PilulaEstado estado={rodada.estado} />
-      </h1>
-      <p className="subtitulo">
-        executada {dataHora(rodada.inicio)}
-        {dataReferencia ? ` · data de referência ${dataReferencia}` : ""}
-        {rodada.aprovadaEm ? ` · aprovada ${dataHora(rodada.aprovadaEm)} por ${rodada.aprovadaPor ?? "?"}` : " · pendente de aprovação"}
-        {trabalhoId ? (
-          <>
-            {" · "}
-            <Link href={`/trabalho/${trabalhoId}`}>log da execução</Link>
-          </>
-        ) : null}
-      </p>
+      <nav className="migalhas" aria-label="Caminho">
+        <Link href="/">Painel</Link>
+        <span>/</span>
+        <Link href="/#rodadas">Rodadas</Link>
+        <span>/</span>
+        <b>{rodada.id}</b>
+      </nav>
+
+      <header className="cabecalho">
+        <div>
+          <h1>
+            Rodada {rodada.id}
+            <PilulaEstado estado={rodada.estado} />
+            {amostral ? <span className="pill pill-bad">amostral</span> : null}
+          </h1>
+          <p className="subtitulo">
+            {rodada.tipo === "decisao" ? "Decisão" : "Acompanhamento"} · {dataHora(rodada.inicio)}
+            {rodada.fim ? ` · ${duracao(rodada.inicio, rodada.fim)}` : ""}
+            {dataReferencia ? ` · referência ${dataReferencia}` : ""}
+            {trabalhoId ? (
+              <>
+                {" · trabalho "}
+                <Link href={`/trabalho/${trabalhoId}`}>{trabalhoId}</Link>
+              </>
+            ) : (
+              " · disparada pela linha de comando"
+            )}
+          </p>
+        </div>
+        <div className="cabecalho-acoes">
+          {rodada.aprovadaEm ? (
+            <span className="pill pill-ok" style={{ padding: "6px 12px" }}>
+              aprovada {dataHora(rodada.aprovadaEm)} por {rodada.aprovadaPor ?? "?"}
+            </span>
+          ) : rodada.tipo !== "decisao" ? null : amostral || rodada.estado === "abortada" ? (
+            <button
+              type="button"
+              className="botao"
+              disabled
+              title={amostral ? "Rodada amostral não pode ser aprovada" : "Rodada abortada não entrega"}
+            >
+              Aprovar · indisponível
+            </button>
+          ) : (
+            <span
+              className="pill pill-muted"
+              style={{ padding: "6px 12px" }}
+              title="A aprovação é pelo comando rodada-aprovar (D-001)"
+            >
+              pendente de aprovação · rodada-aprovar
+            </span>
+          )}
+        </div>
+      </header>
 
       {amostral ? (
         <div className="banner" role="alert">
-          <strong>RODADA AMOSTRAL</strong> — decidiu sobre o recorte de{" "}
-          {recorte?.imoveis ?? "?"} imóveis que a raspagem trouxe, não sobre o estoque. Existe
-          para ver a corrente inteira funcionar; nunca é COMPLETA e não pode ser aprovada.
+          <IconeAlerta />
+          <div>
+            <b>Rodada amostral.</b> O universo foi restrito aos {recorte?.imoveis ?? "?"} imóveis que
+            a raspagem trouxe. Não é decisão sobre o estoque, nunca é COMPLETA e não pode virar carga.
+            Serve para conferir a cadeia inteira com dado real.
+          </div>
         </div>
       ) : null}
 
-      <section className="secao">
-        <h2>O que a rodada declarou sobre si mesma</h2>
-        {limitacoes.length === 0 ? (
-          <p className="vazio">Nenhuma limitação gravada.</p>
-        ) : (
-          <ol>
-            {limitacoes.map((l, i) => (
-              <li key={i}>{l}</li>
-            ))}
-          </ol>
-        )}
-        <p className="campo-ajuda">
-          É o <code>motivo_degradacao</code> do Registro — a mesma lista que foi para a aba de
-          limitações da planilha. Posições de destaque vazias: {rodada.posicoesVaziasDestaque}.
-        </p>
-      </section>
+      <nav className="abas" aria-label="Seções">
+        <a className="aba" href="#resumo">Resumo</a>
+        <a className="aba" href="#agentes">Agentes</a>
+        <a className="aba" href="#planilha">Planilha</a>
+        <a className="aba" href="#parametros">Parâmetros</a>
+        <a className="aba" href="#log">Log</a>
+      </nav>
 
-      <section className="secao">
-        <h2>Parâmetros que a produziram</h2>
-        {parametros === null ? (
-          <p className="vazio">
-            {rodada.tipo === "acompanhamento"
-              ? "Rodada de acompanhamento não grava parâmetros: mede a carga aprovada, não decide."
-              : "A rodada não gravou parâmetros."}
-          </p>
-        ) : (
-          <pre>{JSON.stringify(parametros, null, 2)}</pre>
-        )}
-        <p className="campo-ajuda">
-          Verbatim, como gravado: o TOML declarado (PROVISÓRIO) mais as entradas fora dele —
-          data de referência, definição de gestor ativo, pasta da coleta, recorte.
-        </p>
-      </section>
+      <div className="grade-2-inversa ancora" id="resumo">
+        <section className="caixa">
+          <div className="caixa-cabecalho">
+            <h2>O que a rodada propôs</h2>
+          </div>
+          <div className="caixa-corpo">
+            {rodada.tipo === "acompanhamento" ? (
+              <p className="nota" style={{ margin: 0 }}>
+                Rodada de acompanhamento não propõe posições: mede a carga aprovada contra o Registro.
+              </p>
+            ) : (
+              <div className="grade-3">
+                <div className="kpi">
+                  <div className="lbl">Super destaque</div>
+                  <div className="kpi-valor">
+                    {rodada.superDestaque.toLocaleString("pt-BR")}
+                    {cotas ? <small> / {cotas.superDestaque.toLocaleString("pt-BR")}</small> : null}
+                  </div>
+                </div>
+                <div className="kpi">
+                  <div className="lbl">Destaque</div>
+                  <div className="kpi-valor">
+                    {rodada.destaque.toLocaleString("pt-BR")}
+                    {cotas ? <small> / {cotas.destaque.toLocaleString("pt-BR")}</small> : null}
+                  </div>
+                  {relaxados !== null ? (
+                    <div className="kpi-sub">
+                      {(rodada.destaque - relaxados).toLocaleString("pt-BR")} pelo ranking +{" "}
+                      {relaxados.toLocaleString("pt-BR")} por relaxamento
+                    </div>
+                  ) : null}
+                </div>
+                <div className={rodada.posicoesVaziasDestaque > 0 ? "kpi kpi-warn" : "kpi"}>
+                  <div className="lbl">Vazias (destaque)</div>
+                  <div className="kpi-valor">{rodada.posicoesVaziasDestaque.toLocaleString("pt-BR")}</div>
+                  {amostral && rodada.posicoesVaziasDestaque > 0 ? (
+                    <div className="kpi-sub">esperado num recorte de {recorte?.imoveis ?? "?"}</div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+            <div className="linhas-kv">
+              <div className="linha-kv">
+                <span>Estado</span>
+                <b>{rodada.estado ?? "em andamento"}</b>
+              </div>
+              {rodada.tipo === "acompanhamento" ? (
+                <div className="linha-kv">
+                  <span>Posições de destaque vazias</span>
+                  <b>{rodada.posicoesVaziasDestaque.toLocaleString("pt-BR")}</b>
+                </div>
+              ) : null}
+              <div className="linha-kv">
+                <span>Recorte pela raspagem</span>
+                <b>{amostral ? `${recorte?.imoveis ?? "?"} imóveis` : "não · estoque inteiro"}</b>
+              </div>
+              <div className="linha-kv">
+                <span>Planilha em disco</span>
+                <b>{planilha ? planilha.diretorio : "não encontrada"}</b>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="caixa">
+          <div className="caixa-cabecalho">
+            <h2>O que ela declarou sobre si mesma</h2>
+            <span className="pill pill-muted">
+              {limitacoes.length === 0
+                ? "nenhuma limitação"
+                : `${limitacoes.length} ${limitacoes.length === 1 ? "limitação" : "limitações"}`}
+            </span>
+          </div>
+          <div className="caixa-corpo">
+            {limitacoes.length === 0 ? (
+              <p className="nota" style={{ margin: 0 }}>
+                Nenhuma limitação gravada.
+              </p>
+            ) : (
+              <ol className="limitacoes">
+                {limitacoes.map((l, i) => (
+                  <li key={i}>
+                    <span className={/AMOSTRAL/.test(l) ? "limitacao-n limitacao-n-forte" : "limitacao-n"}>
+                      {i + 1}
+                    </span>
+                    <span>{l}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <p className="nota" style={{ margin: 0 }}>
+              É o <code>motivo_degradacao</code> do Registro — a mesma lista que foi para a aba de
+              limitações da planilha.
+            </p>
+          </div>
+        </section>
+      </div>
 
       {trabalhoId ? (
         <RelatorioDosAgentes etapas={ETAPAS} porNo={resumos} />
       ) : (
-        <section className="secao">
-          <h2>Relatório dos agentes</h2>
-          <p className="vazio">
+        <section className="secao ancora" id="agentes">
+          <h2>O que cada agente fez</h2>
+          <p className="nota" style={{ margin: 0 }}>
             Esta rodada não veio da fila do console (foi disparada pela linha de comando), então
             não há relatório de agentes nem log gravados para ela.
           </p>
         </section>
       )}
 
-      <h2>A planilha</h2>
+      <section className="secao ancora" id="planilha">
+      <div className="secao-cabecalho">
+        <h2>A planilha</h2>
+        <span className="nota">F1 semelhança · F2 leads · F3 portal · F4 produtividade · três penalidades</span>
+      </div>
       {rodada.tipo === "acompanhamento" ? (
-        <p className="campo-ajuda">
+        <p className="nota" style={{ margin: 0 }}>
           Rodada de acompanhamento não tem planilha: produz o relatório de segunda em{" "}
           <code>saida/segunda/</code> (resumo, desempenho por imóvel e leads sem tratamento) e não
           grava parâmetros — mede a carga aprovada contra o Registro. A leitura desse relatório
@@ -232,7 +362,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </div>
       ) : (
         <>
-          <p className="campo-ajuda">
+          <p className="nota" style={{ margin: 0 }}>
             Lida de <code>{planilha.diretorio}</code>. Atenção: a planilha é por DATA — duas rodadas
             no mesmo dia escrevem no mesmo lugar, e o que está em disco é a última.
           </p>
@@ -245,9 +375,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             const t = planilha.abas[aba];
             if (!t) return null;
             return (
-              <section className="secao" key={aba}>
-                <h3>{aba.replace(/_/g, " ")}</h3>
-                <p className="campo-ajuda">{SOBRE_A_ABA[aba]}</p>
+              <section className="caixa" key={aba}>
+                <div className="caixa-cabecalho">
+                  <h2>
+                    {aba.replace(/_/g, " ")}{" "}
+                    <span className="pill pill-muted">{t.vazia || t.semConteudo ? "0" : t.linhas.length.toLocaleString("pt-BR")}</span>
+                  </h2>
+                  <span className="nota" style={{ maxWidth: 640 }}>{SOBRE_A_ABA[aba]}</span>
+                </div>
                 <Tabela aba={aba} t={t} />
               </section>
             );
@@ -255,22 +390,43 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </>
       )}
 
+      </section>
+
+      <section className="caixa ancora" id="parametros">
+        <div className="caixa-cabecalho">
+          <h2>Parâmetros que a produziram</h2>
+          <span className="nota" style={{ maxWidth: 640 }}>
+            verbatim, como gravado: o TOML declarado (PROVISÓRIO) mais data de referência, definição de gestor ativo, pasta da coleta e recorte
+          </span>
+        </div>
+        {parametros === null ? (
+          <p className="vazio">
+            {rodada.tipo === "acompanhamento"
+              ? "Rodada de acompanhamento não grava parâmetros: mede a carga aprovada, não decide."
+              : "A rodada não gravou parâmetros."}
+          </p>
+        ) : (
+          <div className="caixa-corpo">
+            <pre>{JSON.stringify(parametros, null, 2)}</pre>
+          </div>
+        )}
+      </section>
+
       {trabalhoId ? (
-        <section className="secao">
-          <h2>Log da execução</h2>
-          {eventos.length === 0 ? (
-            <p className="campo-ajuda">
-              Trabalho <Link href={`/trabalho/${trabalhoId}`}>{trabalhoId}</Link> — nada gravado.
-            </p>
-          ) : (
+        <section className="caixa ancora" id="log">
+          <div className="caixa-cabecalho">
+            <h2>Log da execução</h2>
+            <span className="nota">
+              trabalho <Link href={`/trabalho/${trabalhoId}`}>{trabalhoId}</Link>
+              {eventos.length === 0
+                ? " · nada gravado"
+                : eventos.length >= LIMITE_DO_LOG
+                  ? ` · as ${LIMITE_DO_LOG} últimas linhas de um log maior; o relatório dos agentes não depende deste corte`
+                  : ` · o log inteiro, ${eventos.length} linhas`}
+            </span>
+          </div>
+          {eventos.length === 0 ? null : (
             <>
-              <p className="campo-ajuda">
-                Trabalho <Link href={`/trabalho/${trabalhoId}`}>{trabalhoId}</Link> —{" "}
-                {eventos.length >= LIMITE_DO_LOG
-                  ? `as ${LIMITE_DO_LOG} últimas linhas de um log maior (o começo não está aqui nem em /trabalho)`
-                  : `o log inteiro, ${eventos.length} linhas`}
-                ; o relatório dos agentes acima não depende deste corte.
-              </p>
             <div className="tabela-wrap">
               <table>
                 <thead>
