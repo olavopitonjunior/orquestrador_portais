@@ -63,7 +63,7 @@ def resumo_do_no(
             "entrou_no_ranking": bool(estado.get("externo_presente")),
             "taxa_amarracao": estado.get("externo_taxa_amarracao"),
             "idade_dias": estado.get("externo_idade_dias"),
-            "imoveis_com_desempenho": len(estado.get("desempenho_por_imovel") or {}),
+            "imoveis_com_anuncio": len(estado.get("anuncios_por_imovel") or {}),
         }
     elif no == "decisor":
         res = estado.get("resultado")

@@ -1,6 +1,10 @@
-"""Elegibilidade: oito regras eliminatórias gerais + piso de nível do super destaque.
+"""Elegibilidade: nove regras eliminatórias gerais + piso de nível do super destaque.
 
-Fonte: Spec §6.1, lida conforme as decisões D-002 e D-003 (docs/decisoes.md):
+Fonte: Spec §6.1, lida conforme as decisões D-002 e D-003 (docs/decisoes.md), mais a
+D-027 (04/09/2026): o PERFIL DE CONVERSÃO vira a nona regra — só entra quem casa com um
+perfil robusto que contenha a faixa de preço. A regra é aplicada pela costura, que
+conhece os perfis; aqui o veredito chega pronto no candidato (`casa_perfil_de_conversao`).
+O piso de R$ 700.000 segue condição de nível, aplicada na alocação:
 o piso de R$ 700.000 é condição de candidatura ao super destaque aplicada na
 alocação, não regra eliminatória; o status impeditivo (vendido/reservado/
 removido) é regra de saída imediata fora do ciclo, tratada na rotação.
@@ -29,7 +33,7 @@ MINIMO_CORRETORES_ATIVOS_DISTRITO = 2
 
 
 class Regra(Enum):
-    """As oito regras eliminatórias gerais (D-002/D-003)."""
+    """As nove regras eliminatórias gerais (D-002/D-003/D-027)."""
 
     STATUS_ATIVO = "status_ativo"
     CATEGORIA = "categoria"
@@ -39,11 +43,19 @@ class Regra(Enum):
     CADASTRO_COMPLETO = "cadastro_completo"
     GESTOR_PRODUTIVO = "gestor_produtivo"
     CAPACIDADE_DISTRITO = "capacidade_distrito"
+    # D-027: parece com o que vendeu (perfil robusto contendo a faixa de preço).
+    PERFIL_DE_CONVERSAO = "perfil_de_conversao"
 
 
-# Ordem de cedência no relaxamento (Spec §6.6). Invariante 7: aplica-se apenas
-# às posições de destaque. STATUS, CATEGORIA e PRECO_GERAL nunca relaxam.
+# Ordem de cedência no relaxamento (Spec §6.6 + D-027). Invariante 7: aplica-se
+# apenas às posições de destaque. STATUS, CATEGORIA e PRECO_GERAL nunca relaxam.
+# O perfil é o PRIMEIRO degrau cedido, por decisão do dono (04/09/2026): "preferir
+# um imóvel com cadastro impecável fora do perfil a um dentro do perfil com nove
+# fotos". Consequência declarada: no destaque o filtro é a primeira coisa de que o
+# sistema abre mão quando faltam imóveis; no super destaque, que nunca relaxa, ele
+# morde inteiro.
 ORDEM_RELAXAMENTO: tuple[Regra, ...] = (
+    Regra.PERFIL_DE_CONVERSAO,
     Regra.FOTOS,
     Regra.CADASTRO_COMPLETO,
     Regra.ATUALIZACAO_90D,
@@ -93,6 +105,16 @@ class ImovelCandidato:
     # igual ao `codigoImovel` do Canal Pro em 300/300, medido em 03/09/2026). Vai para o
     # CSV da apuração. `None` = a coleta não trouxe; nenhuma regra o lê.
     codigo_portal: str | None = None
+    # Veredito do filtro de perfil (D-027), carregado pela COSTURA, que conhece os
+    # perfis: True casa, False não casa (reprova em PERFIL_DE_CONVERSAO), None = não
+    # avaliado — e não avaliado NÃO reprova: a regra só existe quando alguém a aplicou.
+    # A costura garante que nenhum candidato chega à decisão com None.
+    casa_perfil_de_conversao: bool | None = None
+    # O gestor logou dentro da janela declarada (D-029)? Não é regra eliminatória —
+    # medido em 04/09/2026: quem não loga também não capta nem vende, então excluiria
+    # zero imóveis a mais. É TRAVA do relaxamento: o degrau `gestor_produtivo` não
+    # recupera imóvel de gestor sem login. None = a coleta não trouxe.
+    gestor_logou_na_janela: bool | None = None
 
     # Instâncias não são hasháveis (o mapping impede hash estável); deduplique
     # por imovel_id. O __post_init__ copia o mapping para um proxy imutável,
@@ -106,13 +128,23 @@ class ImovelCandidato:
             )
 
 
-def regras_reprovadas(imovel: ImovelCandidato, data_referencia: date) -> frozenset[Regra]:
-    """Aplica as oito regras em conjunto e devolve as reprovadas.
+def regras_reprovadas(
+    imovel: ImovelCandidato,
+    data_referencia: date,
+    *,
+    minimo_corretores_distrito: int = MINIMO_CORRETORES_ATIVOS_DISTRITO,
+) -> frozenset[Regra]:
+    """Aplica as nove regras em conjunto e devolve as reprovadas.
 
     Reprovar em uma basta para excluir (Spec §6.1); devolver todas as
     reprovadas — e não parar na primeira — é o que permite ao Decisor
     saber quais imóveis cada degrau de relaxamento recupera.
+
+    `minimo_corretores_distrito` é o valor ADOTADO (2, D-015) e passa a ser
+    declarável por rodada (D-033); o default é o adotado, não um palpite.
     """
+    if minimo_corretores_distrito < 1:
+        raise ValueError(f"mínimo de corretores no distrito inválido: {minimo_corretores_distrito}")
     reprovadas: set[Regra] = set()
 
     if not imovel.publicacao_ativa:
@@ -140,14 +172,18 @@ def regras_reprovadas(imovel: ImovelCandidato, data_referencia: date) -> frozens
         reprovadas.add(Regra.CADASTRO_COMPLETO)
     if not imovel.gestor_captou_ou_vendeu_30d:
         reprovadas.add(Regra.GESTOR_PRODUTIVO)
-    if imovel.corretores_ativos_no_distrito < MINIMO_CORRETORES_ATIVOS_DISTRITO:
+    if imovel.corretores_ativos_no_distrito < minimo_corretores_distrito:
         reprovadas.add(Regra.CAPACIDADE_DISTRITO)
+    # D-027: só o veredito FALSO reprova. None é "ninguém aplicou o filtro" (por
+    # exemplo, a medição do funil sem perfis) e não pode virar reprovação em silêncio.
+    if imovel.casa_perfil_de_conversao is False:
+        reprovadas.add(Regra.PERFIL_DE_CONVERSAO)
 
     return frozenset(reprovadas)
 
 
 def elegivel(imovel: ImovelCandidato, data_referencia: date) -> bool:
-    """Elegível ao nível destaque: aprova nas oito regras."""
+    """Elegível ao nível destaque: aprova nas nove regras."""
     return not regras_reprovadas(imovel, data_referencia)
 
 

@@ -32,7 +32,7 @@ from __future__ import annotations
 import csv
 import json
 import re
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, tzinfo
 from pathlib import Path
@@ -253,9 +253,8 @@ class ParametrosExterno:
     crus do anúncio — a FORMA está em aberto (parâmetro nº 2), então a composição
     também é provisória e injetada (o default do runner usa visualizações)."""
 
-    limiar_amarracao: float  # nº 7 (nulo): taxa mínima de amarração p/ entrar
-    idade_maxima_dias: int  # nº 5 (nulo): idade máxima aceitável da coleta
-    compor_desempenho: Callable[[DesempenhoAnuncio], float]  # sinal F3 (provisório)
+    limiar_amarracao: float  # cobertura mínima, como fração (portal.cobertura_minima / 100)
+    idade_maxima_dias: int  # portal.idade_maxima_dias
     # Fuso da medição da idade: entrada EXPLÍCITA, com default fixo e nomeado. Ver
     # `FUSO_DA_OPERACAO`.
     fuso: tzinfo = FUSO_DA_OPERACAO
@@ -266,8 +265,7 @@ class ResultadoExterno:
     """Veredito da admissão da coleta externa ao cálculo (Spec §7.3) + os números
     que a planilha declara (idade do dado, taxa de amarração, §3.1)."""
 
-    entra: bool  # a performance externa entra no ranking (F3)?
-    desempenho_por_imovel: Mapping[int, float]  # vazio quando não entra
+    entra: bool  # a performance externa entra no ranking?
     taxa_amarracao: float
     idade_dias: int | None  # None se a coleta não tem timestamp
     motivo: str  # razão da não-admissão (declarada); "" quando entra
@@ -313,7 +311,7 @@ def avaliar_coleta(
     )
 
     def _nao(motivo: str) -> ResultadoExterno:
-        return ResultadoExterno(False, {}, taxa, idade, motivo)
+        return ResultadoExterno(False, taxa, idade, motivo)
 
     if coleta.estado != "ok":
         return _nao(f"coleta externa {coleta.estado} — sem performance de portal")
@@ -334,7 +332,6 @@ def avaliar_coleta(
             f"idade da coleta {idade} dias > máxima {params.idade_maxima_dias} (nº 5) "
             "— fora da janela aceitável, sem reserva (Spec §7.3)"
         )
-    desempenho = {
-        iid: float(params.compor_desempenho(anuncio)) for iid, anuncio in coleta.por_imovel.items()
-    }
-    return ResultadoExterno(True, desempenho, taxa, idade, "")
+    # Passando as quatro portas, o que entra no cálculo são os anúncios CRUS
+    # (`coleta.por_imovel`); a composição da nota é da costura (D-028).
+    return ResultadoExterno(True, taxa, idade, "")

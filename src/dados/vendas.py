@@ -47,7 +47,7 @@ SELECT
 FROM newcore_bi.FT_LeadsOffers o
 LEFT JOIN newcore.realties r ON r.Id = o.Realty_Id
 WHERE o.SignedAt IS NOT NULL
-  AND o.SignedAt >= CURDATE() - INTERVAL 180 DAY
+  AND o.SignedAt >= CURDATE() - INTERVAL {janela_dias} DAY
 ORDER BY o.Realty_Id, o.SignedAt
 """
 
@@ -92,8 +92,9 @@ def _vendas_ancoraveis(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
     return ancoraveis, len(rows) - len(ancoraveis)
 
 
-def coletar_vendas() -> tuple[list[ImovelVendido], int]:
-    """Lê as vendas assinadas em 180 dias (D-013) e as monta como ImovelVendido.
+def coletar_vendas(janela_dias: int = 180) -> tuple[list[ImovelVendido], int]:
+    """Lê as vendas assinadas na janela (180 dias por D-013; parâmetro da rodada por
+    D-033) e as monta como ImovelVendido.
 
     Devolve (vendas ancoráveis, nº descartado por Realty_Id nulo) — o descarte é
     contado, nunca silencioso, para a rodada declarar na aba de limitações.
@@ -101,5 +102,9 @@ def coletar_vendas() -> tuple[list[ImovelVendido], int]:
     assinada; um mesmo imóvel pode ter mais de uma venda no período e cada uma
     conta como um caso no perfil (a evidência é por venda, não por imóvel).
     """
-    ancoraveis, descartadas = _vendas_ancoraveis(consultar(_SQL_VENDAS))
+    if isinstance(janela_dias, bool) or not isinstance(janela_dias, int) or janela_dias < 1:
+        raise ValueError(f"janela_dias inválida: {janela_dias!r}")
+    ancoraveis, descartadas = _vendas_ancoraveis(
+        consultar(_SQL_VENDAS.format(janela_dias=janela_dias))
+    )
     return [linha_para_vendido(row) for row in ancoraveis], descartadas

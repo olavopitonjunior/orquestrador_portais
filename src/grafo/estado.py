@@ -59,10 +59,9 @@ class EstadoRodada(TypedDict, total=False):
     dims: dict[int, DimensoesImovel]
     perfis: tuple[PerfilConversao, ...]
     externo_presente: bool
-    desempenho_por_imovel: dict[int, float]  # sinal de portal (F3) do Coletor Externo
     # O que a raspagem trouxe CRU por imóvel (nota, visualizações, cliques), entre ou
-    # não no cálculo — DESCRITIVO, para o CSV da apuração. Nenhum nó de decisão o lê;
-    # `externo_presente` é que diz se o portal pesou. Vazio sem raspagem.
+    # não no cálculo. É o que a costura consome para a nota do portal (D-028) quando
+    # `externo_presente` — e o que a apuração mostra mesmo quando ele não pesou.
     anuncios_por_imovel: dict[int, DesempenhoAnuncio]
     # Spec §3.1: a aba de resumo carrega OBRIGATORIAMENTE a idade do dado do portal e
     # a taxa de amarração. Os dois vinham no `ResultadoExterno` e eram descartados

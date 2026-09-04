@@ -38,7 +38,7 @@ ESTADO = {
     "externo_presente": True,
     "externo_taxa_amarracao": 0.83,
     "externo_idade_dias": 1,
-    "desempenho_por_imovel": {101: 3.0, 202: 1.0},
+    "anuncios_por_imovel": {101: object(), 202: object()},
     "resultado": _resultado(),
     "veredito": SimpleNamespace(pronta=True, violacoes=()),
     "janelas_lidas": 0,
@@ -86,7 +86,7 @@ def test_coletor_externo_diz_se_entrou_e_com_que_taxa():
         "entrou_no_ranking": True,
         "taxa_amarracao": 0.83,
         "idade_dias": 1,
-        "imoveis_com_desempenho": 2,
+        "imoveis_com_anuncio": 2,
         "degradacoes": [],
     }
 
@@ -114,7 +114,7 @@ def test_crivo_reporta_veto_com_os_codigos():
 
 
 def test_nenhum_resumo_carrega_id_de_imovel():
-    """Os ids 101 e 202 estão no estado (desempenho, reprovados); nenhum sai no resumo —
+    """Os ids 101 e 202 estão no estado (anúncios, reprovados); nenhum sai no resumo —
     só contagens. A mesma disciplina do NDJSON."""
     import re
 

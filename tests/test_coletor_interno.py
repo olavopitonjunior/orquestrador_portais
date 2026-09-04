@@ -122,7 +122,7 @@ def test_agrupar_notas_por_imovel():
 def test_coluna_de_distrito_e_conjunto_fechado():
     # A coluna interpolada vem do enum (valor fixo), nunca de entrada livre.
     for d in DefinicaoAtivoDistrito:
-        sql = _SQL_CANDIDATOS.format(coluna_ativo=d.value, recorte="")
+        sql = _SQL_CANDIDATOS.format(coluna_ativo=d.value, recorte="", login_janela_dias=30)
         assert d.value in sql
         assert d.value in {
             "Brokers",
@@ -206,6 +206,8 @@ def test_removido_NAO_volta_por_relaxamento():
     """Se status fosse relaxável, a correção teria criado um caminho de volta
     para a vitrine PAGA — pior que o defeito que ela conserta."""
     assert Regra.STATUS_ATIVO not in ORDEM_RELAXAMENTO
+    # A ordem nova (D-027) tem seis degraus e começa pelo perfil; status segue fora.
+    assert len(ORDEM_RELAXAMENTO) == 6 and ORDEM_RELAXAMENTO[0] is Regra.PERFIL_DE_CONVERSAO
 
 
 # --- recorte amostral pela raspagem (A2) --------------------------------------
@@ -215,7 +217,9 @@ def test_recorte_entra_no_sql_como_IN_de_inteiros_ordenados():
     """Ordenado: o mesmo conjunto produz o mesmo SQL (invariante 5). Antes do ORDER BY."""
     from dados.coletor_interno import _SQL_CANDIDATOS, _clausula_recorte
 
-    sql = _SQL_CANDIDATOS.format(coluna_ativo="Brokers", recorte=_clausula_recorte({30, 10, 20}))
+    sql = _SQL_CANDIDATOS.format(
+        coluna_ativo="Brokers", recorte=_clausula_recorte({30, 10, 20}), login_janela_dias=30
+    )
     assert "AND f.Realty_Id IN (10, 20, 30)" in sql
     assert sql.index("IN (10, 20, 30)") < sql.index("ORDER BY f.Realty_Id")
 
@@ -224,8 +228,68 @@ def test_sem_recorte_o_sql_e_o_de_sempre():
     from dados.coletor_interno import _SQL_CANDIDATOS, _clausula_recorte
 
     assert _clausula_recorte(None) == ""
-    sql = _SQL_CANDIDATOS.format(coluna_ativo="Brokers", recorte="")
+    sql = _SQL_CANDIDATOS.format(coluna_ativo="Brokers", recorte="", login_janela_dias=30)
     assert "Realty_Id IN (" not in sql
+
+
+# --- a janela do login do gestor (D-029, D-033) ---------------------------------
+
+
+def test_o_sql_exige_os_TRES_placeholders():
+    """`.format` sem `login_janela_dias` falha: a janela é parâmetro da rodada e não
+    pode ficar embutida em silêncio no texto."""
+    with pytest.raises(KeyError):
+        _SQL_CANDIDATOS.format(coluna_ativo="Brokers", recorte="")
+    sql = _SQL_CANDIDATOS.format(coluna_ativo="Brokers", recorte="", login_janela_dias=45)
+    assert "INTERVAL 45 DAY" in sql
+    assert "AS gestor_logou_na_janela" in sql
+
+
+@pytest.mark.parametrize("janela", [0, -1, True, False, "30", 30.0, None])
+def test_coletar_recusa_janela_de_login_invalida_ANTES_de_consultar(monkeypatch, janela):
+    """Teste puro: `consultar` é substituído por um que estoura se for chamado. A
+    validação vem antes de qualquer I/O — e `True` é recusado porque é subclasse de
+    `int` e viraria `INTERVAL 1 DAY` em silêncio."""
+    import dados.coletor_interno as ci
+
+    def _nunca(*a, **k):
+        raise AssertionError("consultar não pode ser chamado com janela inválida")
+
+    monkeypatch.setattr(ci, "consultar", _nunca)
+    with pytest.raises(ValueError, match="login_janela_dias inválido"):
+        ci.coletar(DefinicaoAtivoDistrito.TOTAL, login_janela_dias=janela)
+
+
+def test_coletar_leva_a_janela_declarada_ao_sql(monkeypatch):
+    import dados.coletor_interno as ci
+
+    consultas: list[str] = []
+    monkeypatch.setattr(ci, "consultar", lambda sql, *a, **k: (consultas.append(sql), [])[1])
+    candidatos, penalizaveis = ci.coletar(DefinicaoAtivoDistrito.TOTAL, login_janela_dias=45)
+    assert (candidatos, penalizaveis) == ([], [])
+    assert "INTERVAL 45 DAY" in consultas[0]
+    assert "INTERVAL 30 DAY) AS gestor_logou_na_janela" not in consultas[0]
+
+
+def test_gestor_logou_na_janela_e_mapeado_e_ausente_vira_None():
+    assert (
+        linha_para_candidato({**LINHA, "gestor_logou_na_janela": 1}, None).gestor_logou_na_janela
+        is True
+    )
+    assert (
+        linha_para_candidato({**LINHA, "gestor_logou_na_janela": 0}, None).gestor_logou_na_janela
+        is False
+    )
+    # linha antiga, sem a coluna: "a coleta não trouxe" — None, não False
+    assert linha_para_candidato(LINHA, None).gestor_logou_na_janela is None
+
+
+def test_login_do_gestor_nao_muda_a_elegibilidade_do_candidato_montado():
+    """D-029: trava do relaxamento, não regra. O veredito é o mesmo com e sem login."""
+    hoje = date(2026, 9, 3)
+    com = linha_para_candidato({**LINHA, "gestor_logou_na_janela": 1}, None)
+    sem = linha_para_candidato({**LINHA, "gestor_logou_na_janela": 0}, None)
+    assert regras_reprovadas(com, hoje) == regras_reprovadas(sem, hoje) == frozenset()
 
 
 def test_recorte_vazio_e_recusado_antes_de_consultar():

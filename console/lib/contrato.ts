@@ -13,14 +13,7 @@ import contratoJson from "./contrato-parametros.json";
 
 export type TipoCampo = "inteiro" | "numero" | "escolha";
 
-export type Funcao =
-  | "contrato"
-  | "excludente"
-  | "condicao_de_nivel"
-  | "relaxamento"
-  | "classificador"
-  | "desconto"
-  | "operacao";
+export type Funcao = "excludente" | "classificatorio" | "decisorio";
 export type Fonte = "contrato" | "banco_imovel" | "banco_corretor" | "raspagem" | "registro";
 
 /** Uma seção do formulário, na ordem em que a decisão acontece — vem do contrato
@@ -55,6 +48,12 @@ export type Campo = {
   escolhas: string[] | null;
   /** `[caminho, valor]`: o campo só existe quando aquele outro tiver aquele valor. */
   exige: [string, string] | null;
+  /** A unidade em que o dono lê o número: dias, pontos de 100, %, corretores, leads. */
+  unidade: string;
+  /** O valor ADOTADO (D-034) usado quando o campo não é declarado; null para o que segue nulo. */
+  adotado: number | string | null;
+  /** Uma linha, no imperativo: o que muda se você aumentar. */
+  se_aumentar: string;
   /** Rótulo do parâmetro pendente, para o dono saber que decisão está respondendo. */
   pendencia: string | null;
 };
@@ -83,9 +82,10 @@ export const POR_CAMINHO: ReadonlyMap<string, Campo> = new Map(
  *  `"cliques_do_tipo "` — era ACEITO pela validação e, ao mesmo tempo, desativava o
  *  campo condicional que ele governa. O campo deixava de ser exigido, não era
  *  serializado, o console dizia "Guardado", e a rodada morria com "falta
- *  externo.desempenho.tipo" — na única tentativa da semana, depois de o dono já ter
- *  visto sucesso na tela. Duas noções de igualdade para o mesmo par é o defeito; a
- *  função é a correção. */
+ *  externo.desempenho.tipo" (campo do contrato anterior à D-034; hoje não há campo
+ *  condicional, e a garantia fica) — na única tentativa da semana, depois de o dono
+ *  já ter visto sucesso na tela. Duas noções de igualdade para o mesmo par é o
+ *  defeito; a função é a correção. */
 export function normalizarEscolha(valor: string | undefined): string {
   return (valor ?? "").trim();
 }

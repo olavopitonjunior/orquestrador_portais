@@ -5,8 +5,16 @@ as de super destaque nunca relaxam (invariante 7): não existe caminho de
 super destaque nesta assinatura, e o resultado não carrega nível.
 
 Ordem de cedência: a de ORDEM_RELAXAMENTO, importada de dominio.elegibilidade
-(fonte única) — fotos, cadastro completo, atualização em 90 dias, gestor
-produtivo, capacidade do distrito. A cedência é progressiva e MÍNIMA: um grau
+(fonte única) — perfil de conversão (D-027, primeiro degrau), fotos, cadastro
+completo, atualização em 90 dias, gestor produtivo, capacidade do distrito.
+
+TRAVA DO LOGIN (D-029): o degrau `gestor_produtivo` NÃO recupera imóvel cujo gestor
+não logou dentro da janela declarada — quem não entra no sistema não vai atender o
+lead que a posição paga gerar. O imóvel fica irrecuperável em qualquer degrau que
+ceda `gestor_produtivo` (inclusive `capacidade_distrito`, que vem depois), e o
+resultado conta quantos foram travados, para a planilha declarar.
+
+A cedência é progressiva e MÍNIMA: um grau
 só é cedido se o déficit sobrou depois de esgotar o anterior, e a descida
 para assim que o déficit zera ("cede regras progressivamente até completar").
 
@@ -15,8 +23,9 @@ suas regras reprovadas — para admiti-lo é preciso ceder todas. Quem reprova
 em regra NÃO relaxável (status, categoria, preço geral) nunca entra, em grau
 algum: semântica da Spec, não anomalia.
 
-Seleção dentro do grau por (-nota_destaque, -imovel_id) — a mesma chave da
-alocação, desempate da D-009. Não é escolha nova: sob cedência progressiva
+Seleção dentro do grau por (-nota_destaque, -desempate, -imovel_id) — a mesma
+chave da alocação (D-028: leads desempatam; D-009: cadastro mais novo por
+último). Não é escolha nova: sob cedência progressiva
 com preenchimento guloso, ao chegar ao grau k todos os recuperáveis dos
 graus anteriores já entraram, então o pool do grau k é exatamente quem
 depende dele — reordenar o acumulado por nota daria o mesmo resultado; as
@@ -36,7 +45,7 @@ O relatório de cedência é parte inseparável do resultado: sem ele a etapa de
 decisão não é considerada pronta (Spec §6.6). Ele lista APENAS os graus
 efetivamente cedidos — linha com zero para grau cedido que não recuperou
 ninguém, nenhuma linha para grau nunca alcançado. Déficit residual é
-resultado legítimo quando os cinco graus não bastam.
+resultado legítimo quando os seis graus não bastam.
 
 Invariantes 4 e 5: cálculo puro — sem I/O, sem relógio, sem aleatoriedade,
 sem chamada a modelo.
@@ -60,6 +69,11 @@ class CandidatoRelaxamento:
     imovel_id: int
     nota_destaque: float
     regras_reprovadas: frozenset[Regra]
+    # D-029: gestor sem login na janela declarada. Só importa se GESTOR_PRODUTIVO
+    # está entre as reprovadas; então o candidato é irrecuperável.
+    gestor_sem_login: bool = False
+    # D-028: leads normalizados — a mesma chave secundária da alocação.
+    desempate: float = 0.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "regras_reprovadas", frozenset(self.regras_reprovadas))
@@ -72,6 +86,8 @@ class CandidatoRelaxamento:
             raise ValueError(f"regras_reprovadas com valor que não é Regra: {estranhas}")
         if not math.isfinite(self.nota_destaque):
             raise ValueError(f"nota não finita para nota_destaque: {self.nota_destaque}")
+        if not math.isfinite(self.desempate):
+            raise ValueError(f"desempate não finito: {self.desempate}")
 
 
 @dataclass(frozen=True)
@@ -95,16 +111,26 @@ class LinhaRelatorio:
 @dataclass(frozen=True)
 class ResultadoRelaxamento:
     """Recuperados na ordem de proposta (grau, depois nota), relatório
-    obrigatório e o déficit que os cinco graus não cobriram."""
+    obrigatório e o déficit que os seis graus não cobriram."""
 
     recuperados: tuple[ImovelRecuperado, ...]
     relatorio: tuple[LinhaRelatorio, ...]
     deficit_restante: int
+    # D-029: quantos candidatos ficaram irrecuperáveis pela trava do login (gestor sem
+    # login E reprovado em gestor_produtivo). Declarado na planilha.
+    bloqueados_por_login: int = 0
+
+
+def _travado_pelo_login(candidato: CandidatoRelaxamento) -> bool:
+    return candidato.gestor_sem_login and Regra.GESTOR_PRODUTIVO in candidato.regras_reprovadas
 
 
 def _degrau_minimo(candidato: CandidatoRelaxamento) -> int | None:
-    """Índice do maior degrau exigido, ou None se alguma regra não relaxa."""
+    """Índice do maior degrau exigido, ou None se alguma regra não relaxa — ou se a
+    trava do login (D-029) o torna irrecuperável."""
     if not candidato.regras_reprovadas <= frozenset(ORDEM_RELAXAMENTO):
+        return None
+    if _travado_pelo_login(candidato):
         return None
     return max(ORDEM_RELAXAMENTO.index(regra) for regra in candidato.regras_reprovadas)
 
@@ -125,6 +151,14 @@ def relaxar(deficit: int, candidatos: Sequence[CandidatoRelaxamento]) -> Resulta
     recuperados: list[ImovelRecuperado] = []
     relatorio: list[LinhaRelatorio] = []
     restante = deficit
+    # Contado sempre, mesmo sem déficit: a trava é fato sobre os candidatos, não sobre
+    # a cedência — e a planilha declara "N travados" ainda que ninguém tenha sido
+    # cedido, para o dono ver o efeito da regra.
+    bloqueados = sum(
+        1
+        for c in candidatos
+        if c.regras_reprovadas <= frozenset(ORDEM_RELAXAMENTO) and _travado_pelo_login(c)
+    )
 
     if restante > 0:
         por_degrau: dict[int, list[CandidatoRelaxamento]] = {}
@@ -136,7 +170,7 @@ def relaxar(deficit: int, candidatos: Sequence[CandidatoRelaxamento]) -> Resulta
         for indice, regra in enumerate(ORDEM_RELAXAMENTO):
             pool = sorted(
                 por_degrau.get(indice, ()),
-                key=lambda c: (-c.nota_destaque, -c.imovel_id),
+                key=lambda c: (-c.nota_destaque, -c.desempate, -c.imovel_id),
             )
             entram = pool[:restante]
             relatorio.append(LinhaRelatorio(regra=regra, posicoes_dependentes=len(entram)))
@@ -152,4 +186,5 @@ def relaxar(deficit: int, candidatos: Sequence[CandidatoRelaxamento]) -> Resulta
         recuperados=tuple(recuperados),
         relatorio=tuple(relatorio),
         deficit_restante=restante,
+        bloqueados_por_login=bloqueados,
     )

@@ -1,6 +1,8 @@
-"""Testes das oito regras de elegibilidade e do piso de nível.
+"""Testes das nove regras de elegibilidade e do piso de nível.
 
-Valores-limite conforme Spec §6.1 e PRD (tabela de parâmetros).
+Valores-limite conforme Spec §6.1 e PRD (tabela de parâmetros); a nona regra
+(perfil de conversão) e a régua declarável de capacidade do distrito vêm das
+decisões D-027 e D-033.
 """
 
 from dataclasses import replace
@@ -51,6 +53,7 @@ def test_imovel_aprovado_em_todas_as_regras():
         ({"notas_por_categoria": {"descricao": 2, "iptu": 0}}, Regra.CADASTRO_COMPLETO),
         ({"gestor_captou_ou_vendeu_30d": False}, Regra.GESTOR_PRODUTIVO),
         ({"corretores_ativos_no_distrito": 1}, Regra.CAPACIDADE_DISTRITO),
+        ({"casa_perfil_de_conversao": False}, Regra.PERFIL_DE_CONVERSAO),
     ],
 )
 def test_cada_regra_reprova_isoladamente(mudanca, regra):
@@ -122,14 +125,83 @@ def test_mensagem_de_erro_do_relaxamento_e_deterministica():
         )
 
 
-def test_ordem_de_relaxamento_conforme_spec():
+def test_ordem_de_relaxamento_conforme_spec_e_d027():
+    # Spec §6.6 + D-027: o perfil de conversão é o PRIMEIRO degrau cedido.
     assert ORDEM_RELAXAMENTO == (
+        Regra.PERFIL_DE_CONVERSAO,
         Regra.FOTOS,
         Regra.CADASTRO_COMPLETO,
         Regra.ATUALIZACAO_90D,
         Regra.GESTOR_PRODUTIVO,
         Regra.CAPACIDADE_DISTRITO,
     )
+    # status, categoria e preço geral nunca relaxam
+    assert not {Regra.STATUS_ATIVO, Regra.CATEGORIA, Regra.PRECO_GERAL} & set(ORDEM_RELAXAMENTO)
+
+
+# --- a nona regra: perfil de conversão (D-027) ---------------------------------
+
+
+def test_perfil_de_conversao_so_reprova_com_veredito_FALSO():
+    """None = ninguém aplicou o filtro (a medição do funil sem perfis) e NÃO reprova;
+    True passa; só False reprova. Reprovar em None seria reprovar em silêncio."""
+    assert APROVADO.casa_perfil_de_conversao is None  # o default é "não avaliado"
+    assert elegivel(APROVADO, REF)
+    assert elegivel(replace(APROVADO, casa_perfil_de_conversao=True), REF)
+    assert regras_reprovadas(replace(APROVADO, casa_perfil_de_conversao=False), REF) == frozenset(
+        {Regra.PERFIL_DE_CONVERSAO}
+    )
+
+
+def test_perfil_de_conversao_e_relaxavel_e_o_primeiro_degrau():
+    fora_do_perfil = replace(APROVADO, casa_perfil_de_conversao=False)
+    assert not elegivel(fora_do_perfil, REF)
+    assert elegivel_com_relaxamento(fora_do_perfil, REF, frozenset({Regra.PERFIL_DE_CONVERSAO}))
+    assert ORDEM_RELAXAMENTO[0] is Regra.PERFIL_DE_CONVERSAO
+
+
+def test_login_do_gestor_NAO_e_regra_de_elegibilidade():
+    """D-029: o login é TRAVA do relaxamento, não regra — medido, excluiria zero
+    imóveis a mais. Mudar o campo não muda o veredito."""
+    for valor in (True, False, None):
+        assert (
+            regras_reprovadas(replace(APROVADO, gestor_logou_na_janela=valor), REF) == frozenset()
+        )
+
+
+# --- capacidade do distrito parametrizada (D-033) ------------------------------
+
+
+@pytest.mark.parametrize(
+    ("minimo", "corretores", "reprova"),
+    [
+        (2, 2, False),  # o adotado, no limite
+        (2, 1, True),
+        (1, 1, False),  # régua mais frouxa: 1 corretor basta
+        (3, 2, True),  # régua mais dura: 2 já não bastam
+        (3, 3, False),
+    ],
+)
+def test_minimo_de_corretores_do_distrito_e_parametrizado(minimo, corretores, reprova):
+    imovel = replace(APROVADO, corretores_ativos_no_distrito=corretores)
+    reprovadas = regras_reprovadas(imovel, REF, minimo_corretores_distrito=minimo)
+    assert (Regra.CAPACIDADE_DISTRITO in reprovadas) is reprova
+
+
+def test_minimo_de_corretores_default_e_o_adotado():
+    from dominio.elegibilidade import MINIMO_CORRETORES_ATIVOS_DISTRITO
+
+    assert MINIMO_CORRETORES_ATIVOS_DISTRITO == 2  # D-015
+    imovel = replace(APROVADO, corretores_ativos_no_distrito=1)
+    assert regras_reprovadas(imovel, REF) == regras_reprovadas(
+        imovel, REF, minimo_corretores_distrito=MINIMO_CORRETORES_ATIVOS_DISTRITO
+    )
+
+
+@pytest.mark.parametrize("minimo", [0, -1])
+def test_minimo_de_corretores_abaixo_de_um_e_recusado(minimo):
+    with pytest.raises(ValueError, match="mínimo de corretores"):
+        regras_reprovadas(APROVADO, REF, minimo_corretores_distrito=minimo)
 
 
 def test_categoria_e_sensivel_a_caixa_e_acento():

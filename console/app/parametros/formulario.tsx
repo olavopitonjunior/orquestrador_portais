@@ -11,13 +11,9 @@ import { salvarParametros, type Resposta } from "./acoes";
 // O que cada função e cada fonte significam para quem lê a seção. Rótulos de
 // exibição — a taxonomia em si vem do contrato gerado (`GRUPOS`), não daqui.
 const FUNCAO: Record<Funcao, string> = {
-  contrato: "contrato",
-  excludente: "excludente",
-  condicao_de_nivel: "condição de nível",
-  relaxamento: "cedência",
-  classificador: "classificador",
-  desconto: "desconto",
-  operacao: "operação",
+  excludente: "excludente · decide quem entra",
+  classificatorio: "classificatório · decide a ordem",
+  decisorio: "decisório · decide quantos e onde",
 };
 const FONTE: Record<Fonte, string> = {
   contrato: "contrato",
@@ -32,10 +28,10 @@ function rotulo(campo: Campo): string {
   return campo.caminho.split(".").pop()!.replace(/_/g, " ");
 }
 
-/** O trecho do meio do caminho, quando há três níveis: nos oito pesos é o nível
- *  ("super destaque · semelhanca perfil"), e em `externo.desempenho.*` é
- *  "desempenho", que separa "forma" e "tipo" de "limiar amarracao" e "idade maxima
- *  dias" no mesmo grupo. Era a etiqueta que `secaoDe` dava de graça. */
+/** O trecho do meio do caminho, quando há três níveis. Exemplo HISTÓRICO (contrato
+ *  anterior à D-034): nos oito pesos por nível era "super destaque · semelhanca
+ *  perfil". Os 16 caminhos de hoje têm dois níveis, então devolve null — fica para o
+ *  dia em que um caminho de três níveis voltar. */
 function prefixo(campo: Campo): string | null {
   const partes = campo.caminho.split(".");
   return partes.length > 2 ? partes.slice(1, -1).join(" ").replace(/_/g, " ") : null;
@@ -156,8 +152,15 @@ export function Formulario({ inicial }: { inicial: Record<string, string> }) {
                         <span>
                           {pre ? <span className="campo-prefixo">{pre} · </span> : null}
                           {rotulo(campo)}
+                          {campo.unidade ? <span className="campo-unidade"> · {campo.unidade}</span> : null}
                         </span>
-                        {campo.pendencia ? <em className="pendencia">{campo.pendencia}</em> : null}
+                        {campo.pendencia ? (
+                          <em className="pendencia">{campo.pendencia}</em>
+                        ) : campo.adotado !== null ? (
+                          <em className="adotado" title="valor adotado por decisão registrada (D-034); mude para declarar um PROVISÓRIO só nesta rodada">
+                            adotado: {String(campo.adotado)}
+                          </em>
+                        ) : null}
                       </span>
                       {campo.escolhas ? (
                         <select
@@ -177,7 +180,7 @@ export function Formulario({ inicial }: { inicial: Record<string, string> }) {
                           inputMode="decimal"
                           // NUNCA um número, nem sequer de exemplo: é assim que um valor
                           // que ninguém escolheu entra numa planilha aprovada.
-                          placeholder="a definir"
+                          placeholder={campo.adotado !== null ? `adotado: ${String(campo.adotado)}` : "a definir"}
                           value={valores[campo.caminho] ?? ""}
                           onChange={(e) => setValores({ ...valores, [campo.caminho]: e.target.value })}
                           onBlur={() => setTocados({ ...tocados, [campo.caminho]: true })}
@@ -185,6 +188,11 @@ export function Formulario({ inicial }: { inicial: Record<string, string> }) {
                       )}
                       <span className="campo-faixa">{faixaEmTexto(campo)}</span>
                       <span className="campo-ajuda">{campo.ajuda}</span>
+                      {campo.se_aumentar ? (
+                        <span className="campo-ajuda">
+                          <b>Se aumentar:</b> {campo.se_aumentar}
+                        </span>
+                      ) : null}
                       {erro ? <span className="campo-erro">{erro}</span> : null}
                     </label>
                   );

@@ -12,9 +12,9 @@ PRD > Spec > Ferramentas > código. Divergência entre código e documento é **
 ## Procedimento
 
 1. **Localize a regra no documento.** Elegibilidade: Spec §6.1. Perfil: §6.2. Ranking e pesos: §6.3. Penalidades: §6.4. Alocação: §6.5. Relaxamento: §6.6. Rotação: §6.7. Estados e falhas: §7. Contratos entre agentes: §5.
-2. **Compare literal por literal**: limiares (R$ 300.000, R$ 700.000, 10 fotos, 90 dias, 30 dias, 2 corretores, 180 dias), as cinco categorias aceitas, os pesos (60/25/15 e 80/10/10), a ordem de relaxamento (fotos → cadastro → atualização → gestor → distrito).
+2. **Compare literal por literal**: limiares (R$ 300.000, R$ 700.000, 10 fotos, 90 dias, 30 dias, 2 corretores, 180 dias), as cinco categorias aceitas, os pesos do portal em pontos de 100 (adotados 70/30/0, D-028/D-034 — os 60/25/15 e 80/10/10 da Spec §6.3 estão superados), a ordem de relaxamento (perfil de conversão → fotos → cadastro → atualização → gestor → distrito, D-027) e a trava do login no degrau do gestor (D-029).
 3. **Confira os invariantes** (CLAUDE.md): especialmente cotas como teto rígido e relaxamento restrito ao nível destaque.
-4. **Confira que nenhum parâmetro pendente ganhou valor.** Os catorze nulos da tabela do CLAUDE.md (quinze itens; só o nº 1 foi resolvido, D-014) permanecem nulos. Valor inventado é erro grave, mesmo "provisório".
+4. **Confira que nenhum parâmetro pendente ganhou valor.** Os nove nulos da tabela do CLAUDE.md permanecem nulos (resolvidos: nº 1 pela D-014; nº 3, 5 e 7 pela D-034; nº 12 e 13 deixaram de existir, D-031). Os adotados vivem só em `src/config/adotados.py`, com procedência. Valor inventado é erro grave, mesmo "provisório".
 5. **Rode a implementação contra a base e compare com os números de referência**:
    `uv run python -m executar.referencias`. A ferramenta reaproveita o coletor e as
    regras do próprio sistema (nunca reimplementa o funil), lê os valores publicados do

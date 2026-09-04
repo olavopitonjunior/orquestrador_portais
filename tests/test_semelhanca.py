@@ -1,25 +1,14 @@
-"""Testes do mapeamento candidato → semelhanca_perfil (o coração de regra do B3).
+"""Testes do perfil de conversão como FILTRO (D-027): casa ou não casa.
 
-Módulo puro — roda inteiro no CI. Cobre a regra de match, o sinal bruto
-(robusto vs frágil, seleção do máximo, sem match), a normalização min-max
-(inclusive o caso degenerado) e o determinismo.
+Módulo puro — roda inteiro no CI. Cobre a regra de match, quais perfis CONTAM
+(robustos; contendo a dimensão exigida), o "perfil que puxou" como rótulo
+explicativo (mais vendas; empate → mais específico → ordem canônica), o veredito
+binário `casa_algum` e uma MEDIÇÃO em miniatura do fato que motivou a exigência de
+dimensão: sem ela, o perfil de metragem sozinho casa o estoque inteiro.
 """
 
-import pytest
-
-from dominio.perfil import Dimensao, PerfilConversao
-from piloto.semelhanca import (
-    ParametrosSemelhanca,
-    casa,
-    perfil_que_puxou,
-    semelhanca_por_imovel,
-    sinal_bruto,
-)
-
-# decaimento=1.0 → todos os pesos de dimensão são 1.0, então a ponderação por
-# dimensão (D-017) é identidade e estes testes seguem exercitando o sinal cru.
-# A de-saturação (decaimento < 1) tem testes próprios abaixo.
-PARAMS = ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0)
+from dominio.perfil import Dimensao, ImovelVendido, PerfilConversao, perfis_de_conversao
+from piloto.semelhanca import casa, casa_algum, perfil_que_puxou, perfis_que_contam
 
 
 def _perfil(dims, vals, n):
@@ -29,6 +18,12 @@ def _perfil(dims, vals, n):
 REGIAO_CENTRO = _perfil((Dimensao.REGIAO,), ("Centro",), 10)  # robusto
 CENTRO_2D = _perfil((Dimensao.REGIAO, Dimensao.DORMITORIOS), ("Centro", 2), 4)  # robusto
 FRAGIL = _perfil((Dimensao.REGIAO,), ("Sul",), 1)  # frágil (N<3)
+PRECO_700K = _perfil((Dimensao.FAIXA_PRECO,), ("700k-1M",), 5)  # robusto, contém preço
+PRECO_CENTRO = _perfil((Dimensao.REGIAO, Dimensao.FAIXA_PRECO), ("Centro", "700k-1M"), 3)
+PRECO_FRAGIL = _perfil((Dimensao.FAIXA_PRECO,), ("1M+",), 2)  # contém preço, mas frágil
+
+
+# --- casa: match exato de todas as dimensões do perfil ------------------------
 
 
 def test_casa_match_exato_de_todas_as_dimensoes():
@@ -43,162 +38,187 @@ def test_nao_casa_se_alguma_dimensao_difere():
 
 
 def test_nao_casa_se_candidato_nao_tem_a_dimensao():
+    """Dimensão ausente no candidato (a fonte não preenche) não é coringa."""
     dims = {Dimensao.REGIAO: "Centro"}  # sem dormitórios
     assert casa(dims, CENTRO_2D) is False
 
 
-def test_sinal_bruto_pega_o_maior():
-    # Casa REGIAO_CENTRO (10) e CENTRO_2D (4): o sinal é o maior, 10.
-    dims = {Dimensao.REGIAO: "Centro", Dimensao.DORMITORIOS: 2}
-    assert sinal_bruto(dims, (REGIAO_CENTRO, CENTRO_2D), PARAMS) == 10.0
+def test_casa_nao_confunde_tipos():
+    """`2` (int) e `"2"` (str) são valores distintos: a bucketização mantém tipo fixo
+    por dimensão, e o match não pode colapsar os dois."""
+    dims = {Dimensao.REGIAO: "Centro", Dimensao.DORMITORIOS: "2"}
+    assert casa(dims, CENTRO_2D) is False
 
 
-def test_sinal_bruto_desconta_fragil():
-    # Só casa o perfil frágil (Sul, N=1): 1 × 0.5 = 0.5.
-    dims = {Dimensao.REGIAO: "Sul"}
-    assert sinal_bruto(dims, (REGIAO_CENTRO, FRAGIL), PARAMS) == 0.5
+# --- perfis_que_contam: robustos, contendo a dimensão exigida -----------------
 
 
-def test_sinal_bruto_zero_sem_match():
-    dims = {Dimensao.REGIAO: "Norte"}
-    assert sinal_bruto(dims, (REGIAO_CENTRO, CENTRO_2D), PARAMS) == 0.0
+def test_fragil_nao_conta():
+    """Perfil frágil (N < 3, D-014) não recebe "peso pleno" — e como o perfil agora
+    filtra, não há peso parcial: ele simplesmente não conta."""
+    assert perfis_que_contam((REGIAO_CENTRO, FRAGIL, PRECO_FRAGIL), None) == (REGIAO_CENTRO,)
 
 
-def test_fragil_perde_para_robusto_quando_ambos_casam():
-    # Robusto (N=2 seria frágil; aqui N=10) domina o frágil descontado.
-    dims = {Dimensao.REGIAO: "X"}
-    robusto = _perfil((Dimensao.REGIAO,), ("X",), 10)
-    fragil = _perfil((Dimensao.REGIAO,), ("X",), 2)  # 2 × 0.5 = 1.0 < 10
-    assert sinal_bruto(dims, (robusto, fragil), PARAMS) == 10.0
+def test_sem_exigencia_todos_os_robustos_contam():
+    perfis = (REGIAO_CENTRO, CENTRO_2D, FRAGIL, PRECO_700K, PRECO_CENTRO)
+    assert perfis_que_contam(perfis, None) == (REGIAO_CENTRO, CENTRO_2D, PRECO_700K, PRECO_CENTRO)
 
 
-def test_normalizacao_minmax():
-    perfis = (
-        _perfil((Dimensao.REGIAO,), ("A",), 10),
-        _perfil((Dimensao.REGIAO,), ("B",), 5),
-    )
-    dims = {
-        1: {Dimensao.REGIAO: "A"},  # sinal 10 → 1.0
-        2: {Dimensao.REGIAO: "B"},  # sinal 5  → 0.0
-        3: {Dimensao.REGIAO: "Z"},  # sinal 0  → ... menor é 0
-    }
-    r = semelhanca_por_imovel(dims, perfis, PARAMS)
-    assert r[1] == 1.0  # maior
-    assert r[3] == 0.0  # menor
-    assert 0.0 < r[2] < 1.0  # meio (5 entre 0 e 10 = 0.5)
-    assert r[2] == 0.5
+def test_exigir_dimensao_mantem_so_quem_a_contem():
+    """D-027: o perfil precisa CONTER a faixa de preço — em uma ou em duas dimensões."""
+    perfis = (REGIAO_CENTRO, CENTRO_2D, FRAGIL, PRECO_700K, PRECO_CENTRO, PRECO_FRAGIL)
+    assert perfis_que_contam(perfis, Dimensao.FAIXA_PRECO) == (PRECO_700K, PRECO_CENTRO)
 
 
-def test_normalizacao_degenerada_todos_iguais_viram_zero():
-    # Ninguém casa nenhum perfil (todos sinal 0) → todos 0.0, ninguém favorecido.
-    perfis = (_perfil((Dimensao.REGIAO,), ("A",), 10),)
-    dims = {1: {Dimensao.REGIAO: "X"}, 2: {Dimensao.REGIAO: "Y"}}
-    r = semelhanca_por_imovel(dims, perfis, PARAMS)
-    assert r == {1: 0.0, 2: 0.0}
+def test_exigir_dimensao_e_robustez_sao_cumulativos():
+    """Conter a dimensão não salva o frágil; ser robusto não salva quem não a contém."""
+    assert perfis_que_contam((PRECO_FRAGIL, REGIAO_CENTRO), Dimensao.FAIXA_PRECO) == ()
 
 
-def test_deterministico_independe_da_ordem():
-    perfis = (_perfil((Dimensao.REGIAO,), ("A",), 10), _perfil((Dimensao.REGIAO,), ("B",), 5))
-    dims1 = {1: {Dimensao.REGIAO: "A"}, 2: {Dimensao.REGIAO: "B"}}
-    dims2 = {2: {Dimensao.REGIAO: "B"}, 1: {Dimensao.REGIAO: "A"}}
-    assert semelhanca_por_imovel(dims1, perfis, PARAMS) == semelhanca_por_imovel(
-        dims2, perfis, PARAMS
-    )
+def test_perfis_que_contam_preserva_a_ordem_de_entrada():
+    """A ordem canônica vem de `perfis_de_conversao`; aqui ela só é filtrada, nunca
+    reordenada (invariante 5)."""
+    perfis = (PRECO_CENTRO, PRECO_700K, REGIAO_CENTRO)
+    assert perfis_que_contam(perfis, None) == perfis
+    assert perfis_que_contam(perfis, Dimensao.FAIXA_PRECO) == (PRECO_CENTRO, PRECO_700K)
 
 
-def test_vazio():
-    assert semelhanca_por_imovel({}, (REGIAO_CENTRO,), PARAMS) == {}
+def test_perfis_que_contam_vazio():
+    assert perfis_que_contam((), None) == ()
+    assert perfis_que_contam((), Dimensao.FAIXA_PRECO) == ()
 
 
-def test_parametros_rejeita_desconto_fora_da_faixa():
-    with pytest.raises(ValueError, match="desconto_fragil"):
-        ParametrosSemelhanca(desconto_fragil=1.5, decaimento=1.0)
-    with pytest.raises(ValueError, match="desconto_fragil"):
-        ParametrosSemelhanca(desconto_fragil=-0.1, decaimento=1.0)
-
-
-def test_parametros_rejeita_decaimento_fora_da_faixa():
-    # (0, 1]: 0 e negativos e >1 são inválidos; 1.0 é válido (não de-satura).
-    for invalido in (0.0, -0.1, 1.0001, 2.0):
-        with pytest.raises(ValueError, match="decaimento fora de"):
-            ParametrosSemelhanca(desconto_fragil=0.5, decaimento=invalido)
-
-
-# --- perfil que puxou (argmax) e a concordância com o sinal (fonte única) -----
+# --- perfil que puxou: o rótulo da justificativa -----------------------------
 
 
 def test_perfil_que_puxou_none_sem_match():
     dims = {Dimensao.REGIAO: "Norte"}
-    assert perfil_que_puxou(dims, (REGIAO_CENTRO, CENTRO_2D), PARAMS) is None
+    assert perfil_que_puxou(dims, (REGIAO_CENTRO, CENTRO_2D)) is None
 
 
-def test_perfil_que_puxou_e_o_de_maior_contribuicao():
+def test_perfil_que_puxou_none_sem_perfis():
+    assert perfil_que_puxou({Dimensao.REGIAO: "Centro"}, ()) is None
+
+
+def test_perfil_que_puxou_e_o_de_mais_vendas():
+    """Casa REGIAO_CENTRO (N=10) e CENTRO_2D (N=4): puxa o de mais vendas — a
+    evidência que a planilha mostra ao lado do identificador (Spec §2.1)."""
     dims = {Dimensao.REGIAO: "Centro", Dimensao.DORMITORIOS: 2}
-    assert perfil_que_puxou(dims, (REGIAO_CENTRO, CENTRO_2D), PARAMS) is REGIAO_CENTRO
+    assert perfil_que_puxou(dims, (REGIAO_CENTRO, CENTRO_2D)) is REGIAO_CENTRO
 
 
-def test_empate_de_contribuicao_o_mais_especifico_ganha():
-    # Dois perfis com a MESMA contribuição (N=5): o de 2 dimensões (mais
-    # específico) é o exibido.
+def test_perfil_que_puxou_ignora_o_que_nao_casa_mesmo_com_mais_vendas():
+    grande = _perfil((Dimensao.REGIAO,), ("Norte",), 100)
+    dims = {Dimensao.REGIAO: "Centro", Dimensao.DORMITORIOS: 2}
+    assert perfil_que_puxou(dims, (grande, CENTRO_2D)) is CENTRO_2D
+
+
+def test_empate_de_vendas_o_mais_especifico_ganha():
+    """Dois perfis com o MESMO N: o de 2 dimensões (mais específico) é o exibido —
+    diz mais sobre POR QUE o imóvel entrou."""
     p1d = _perfil((Dimensao.REGIAO,), ("X",), 5)
     p2d = _perfil((Dimensao.REGIAO, Dimensao.DORMITORIOS), ("X", 2), 5)
     dims = {Dimensao.REGIAO: "X", Dimensao.DORMITORIOS: 2}
-    assert perfil_que_puxou(dims, (p1d, p2d), PARAMS) is p2d
+    assert perfil_que_puxou(dims, (p1d, p2d)) is p2d
+    assert perfil_que_puxou(dims, (p2d, p1d)) is p2d
 
 
-def test_concordancia_perfil_que_puxou_bate_com_sinal_bruto():
-    # A CONDIÇÃO da fonte única: a contribuição do perfil que puxou == o sinal
-    # bruto, para a mesma entrada. O rótulo nunca diverge do número.
-    dims = {Dimensao.REGIAO: "Centro", Dimensao.DORMITORIOS: 2}
-    perfis = (REGIAO_CENTRO, CENTRO_2D, FRAGIL)
-    sinal = sinal_bruto(dims, perfis, PARAMS)
-    pqp = perfil_que_puxou(dims, perfis, PARAMS)
-    contrib_do_pqp = pqp.num_vendas * (PARAMS.desconto_fragil if pqp.fragil else 1.0)
-    assert contrib_do_pqp == sinal
+def test_empate_total_decide_pela_ordem_canonica():
+    """Mesmo N, mesma especificidade: a ordem canônica (dimensões, depois valores)
+    decide — e NÃO a ordem de entrada, senão o rótulo mudaria entre rodadas iguais
+    (invariante 5)."""
+    preco = _perfil((Dimensao.FAIXA_PRECO,), ("700k-1M",), 5)
+    vagas = _perfil((Dimensao.VAGAS,), (2,), 5)
+    dims = {Dimensao.FAIXA_PRECO: "700k-1M", Dimensao.VAGAS: 2}
+    assert perfil_que_puxou(dims, (preco, vagas)) is preco  # "faixa_preco" < "vagas"
+    assert perfil_que_puxou(dims, (vagas, preco)) is preco
 
 
-def test_concordancia_com_fragil_descontado():
+def test_perfil_que_puxou_nao_reconsidera_os_que_nao_contam():
+    """`perfil_que_puxou` recebe os perfis JÁ filtrados: o rótulo nunca aponta para um
+    perfil que o filtro não usou. A responsabilidade de filtrar é de quem chama."""
     dims = {Dimensao.REGIAO: "Sul"}
-    perfis = (REGIAO_CENTRO, FRAGIL)  # só FRAGIL (Sul) casa
-    sinal = sinal_bruto(dims, perfis, PARAMS)
-    pqp = perfil_que_puxou(dims, perfis, PARAMS)
-    assert pqp is FRAGIL
-    assert pqp.num_vendas * PARAMS.desconto_fragil == sinal
+    assert perfil_que_puxou(dims, perfis_que_contam((FRAGIL,), None)) is None
 
 
-# --- de-saturação: peso decrescente por dimensão (D-017) ----------------------
-
-# Candidato que casa DOIS perfis: um de FAIXA_PRECO (prioridade máxima) com
-# menos vendas, e um amplo de VAGAS (prioridade mínima) com mais vendas — o
-# padrão da saturação real (um perfil amplo de dimensão pouco importante
-# dominando pela contagem).
-CAND_PRECO_VAGAS = {Dimensao.FAIXA_PRECO: "700k-1M", Dimensao.VAGAS: 2}
-PERFIL_PRECO = _perfil((Dimensao.FAIXA_PRECO,), ("700k-1M",), 5)  # alta prioridade, N=5
-PERFIL_VAGAS = _perfil((Dimensao.VAGAS,), (2,), 10)  # baixa prioridade, N=10 (amplo)
-PERFIS_DESATURA = (PERFIL_PRECO, PERFIL_VAGAS)
+# --- casa_algum: o veredito do filtro -----------------------------------------
 
 
-def test_sem_de_saturacao_o_perfil_amplo_de_baixa_prioridade_domina():
-    # decaimento=1.0: pesos de dimensão todos 1.0, então vence a maior contagem
-    # (vagas, N=10) — a saturação.
-    params = ParametrosSemelhanca(desconto_fragil=0.5, decaimento=1.0)
-    assert sinal_bruto(CAND_PRECO_VAGAS, PERFIS_DESATURA, params) == 10.0
-    assert perfil_que_puxou(CAND_PRECO_VAGAS, PERFIS_DESATURA, params) == PERFIL_VAGAS
+def test_casa_algum_verdadeiro_com_um_match():
+    dims = {Dimensao.REGIAO: "Centro"}
+    assert casa_algum(dims, (FRAGIL, REGIAO_CENTRO)) is True
 
 
-def test_de_saturacao_faz_preco_vencer_vagas():
-    # decaimento=0.5: peso(vagas)=0.5**4=0.0625 → contribuição vagas=10*0.0625=0.625;
-    # peso(preço)=1.0 → contribuição preço=5. Preço passa a puxar. De-satura.
-    params = ParametrosSemelhanca(desconto_fragil=0.5, decaimento=0.5)
-    assert sinal_bruto(CAND_PRECO_VAGAS, PERFIS_DESATURA, params) == 5.0
-    assert perfil_que_puxou(CAND_PRECO_VAGAS, PERFIS_DESATURA, params) == PERFIL_PRECO
+def test_casa_algum_falso_sem_match_e_sem_perfis():
+    assert casa_algum({Dimensao.REGIAO: "Norte"}, (REGIAO_CENTRO, CENTRO_2D)) is False
+    assert casa_algum({Dimensao.REGIAO: "Centro"}, ()) is False
 
 
-def test_perfil_2d_vale_pela_dimensao_mais_importante():
-    # _peso_do_perfil = MÁXIMO dos pesos: um perfil (preço, vagas) vale como preço
-    # (peso 1.0), não como vagas — ancorado na dimensão mais importante.
-    params = ParametrosSemelhanca(desconto_fragil=0.5, decaimento=0.5)
-    cand = {Dimensao.FAIXA_PRECO: "700k-1M", Dimensao.VAGAS: 2}
-    perfil_2d = _perfil((Dimensao.FAIXA_PRECO, Dimensao.VAGAS), ("700k-1M", 2), 3)
-    # contribuição = 3 (N) * 1.0 (não frágil) * 1.0 (max(peso preço=1, peso vagas=0.0625))
-    assert sinal_bruto(cand, (perfil_2d,), params) == 3.0
+def test_casa_algum_concorda_com_perfil_que_puxou():
+    """Fonte única: há rótulo se e só se há veredito positivo."""
+    perfis = (REGIAO_CENTRO, CENTRO_2D, PRECO_700K)
+    for dims in (
+        {Dimensao.REGIAO: "Centro"},
+        {Dimensao.FAIXA_PRECO: "700k-1M"},
+        {Dimensao.REGIAO: "Norte"},
+        {},
+    ):
+        assert casa_algum(dims, perfis) is (perfil_que_puxou(dims, perfis) is not None)
+
+
+# --- MEDIÇÃO em miniatura: por que a dimensão é exigida (D-027) ---------------
+
+# Quatro vendas, todas na mesma faixa de metragem; só UMA faixa de preço chega a N ≥ 3.
+VENDAS = (
+    ImovelVendido(1, None, "300-500k", "50-80", None, None),
+    ImovelVendido(2, None, "300-500k", "50-80", None, None),
+    ImovelVendido(3, None, "300-500k", "50-80", None, None),
+    ImovelVendido(4, None, "700k-1M", "50-80", None, None),
+)
+CANDIDATOS = {
+    "A": {Dimensao.FAIXA_PRECO: "300-500k", Dimensao.FAIXA_METRAGEM: "50-80"},
+    "B": {Dimensao.FAIXA_PRECO: "700k-1M", Dimensao.FAIXA_METRAGEM: "50-80"},  # preço frágil
+    "C": {Dimensao.FAIXA_PRECO: "1M+", Dimensao.FAIXA_METRAGEM: "50-80"},  # preço sem venda
+    "D": {Dimensao.FAIXA_METRAGEM: "50-80"},  # sem preço
+}
+
+
+def test_sem_exigir_dimensao_a_metragem_sozinha_casa_todo_mundo():
+    """O fato medido em 04/09/2026: com perfis de uma dimensão em N ≥ 3, a faixa de
+    metragem sozinha cobre o estoque, e o filtro deixa passar 100%."""
+    que_contam = perfis_que_contam(perfis_de_conversao(VENDAS), None)
+    assert all(casa_algum(dims, que_contam) for dims in CANDIDATOS.values())
+
+
+def test_exigindo_faixa_de_preco_so_quem_tem_a_faixa_certa_casa():
+    """Com a exigência (D-027), só passa quem se parece com o que vendeu NA FAIXA DE
+    PREÇO: B cai porque a faixa dele tem uma venda só; C e D porque não têm faixa
+    com venda."""
+    que_contam = perfis_que_contam(perfis_de_conversao(VENDAS), Dimensao.FAIXA_PRECO)
+    veredito = {nome: casa_algum(dims, que_contam) for nome, dims in CANDIDATOS.items()}
+    assert veredito == {"A": True, "B": False, "C": False, "D": False}
+
+
+def test_na_medicao_o_perfil_que_puxou_e_o_mais_especifico_com_mesma_evidencia():
+    """A casa o perfil de preço (N=3) e o de preço+metragem (N=3): o rótulo é o de
+    duas dimensões, e a evidência exibida é 3."""
+    que_contam = perfis_que_contam(perfis_de_conversao(VENDAS), Dimensao.FAIXA_PRECO)
+    puxou = perfil_que_puxou(CANDIDATOS["A"], que_contam)
+    assert puxou is not None
+    assert puxou.dimensoes == (Dimensao.FAIXA_PRECO, Dimensao.FAIXA_METRAGEM)
+    assert puxou.num_vendas == 3
+    assert puxou.fragil is False
+
+
+def test_medicao_e_deterministica():
+    """Mesmas vendas, mesmos candidatos ⇒ mesmos vereditos e rótulos (invariante 5)."""
+    perfis = perfis_de_conversao(VENDAS)
+    que_contam = perfis_que_contam(perfis, Dimensao.FAIXA_PRECO)
+    resultados = {
+        tuple(
+            (nome, casa_algum(dims, que_contam), perfil_que_puxou(dims, que_contam))
+            for nome, dims in CANDIDATOS.items()
+        )
+        for _ in range(20)
+    }
+    assert len(resultados) == 1

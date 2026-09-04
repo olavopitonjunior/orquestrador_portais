@@ -923,6 +923,23 @@ th.num {
   align-items: baseline;
   gap: 0.5rem;
 }
+.campo-unidade {
+  font-weight: 400;
+  color: var(--ink-3);
+  margin-left: 0.3rem;
+}
+
+.adotado {
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  margin-left: 0.35rem;
+}
+
 .pendencia {
   font-style: normal;
   font-size: 0.68rem;

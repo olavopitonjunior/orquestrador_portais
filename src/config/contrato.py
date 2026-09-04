@@ -28,8 +28,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from config.adotados import ADOTADOS
 from config.parametros import PENDENTE_DE
-from dados.coletor_externo import CLIQUES
+from piloto.decisao import FORMAS_DE_ORDEM_SEM_PORTAL, FORMAS_SEM_ANUNCIO
 
 Tipo = Literal["inteiro", "numero", "escolha"]
 
@@ -58,17 +59,17 @@ class Campo:
     exige: tuple[str, str] | None = None
     # Rótulo do parâmetro pendente, vindo de `PENDENTE_DE` — nunca redigitado.
     pendencia: str | None = None
+    # A UNIDADE em que o dono lê o número (dias, pontos de 100, %, corretores, leads).
+    # Nunca uma escala abstrata: é o que faz o campo ser julgável sem a Spec ao lado.
+    unidade: str = ""
+    # O valor ADOTADO (D-034) que a rodada usa se o campo não for declarado; None
+    # para o que segue NULO. Vem de `config.adotados`, nunca redigitado aqui.
+    adotado: int | float | str | None = None
+    # Uma linha, no imperativo: o que muda se você AUMENTAR.
+    se_aumentar: str = ""
 
 
-Funcao = Literal[
-    "contrato",
-    "excludente",
-    "condicao_de_nivel",
-    "relaxamento",
-    "classificador",
-    "desconto",
-    "operacao",
-]
+Funcao = Literal["excludente", "classificatorio", "decisorio"]
 Fonte = Literal["contrato", "banco_imovel", "banco_corretor", "raspagem", "registro"]
 
 
@@ -108,35 +109,20 @@ class Grupo:
 
 
 GRUPOS: tuple[Grupo, ...] = (
+    # ----------------------------------------------------------- QUEM ENTRA (o banco)
     Grupo(
-        id="contrato",
+        id="quem_entra_imovel",
         ordem=1,
-        titulo="Contrato com o portal",
-        funcao="contrato",
-        fontes=("contrato",),
-        explicacao=(
-            "As posições pagas que a decisão preenche. As cotas são teto rígido: nenhuma "
-            "posição além delas é proposta (invariante 6). Hoje moram no código e na "
-            "restrição do Registro; a noção de CONTRATO como dado vem em fatia própria."
-        ),
-        fixos_no_codigo=(
-            "475 posições de super destaque e 6.495 de destaque — plano Exclusivo do Grupo "
-            "OLX (OLX, Zap e Viva Real)",
-        ),
-    ),
-    Grupo(
-        id="excluidos_pelo_imovel",
-        ordem=2,
-        titulo="Excluídos pelo imóvel",
+        titulo="Quem entra: o imóvel",
         funcao="excludente",
         fontes=("banco_imovel",),
         explicacao=(
-            "Regras eliminatórias, binárias e sem compensação, sobre o cadastro do imóvel: "
-            "reprovar em uma basta, e nenhuma nota recupera (Spec §6.1). Imóvel sem "
-            "avaliação por categoria não é excluído — passa e recebe penalidade."
+            "Estas regras excluem. Reprovar em uma basta, e nenhuma nota compensa (Spec §6.1). "
+            "São seis, sobre o cadastro do imóvel, e todas seguem fixas: imóvel sem avaliação "
+            "por categoria não é excluído — passa e recebe desconto."
         ),
         fixos_no_codigo=(
-            "Status: publicação ativa",
+            "Publicação ativa",
             "Categoria: Casa, Casa de condomínio, Sobrado, Cobertura ou Apartamento",
             "Preço igual ou superior a R$ 300.000",
             "Dez fotos ou mais",
@@ -145,204 +131,127 @@ GRUPOS: tuple[Grupo, ...] = (
         ),
     ),
     Grupo(
-        id="excluidos_pelo_corretor",
+        id="quem_entra_perfil",
+        ordem=2,
+        titulo="Quem entra: parece com o que vendeu",
+        funcao="excludente",
+        fontes=("banco_imovel",),
+        explicacao=(
+            "O perfil de conversão FILTRA (D-027): só entra quem se parece com o que vendeu "
+            "na janela. Um perfil é uma combinação de uma ou duas características (região, "
+            "faixa de preço, faixa de metragem, dormitórios, vagas) observada nas vendas "
+            "assinadas; conta se tem pelo menos 3 vendas E contém a faixa de preço — sem "
+            "essa exigência o filtro deixava passar 100% do estoque (medido em 04/09/2026). "
+            "Com ela, passam 84% dos elegíveis e 64% dos candidatos ao super destaque. No "
+            "destaque, é o PRIMEIRO degrau cedido pelo relaxamento quando faltam imóveis; "
+            "no super destaque nunca cede."
+        ),
+        fixos_no_codigo=(
+            "Evidência mínima por perfil: 3 vendas (D-014)",
+            "O perfil precisa conter a faixa de preço (D-027)",
+            "Entrada do perfil: só vendas assinadas — leads não entram, porque a base os traz "
+            "pré-agregados em 180 dias e 'mais leads' sem régua seria regra inventada",
+        ),
+    ),
+    Grupo(
+        id="quem_entra_corretor",
         ordem=3,
-        titulo="Excluídos pelo corretor",
+        titulo="Quem entra: o corretor",
         funcao="excludente",
         fontes=("banco_corretor",),
         explicacao=(
-            "As duas regras que olham para quem cuida do imóvel, não para o imóvel. A "
-            "definição de corretor ATIVO é decisão do dono, não detalhe de operação: mudá-la "
-            "muda quem é elegível (D-015). O distrito vem da tabela analítica de relação de "
-            "imóveis, não do endereço (zona de valor nula em 98% dos casos)."
+            "As regras que olham para quem cuida do imóvel. 'Gestor produtivo' (captou ou "
+            "vendeu em 30 dias) e 'capacidade do distrito' excluem. 'Gestor sem login' NÃO "
+            "exclui — medido em 04/09/2026, quem não loga também não captou nem vendeu, "
+            "então excluiria zero imóveis a mais; ele TRAVA o relaxamento: o degrau do gestor "
+            "produtivo não traz de volta imóvel de gestor que nem entra no sistema (105 "
+            "imóveis por rodada, D-029)."
         ),
         fixos_no_codigo=(
-            "Gestor produtivo: captou ou vendeu nos últimos 30 dias",
-            "Capacidade do distrito: dois ou mais corretores que captaram ou venderam nos "
-            "últimos 30 dias",
+            "Gestor produtivo: captou ou vendeu nos últimos 30 dias — a janela NÃO é "
+            "configurável: a base só traz a captação pré-agregada em 30 dias",
+            "O distrito vem da tabela analítica de relação de imóveis, não do endereço",
         ),
     ),
+    # ------------------------------------------------------- EM QUE ORDEM (o portal)
     Grupo(
-        id="condicao_de_nivel",
+        id="em_que_ordem_portal",
         ordem=4,
-        titulo="Condição de nível",
-        funcao="condicao_de_nivel",
-        fontes=("banco_imovel",),
-        explicacao=(
-            "O que separa candidato ao super destaque do restante. Aplicada na alocação, não "
-            "elimina do destaque (D-002)."
-        ),
-        fixos_no_codigo=(
-            "Preço igual ou superior a R$ 700.000 para candidatura ao super destaque",
-        ),
-    ),
-    Grupo(
-        id="relaxamento",
-        ordem=5,
-        titulo="Relaxamento",
-        funcao="relaxamento",
-        fontes=("banco_imovel", "banco_corretor"),
-        explicacao=(
-            "Cedência controlada das regras eliminatórias, só nas posições de destaque, para "
-            "não deixar benefício pago sem uso. Cada degrau cedido gera linha no relatório "
-            "(Spec §6.6). As posições de super destaque nunca relaxam (invariante 7). "
-            "Referência do quanto cada degrau recupera, medida na base e só como ordem de "
-            "grandeza (medida com mínimo de TRÊS corretores por distrito; o adotado é dois): "
-            "fotos ~133, cadastro ~569, atualização ~1.680, gestor ~1.747, distrito ~5.686."
-        ),
-        fixos_no_codigo=(
-            "Ordem de cedência: fotos → cadastro completo → atualização em 90 dias → gestor "
-            "produtivo → capacidade do distrito",
-        ),
-    ),
-    Grupo(
-        id="classificador_banco_imovel",
-        ordem=6,
-        titulo="Classificadores pelo banco: o imóvel (F1 e F2)",
-        funcao="classificador",
-        fontes=("banco_imovel",),
-        explicacao=(
-            "F1, semelhança com o perfil de conversão: combinações de características que "
-            "venderam nos últimos 180 dias, analisadas uma ou duas dimensões por vez, cada uma "
-            "com o número de vendas que a sustenta (Spec §6.2). F2, leads que o imóvel já "
-            "atraiu em 180 dias."
-        ),
-        fixos_no_codigo=(
-            "Entrada do perfil: vendas assinadas nos últimos 180 dias",
-            "Evidência mínima por combinação: N ≥ 3 (D-014); abaixo disso o perfil é frágil",
-            "Ordem das dimensões do F1: preço > localização > metragem > dormitórios > vagas "
-            "(D-017); só a magnitude do decaimento é parâmetro",
-            "F2: leads contados em 180 dias",
-        ),
-    ),
-    Grupo(
-        id="classificador_banco_corretor",
-        ordem=7,
-        titulo="Classificador pelo banco: o corretor (F4)",
-        funcao="classificador",
-        fontes=("banco_corretor",),
-        explicacao=(
-            "F4, produtividade do gestor nos últimos 30 dias, contínua: taxa semanal de "
-            "captação mais a marca de venda recente (D-017). Não confundir com a regra "
-            "binária 'gestor produtivo', que é eliminatória."
-        ),
-        fixos_no_codigo=(
-            "Janela de 30 dias",
-            "A base não expõe contagem de vendas em 30 dias: a venda entra como marca "
-            "(sim/não) — limitação declarada na planilha",
-        ),
-    ),
-    Grupo(
-        id="classificador_raspagem",
-        ordem=8,
-        titulo="Classificador pela raspagem: o portal (F3)",
-        funcao="classificador",
+        titulo="Em que ordem: o portal",
+        funcao="classificatorio",
         fontes=("raspagem",),
         explicacao=(
-            "F3, desempenho do anúncio no Canal Pro, lido da coleta feita antes da rodada. "
-            "Só entra se a coleta estiver ok, amarrada acima do limiar e dentro da idade "
-            "máxima; senão o fator não entra e a rodada sai degradada, com o motivo "
-            "declarado. A forma do sinal é escolha sua com pendência aberta (P-15 em "
-            "docs/perguntas-abertas.md): na primeira raspagem real, visualizações vieram "
-            "zeradas e cliques quase todos zero."
-        ),
-    ),
-    Grupo(
-        id="mistura_por_nivel",
-        ordem=9,
-        titulo="Mistura por nível: os pesos",
-        funcao="classificador",
-        fontes=(),
-        explicacao=(
-            "Como os quatro fatores se combinam numa nota, por nível. Os níveis perseguem "
-            "objetivos diferentes, e essa assimetria é a parte do modelo a preservar. Os "
-            "pesos da Spec §6.3 (60/25/15 e 80/10/10) foram anulados pelo redesenho D-017."
-        ),
-        fixos_no_codigo=(
-            "Objetivo do super destaque: valor esperado (probabilidade de conversão ponderada "
-            "pelo ticket)",
-            "Objetivo do destaque: probabilidade de gerar lead",
-        ),
-    ),
-    Grupo(
-        id="normalizacao",
-        ordem=10,
-        titulo="Normalização dos fatores",
-        funcao="classificador",
-        fontes=(),
-        explicacao=(
-            "Como cada fator vai para uma escala comparável antes da mistura (Spec §6.3). "
-            "Não há campo no TOML: a forma em uso é a provisória da planilha-piloto, "
-            "rotulada como tal, e o parâmetro segue nulo."
+            "Estas não excluem ninguém: ordenam quem passou (D-028). A nota vai de 0 a 100 e "
+            "é a soma ponderada de três sinais do anúncio no Canal Pro — nota do anúncio, "
+            "cliques (somados entre tipos) e visualizações — cada um reescalado entre os "
+            "elegíveis. Medido em 03/09/2026: visualizações vieram zero em 300 de 300 anúncios "
+            "e só a nota tem variância; por isso o peso adotado das visualizações é zero, "
+            "declarado. A raspagem só entra se cobrir a fração mínima dos candidatos e for "
+            "recente; senão a ordem cai para o desempate de banco e a rodada declara isso."
         ),
         pendentes_sem_campo=(2,),
     ),
     Grupo(
-        id="descontos",
-        ordem=11,
-        titulo="Descontos: as três penalidades",
-        funcao="desconto",
+        id="em_que_ordem_descontos",
+        ordem=5,
+        titulo="Em que ordem: os descontos",
+        funcao="classificatorio",
         fontes=("registro", "banco_imovel"),
         explicacao=(
-            "Descontadas da nota final e sempre visíveis na planilha (Spec §6.4). Imóvel sem "
-            "histórico de destaque não é penalizado por ausência de histórico."
-        ),
-        fixos_no_codigo=(
-            "Janela anterior sem resultado: ocupou posição e não atingiu o resultado esperado "
-            "do nível; decai ao longo dos ciclos",
-            "Sem avaliação por categoria",
-            "Sem lead em 180 dias",
+            "Três descontos, em pontos de 100, subtraídos da nota (Spec §6.4). O da janela "
+            "anterior sem resultado só incide quando a régua de resultado por nível existir "
+            "(nº 14, ainda nula) — até lá fica declarado como inerte. O de 'sem avaliação por "
+            "categoria' é baixo de propósito: o pipeline de avaliação está morto desde "
+            "16/10/2025 e quase todo o estoque novo não tem nota."
         ),
     ),
+    # ------------------------------------------------------------ QUANTOS (o contrato)
     Grupo(
-        id="historico",
-        ordem=12,
-        titulo="Histórico das janelas",
-        funcao="desconto",
-        fontes=("registro",),
+        id="quantos",
+        ordem=6,
+        titulo="Quantos e onde",
+        funcao="decisorio",
+        fontes=("contrato",),
         explicacao=(
-            "O que conta como resultado de uma janela paga, por nível. Sem os dois valores "
-            "nenhuma janela é julgada e a planilha declara isso — não penalizar por falta de "
-            "régua não é o mesmo que passar no critério (D-022)."
-        ),
-    ),
-    Grupo(
-        id="cadencia",
-        ordem=13,
-        titulo="Cadência",
-        funcao="operacao",
-        fontes=(),
-        explicacao=(
-            "Sexta decide; segunda acompanha. Não existe execução diária. A hora exata de "
-            "cada rodada é parâmetro pendente, sem campo aqui."
+            "As cotas contratadas são teto rígido (invariante 6). Primeiro o super destaque, "
+            "entre quem tem preço acima do piso; depois o destaque, com o que sobrou. Se "
+            "faltar imóvel no destaque, o relaxamento cede regras na ordem fixa; o super "
+            "destaque nunca relaxa (invariante 7). A régua de resultado por nível (quantos "
+            "leads uma janela paga precisa gerar para não ser descontada) segue nula por "
+            "decisão do dono: 88% das janelas históricas geraram zero lead, e qualquer régua "
+            "de 1 puniria quase todo mundo."
         ),
         fixos_no_codigo=(
-            "Sexta-feira: rodada de decisão, a única que raspa o portal (uma tentativa)",
-            "Segunda-feira: acompanhamento, lê só o banco",
+            "475 posições de super destaque e 6.495 de destaque — plano Exclusivo do Grupo "
+            "OLX (OLX, Zap e Viva Real)",
+            "Piso de R$ 700.000 para candidatura ao super destaque (D-002)",
+            "Ordem de cedência no destaque: perfil → fotos → cadastro completo → atualização "
+            "em 90 dias → gestor produtivo (travado para gestor sem login) → capacidade do "
+            "distrito",
         ),
-        pendentes_sem_campo=(8,),
     ),
     Grupo(
         id="operacao",
-        ordem=14,
+        ordem=7,
         titulo="Operação",
-        funcao="operacao",
+        funcao="decisorio",
         fontes=(),
         explicacao=(
-            "O que governa a execução, não a lista: repetição do Orquestrador, sinalização de "
-            "variação de volume, retenção do Registro, aprovação tácita, atendimento de lead "
-            "e a saída por alteração de preço (§6.7). Nenhum tem campo ainda; todos seguem "
-            "nulos."
+            "O que governa a execução, não a lista: sexta decide e segunda acompanha (a hora "
+            "é pendente); repetição do Orquestrador, sinalização de variação de volume, "
+            "retenção do Registro, aprovação tácita, atendimento de lead e a saída por "
+            "alteração de preço (§6.7). Nenhum tem campo; seguem nulos."
         ),
         fixos_no_codigo=(
-            "Saída imediata fora do ciclo: venda, reserva, despublicação ou alteração "
-            "relevante de preço (§6.7)",
+            "Sexta-feira: rodada de decisão, a única que raspa o portal (uma tentativa); "
+            "segunda-feira: acompanhamento, lê só o banco",
             "Aprovação humana antes da carga (D-001); nenhuma aprovação automática enquanto "
             "o prazo tácito é nulo",
         ),
-        pendentes_sem_campo=(4, 6, 9, 10, 11, 15),
+        pendentes_sem_campo=(4, 6, 8, 9, 10, 11, 15),
     ),
 )
+
 
 _IDS_DE_GRUPO = frozenset(g.id for g in GRUPOS)
 
@@ -380,190 +289,222 @@ def _campo(caminho: str, tipo: Tipo, ajuda: str, grupo: str, **resto: Any) -> Ca
     if grupo not in _IDS_DE_GRUPO:
         raise ValueError(f"campo `{caminho}` aponta para grupo inexistente `{grupo}`")
     return Campo(
-        caminho=caminho, tipo=tipo, ajuda=ajuda, grupo=grupo, pendencia=_pendencia(caminho), **resto
+        caminho=caminho,
+        tipo=tipo,
+        ajuda=ajuda,
+        grupo=grupo,
+        pendencia=_pendencia(caminho),
+        adotado=ADOTADOS.get(caminho),
+        **resto,
     )
 
 
-_NIVEIS = ("super_destaque", "destaque")
-_FATORES = (
-    ("semelhanca_perfil", "Semelhança com o perfil de conversão (F1)"),
-    ("leads_positivo", "Leads recebidos (F2)"),
-    ("desempenho_proprio", "Desempenho de portal observado (F3)"),
-    ("produtividade_gestor", "Produtividade do gestor do distrito (F4)"),
-)
-
-
-def _campos_de_pesos() -> list[Campo]:
-    """Os oito pesos. Inteiros de VERDADE e somando 100 por nível.
-
-    O tipo importa mais do que parece: o carregador usa `_inteiro`, que recusa
-    `40.0`. JavaScript não distingue `40` de `40.0`, então o console precisa desta
-    marcação para serializar sem casa decimal — sem ela, um formulário perfeitamente
-    preenchido produz um TOML que o carregador rejeita com "esperava inteiro".
-    """
-    campos: list[Campo] = []
-    for nivel in _NIVEIS:
-        for fator, descricao in _FATORES:
-            campos.append(
-                _campo(
-                    caminho=f"pesos.{nivel}.{fator}",
-                    grupo="mistura_por_nivel",
-                    tipo="inteiro",
-                    ajuda=f"{descricao}. Os quatro pesos do nível somam exatamente 100.",
-                    minimo=0,
-                )
-            )
-    return campos
-
-
 CAMPOS: tuple[Campo, ...] = (
+    # --- quem entra ----------------------------------------------------------------
     _campo(
-        caminho="semelhanca.desconto_fragil",
-        grupo="classificador_banco_imovel",
-        tipo="numero",
-        ajuda=(
-            "Quanto vale um perfil FRÁGIL comparado a um robusto. A Spec §6.2 diz que "
-            "perfil frágil 'não recebe peso pleno', sem quantificar. Fator que multiplica "
-            "o número de vendas do perfil frágil: 0 o ignora, 1 o trata como robusto."
-        ),
-        minimo=0.0,
-        maximo=1.0,
-    ),
-    _campo(
-        caminho="semelhanca.decaimento",
-        grupo="classificador_banco_imovel",
-        tipo="numero",
-        ajuda=(
-            "Quanto o peso cai a cada degrau da ordem de dimensões adotada pela D-017 "
-            "(preço > localização > metragem > dormitórios > vagas). A ORDEM é adotada; "
-            "só esta magnitude é nula. Precisa ser menor que 1 para a ordem produzir "
-            "efeito — foi a saturação por uma única dimensão (443 dos 475 super destaques "
-            "puxados pelo mesmo perfil) que motivou a D-017."
-        ),
-        minimo=0.0,
-        maximo=1.0,
-        minimo_aberto=True,
-    ),
-    _campo(
-        caminho="intensidades.janela_sem_resultado",
-        grupo="descontos",
-        tipo="numero",
-        ajuda="Quanto desconta da nota ter tido janela de destaque anterior sem resultado.",
-        minimo=0.0,
-    ),
-    _campo(
-        caminho="intensidades.sem_avaliacao_por_categoria",
-        grupo="descontos",
-        tipo="numero",
-        ajuda="Quanto desconta da nota não ter avaliação na categoria.",
-        minimo=0.0,
-    ),
-    _campo(
-        caminho="intensidades.sem_lead_180d",
-        grupo="descontos",
-        tipo="numero",
-        ajuda="Quanto desconta da nota não ter recebido nenhum lead em 180 dias.",
-        minimo=0.0,
-    ),
-    _campo(
-        caminho="decaimento_janela.forma",
-        grupo="descontos",
-        tipo="escolha",
-        ajuda=(
-            "Como a penalidade por janela anterior decai ao longo dos ciclos (Spec §6.4). "
-            "Uma forma só: geométrica."
-        ),
-        escolhas=("geometrica",),
-    ),
-    _campo(
-        caminho="decaimento_janela.razao",
-        grupo="descontos",
-        tipo="numero",
-        ajuda=(
-            "Fator por ciclo: o desconto vale razao elevado ao número de ciclos desde a "
-            "janela sem resultado mais recente. Razão 1 é aceita e significa NÃO decair — "
-            "o que diverge da Spec §6.4, e a rodada declara essa divergência na planilha "
-            "em vez de fingir que ela não existe."
-        ),
-        minimo=0.0,
-        maximo=1.0,
-        minimo_aberto=True,
-    ),
-    *_campos_de_pesos(),
-    _campo(
-        caminho="externo.limiar_amarracao",
-        grupo="classificador_raspagem",
-        tipo="numero",
-        ajuda=(
-            "Fração mínima dos candidatos que precisa ter anúncio correspondente na "
-            "raspagem para o desempenho de portal ENTRAR no ranking. Abaixo dela o fator "
-            "não entra e a rodada sai degradada, com o motivo declarado."
-        ),
-        minimo=0.0,
-        maximo=1.0,
-    ),
-    _campo(
-        caminho="externo.idade_maxima_dias",
-        grupo="classificador_raspagem",
+        caminho="conversao.janela_dias",
+        grupo="quem_entra_perfil",
         tipo="inteiro",
         ajuda=(
-            "Idade máxima aceitável da coleta externa, em dias, contada da data de "
-            "referência da rodada. Mais velha que isso, o fator de portal não entra."
+            "Olhamos para trás quantos dias para descobrir o que vende? A janela medida tem "
+            "cerca de 180 vendas assinadas; em 30 dias seriam cerca de 25 — evidência de menos "
+            "para sustentar perfis."
         ),
+        unidade="dias",
+        se_aumentar="Mais vendas sustentam os perfis, mas o padrão fica menos recente.",
+        minimo=1,
+    ),
+    _campo(
+        caminho="corretor.login_janela_dias",
+        grupo="quem_entra_corretor",
+        tipo="inteiro",
+        ajuda=(
+            "Gestor que não entra no sistema há mais dias que isto conta como 'sem login': o "
+            "relaxamento não traz de volta os imóveis dele (D-029)."
+        ),
+        unidade="dias",
+        se_aumentar="Menos gestores contam como sem login; o relaxamento trava menos imóveis.",
+        minimo=1,
+    ),
+    _campo(
+        caminho="corretor.minimo_no_distrito",
+        grupo="quem_entra_corretor",
+        tipo="inteiro",
+        ajuda=(
+            "Quantos corretores ativos (captaram ou venderam em 30 dias) o distrito precisa "
+            "ter para os imóveis dele entrarem. Passar de 3 para 2 elevou a cobertura de "
+            "vendas de 62% para 75% e os distritos elegíveis de 39 para 61 (D-015)."
+        ),
+        unidade="corretores",
+        se_aumentar="Exige distritos com mais equipe: menos imóveis entram, mais concentrados.",
+        minimo=1,
+    ),
+    # --- em que ordem: o portal ----------------------------------------------------
+    _campo(
+        caminho="portal.peso_nota",
+        grupo="em_que_ordem_portal",
+        tipo="inteiro",
+        ajuda="Quanto a nota do anúncio no portal pesa na ordem. Os três pesos somam 100.",
+        unidade="pontos de 100",
+        se_aumentar="A ordem passa a seguir mais a qualidade do anúncio que o interesse medido.",
+        minimo=0,
+        maximo=100,
+    ),
+    _campo(
+        caminho="portal.peso_cliques",
+        grupo="em_que_ordem_portal",
+        tipo="inteiro",
+        ajuda=(
+            "Quanto os cliques no anúncio (contato, telefone, WhatsApp, proposta, agendamento, "
+            "somados) pesam na ordem. É intenção de compra, não curiosidade."
+        ),
+        unidade="pontos de 100",
+        se_aumentar=(
+            "Anúncio com clique sobe mesmo com nota baixa; sinal fraco hoje, quase todos zero."
+        ),
+        minimo=0,
+        maximo=100,
+    ),
+    _campo(
+        caminho="portal.peso_visualizacoes",
+        grupo="em_que_ordem_portal",
+        tipo="inteiro",
+        ajuda=(
+            "Quanto as visualizações pesam. Medido zero em 300 de 300 anúncios em 03/09/2026: "
+            "o peso adotado é zero, declarado — não omitido. Volta a valer quando o raspador "
+            "achar o campo."
+        ),
+        unidade="pontos de 100",
+        se_aumentar="Hoje, nada: o campo vem zerado do portal, e o peso cairia num sinal vazio.",
+        minimo=0,
+        maximo=100,
+    ),
+    _campo(
+        caminho="portal.cobertura_minima",
+        grupo="em_que_ordem_portal",
+        tipo="numero",
+        ajuda=(
+            "A raspagem precisa cobrir pelo menos esta fração dos candidatos para a ordem vir "
+            "do portal. Abaixo disso a ordem cai para o desempate de banco e a rodada declara."
+        ),
+        unidade="%",
+        se_aumentar="Exige raspagem mais completa; mais rodadas saem sem ordem de portal.",
+        minimo=0,
+        maximo=100,
+    ),
+    _campo(
+        caminho="portal.idade_maxima_dias",
+        grupo="em_que_ordem_portal",
+        tipo="inteiro",
+        ajuda=(
+            "Dado do portal mais velho que isto não entra. A rodada raspa no mesmo dia; 2 "
+            "tolera um retry sem aceitar dado da semana passada."
+        ),
+        unidade="dias",
+        se_aumentar="Aceita raspagem mais velha; a ordem pode refletir a semana anterior.",
         minimo=0,
     ),
     _campo(
-        caminho="externo.desempenho.forma",
-        grupo="classificador_raspagem",
+        caminho="portal.sem_anuncio",
+        grupo="em_que_ordem_portal",
         tipo="escolha",
         ajuda=(
-            "Como o sinal de desempenho é composto a partir do que a raspagem traz por "
-            "anúncio. Cliques NUNCA são somados entre tipos: tipos diferentes medem "
-            "intenções diferentes."
+            "O que vale o imóvel elegível que a raspagem não trouxe: 'fim_da_fila' recebe o "
+            "pior sinal de quem tem anúncio; 'mediana' recebe o do meio. Antes era zero em "
+            "silêncio."
         ),
-        escolhas=("visualizacoes", "nota", "cliques_do_tipo"),
+        unidade="",
+        se_aumentar="",
+        escolhas=FORMAS_SEM_ANUNCIO,
     ),
     _campo(
-        caminho="externo.desempenho.quando_ausente",
-        grupo="classificador_raspagem",
+        caminho="portal.ordem_quando_nao_entra",
+        grupo="em_que_ordem_portal",
+        tipo="escolha",
+        ajuda=(
+            "Se a raspagem não entrar (cobertura baixa, dado velho, sessão caída), o que "
+            "ordena: leads em 180 dias, produtividade do gestor, ou só o cadastro mais novo."
+        ),
+        unidade="",
+        se_aumentar="",
+        escolhas=FORMAS_DE_ORDEM_SEM_PORTAL,
+    ),
+    # --- em que ordem: os descontos ------------------------------------------------
+    _campo(
+        caminho="desconto.janela_sem_resultado",
+        grupo="em_que_ordem_descontos",
         tipo="numero",
         ajuda=(
-            "Valor do anúncio SEM nota. Obrigatório quando a forma é 'nota', e a escolha "
-            "é declarada de propósito: um zero implícito puniria a ausência do dado como "
-            "se fosse desempenho ruim."
+            "Quanto desconta ter ocupado posição paga e não ter atingido o resultado esperado. "
+            "Inerte enquanto a régua nº 14 for nula — a planilha diz isso em toda linha."
         ),
-        exige=("externo.desempenho.forma", "nota"),
+        unidade="pontos de 100",
+        se_aumentar="Imóvel que já falhou numa janela cai mais na ordem (quando a régua existir).",
+        minimo=0,
+        maximo=100,
     ),
     _campo(
-        caminho="externo.desempenho.tipo",
-        grupo="classificador_raspagem",
-        tipo="escolha",
-        ajuda="Qual clique conta como desempenho. Obrigatório quando a forma é 'cliques_do_tipo'.",
-        escolhas=tuple(sorted(CLIQUES)),
-        exige=("externo.desempenho.forma", "cliques_do_tipo"),
+        caminho="desconto.sem_avaliacao",
+        grupo="em_que_ordem_descontos",
+        tipo="numero",
+        ajuda=(
+            "Quanto desconta não ter nenhuma avaliação por categoria. Baixo de propósito: o "
+            "pipeline morreu em 16/10/2025 e 99,76% do estoque novo não tem nota."
+        ),
+        unidade="pontos de 100",
+        se_aumentar="Pune o estoque novo por um defeito da base.",
+        minimo=0,
+        maximo=100,
     ),
+    _campo(
+        caminho="desconto.sem_lead_180d",
+        grupo="em_que_ordem_descontos",
+        tipo="numero",
+        ajuda="Quanto desconta não ter recebido nenhum lead em 180 dias.",
+        unidade="pontos de 100",
+        se_aumentar="Imóvel sem lead recente cai mais na ordem.",
+        minimo=0,
+        maximo=100,
+    ),
+    _campo(
+        caminho="desconto.perdao_por_semana",
+        grupo="em_que_ordem_descontos",
+        tipo="numero",
+        ajuda=(
+            "Quanto o desconto da janela anterior encolhe a cada carga aprovada. 50% = cai "
+            "pela metade por semana e some em cerca de três. 0% = nunca perdoa, o que diverge "
+            "da Spec §6.4 e a rodada declara."
+        ),
+        unidade="% por carga",
+        se_aumentar="O tropeço passado é esquecido mais rápido.",
+        minimo=0,
+        maximo=100,
+    ),
+    # --- quantos: a régua nula -----------------------------------------------------
     _campo(
         caminho="resultado_esperado.super_destaque",
-        grupo="historico",
+        grupo="quantos",
         tipo="inteiro",
         ajuda=(
             "Quantos leads a janela de SUPER DESTAQUE precisa ter gerado para não ser "
-            "penalizada (Spec §6.4). Seção OPCIONAL: omitida, o limiar é nulo, nenhuma "
-            "janela é julgada e a planilha declara isso — porque não penalizar por falta "
-            "de régua não é o mesmo que passar no critério. Se declarar, declare os DOIS "
-            "níveis, e este precisa ser MAIOR que o de destaque."
+            "descontada (Spec §6.4). NULA por decisão do dono (04/09/2026). Se declarar, "
+            "declare os DOIS níveis, e este MAIOR que o de destaque."
         ),
+        unidade="leads",
+        se_aumentar="Mais janelas de super destaque contam como sem resultado.",
         obrigatorio=False,
         minimo=1,
     ),
     _campo(
         caminho="resultado_esperado.destaque",
-        grupo="historico",
+        grupo="quantos",
         tipo="inteiro",
         ajuda=(
-            "Quantos leads a janela de DESTAQUE precisa ter gerado para não ser "
-            "penalizada. Ver a observação do nível acima: os dois, ou nenhum."
+            "Quantos leads a janela de DESTAQUE precisa ter gerado para não ser descontada. "
+            "NULA por decisão do dono. Os dois níveis, ou nenhum."
         ),
+        unidade="leads",
+        se_aumentar="Mais janelas de destaque contam como sem resultado (88% geraram zero).",
         obrigatorio=False,
         minimo=1,
     ),
@@ -598,30 +539,23 @@ REGRAS: tuple[RegraCruzada, ...] = (
     RegraCruzada(
         tipo="soma_igual",
         valor=100,
-        descricao="Os quatro pesos de super_destaque somam exatamente 100.",
-        campos=tuple(f"pesos.super_destaque.{f}" for f, _ in _FATORES),
-    ),
-    RegraCruzada(
-        tipo="soma_igual",
-        valor=100,
-        descricao="Os quatro pesos de destaque somam exatamente 100.",
-        campos=tuple(f"pesos.destaque.{f}" for f, _ in _FATORES),
+        descricao="Os três pesos do portal somam exatamente 100.",
+        campos=("portal.peso_nota", "portal.peso_cliques", "portal.peso_visualizacoes"),
     ),
     RegraCruzada(
         tipo="todos_ou_nenhum",
         descricao=(
-            "A seção [resultado_esperado] é opcional, mas indivisível: ou os dois níveis, "
-            "ou nenhum. Meio-declarada julgaria metade das janelas e deixaria a outra "
-            "metade sem julgamento, com a planilha declarando limiar nulo numa rodada que "
-            "penalizou parte do estoque."
+            "A régua de resultado é opcional, mas indivisível: ou os dois níveis, ou nenhum. "
+            "Meio-declarada julgaria metade das janelas e deixaria a outra metade sem "
+            "julgamento."
         ),
         campos=("resultado_esperado.super_destaque", "resultado_esperado.destaque"),
     ),
     RegraCruzada(
         tipo="maior_que",
         descricao=(
-            "resultado_esperado.super_destaque precisa ser MAIOR que destaque: o PRD fixa "
-            "que o resultado esperado é proporcional ao nível."
+            "resultado_esperado.super_destaque precisa ser MAIOR que destaque: o resultado "
+            "esperado é proporcional ao nível."
         ),
         campos=("resultado_esperado.super_destaque", "resultado_esperado.destaque"),
     ),

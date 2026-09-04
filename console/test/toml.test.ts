@@ -8,16 +8,23 @@ import { test } from "node:test";
 import { CAMPOS, POR_CAMINHO, REGRAS, campoAtivo } from "../lib/contrato";
 import { paraToml, validar } from "../lib/toml";
 
+// Os três pesos do portal somam 100 — assimétricos, para uma troca de campo não passar.
+const PESOS: Record<string, string> = {
+  "portal.peso_nota": "70",
+  "portal.peso_cliques": "30",
+  "portal.peso_visualizacoes": "0",
+};
+
 /** Um preenchimento válido, montado A PARTIR DO CONTRATO. */
-function preenchimentoValido(forma = "visualizacoes"): Map<string, string> {
-  const v = new Map<string, string>([["externo.desempenho.forma", forma]]);
+function preenchimentoValido(): Map<string, string> {
+  const v = new Map<string, string>();
   for (const c of CAMPOS) {
     if (!c.obrigatorio || v.has(c.caminho)) continue;
     if (!campoAtivo(c, v)) continue;
     if (c.tipo === "escolha") {
       v.set(c.caminho, (c.escolhas ?? [])[0]);
-    } else if (c.caminho.startsWith("pesos.")) {
-      v.set(c.caminho, "25"); // os quatro somam 100
+    } else if (c.caminho in PESOS) {
+      v.set(c.caminho, PESOS[c.caminho]);
     } else if (c.tipo === "inteiro") {
       v.set(c.caminho, String(c.minimo ?? 1));
     } else {
@@ -26,39 +33,34 @@ function preenchimentoValido(forma = "visualizacoes"): Map<string, string> {
       v.set(c.caminho, String((min + max) / 2));
     }
   }
-  // Campos condicionais dependem da forma escolhida — segunda passada.
-  for (const c of CAMPOS) {
-    if (c.obrigatorio && campoAtivo(c, v) && !v.has(c.caminho)) {
-      v.set(c.caminho, c.tipo === "escolha" ? (c.escolhas ?? [])[0] : "1");
-    }
-  }
   return v;
 }
 
 test("há contrato a conferir", () => {
-  assert.ok(CAMPOS.length >= 20, `contrato encolheu: ${CAMPOS.length}`);
-  assert.ok(REGRAS.length >= 4, `regras encolheram: ${REGRAS.length}`);
+  assert.ok(CAMPOS.length >= 16, `contrato encolheu: ${CAMPOS.length}`);
+  assert.ok(REGRAS.length >= 3, `regras encolheram: ${REGRAS.length}`);
+  for (const caminho of Object.keys(PESOS)) {
+    assert.ok(POR_CAMINHO.has(caminho), `o contrato perdeu ${caminho}`);
+  }
 });
 
 test("um preenchimento válido não produz problema nenhum", () => {
-  for (const forma of POR_CAMINHO.get("externo.desempenho.forma")!.escolhas ?? []) {
-    assert.deepEqual(validar(preenchimentoValido(forma)), [], `forma ${forma}`);
-  }
+  assert.deepEqual(validar(preenchimentoValido()), []);
 });
 
 test("campo obrigatório vazio é cobrado, e só ele", () => {
   const v = preenchimentoValido();
-  v.delete("intensidades.sem_lead_180d");
+  v.delete("desconto.sem_lead_180d");
   const p = validar(v);
   assert.equal(p.length, 1);
-  assert.equal(p[0].caminho, "intensidades.sem_lead_180d");
+  assert.equal(p[0].caminho, "desconto.sem_lead_180d");
 });
 
 test("espaço em branco conta como vazio", () => {
   // Sem isto, `Number(" ")` vira 0 — um valor que ninguém escolheu, entrando numa
   // rodada que decide 6.970 posições pagas.
   const v = preenchimentoValido();
-  v.set("intensidades.sem_lead_180d", "   ");
+  v.set("desconto.sem_lead_180d", "   ");
   assert.equal(validar(v).length, 1);
 });
 
@@ -66,36 +68,42 @@ test("inteiro com casa decimal é RECUSADO", () => {
   // A distinção que o JavaScript não faz e o validador Python faz. Sem ela, um
   // formulário perfeitamente preenchido produz um TOML que a rodada rejeita.
   const v = preenchimentoValido();
-  v.set("externo.idade_maxima_dias", "8.5");
+  v.set("portal.idade_maxima_dias", "8.5");
   const p = validar(v);
   assert.equal(p.length, 1);
   assert.match(p[0].mensagem, /inteiro/);
 });
 
-test("o limite ABERTO recusa o próprio limite; o fechado aceita", () => {
+test("o limite FECHADO aceita o próprio limite, dos dois lados", () => {
+  // Pontos de 100 e por cento são faixas fechadas [0, 100]: zero é um valor legítimo
+  // (visualizações pesam 0 por medição) e 100 também (perdão total).
   const v = preenchimentoValido();
-  v.set("semelhanca.decaimento", "0"); // (0, 1] — zero é fora
-  assert.equal(validar(v).length, 1);
-  v.set("semelhanca.decaimento", "0.5");
-  v.set("semelhanca.desconto_fragil", "0"); // [0, 1] — zero é dentro
+  v.set("portal.cobertura_minima", "0");
+  v.set("desconto.perdao_por_semana", "100");
   assert.deepEqual(validar(v), []);
 });
 
 test("valor acima do teto é recusado", () => {
   const v = preenchimentoValido();
-  v.set("externo.limiar_amarracao", "1.5");
+  v.set("portal.cobertura_minima", "150");
+  assert.equal(validar(v).length, 1);
+});
+
+test("valor abaixo do piso é recusado", () => {
+  const v = preenchimentoValido();
+  v.set("corretor.minimo_no_distrito", "0"); // piso 1
   assert.equal(validar(v).length, 1);
 });
 
 test("escolha fora da lista é recusada", () => {
   const v = preenchimentoValido();
-  v.set("decaimento_janela.forma", "sem_decaimento");
+  v.set("portal.sem_anuncio", "zero");
   assert.equal(validar(v).length, 1);
 });
 
-test("os pesos precisam somar exatamente 100, por nível", () => {
+test("os três pesos do portal precisam somar exatamente 100", () => {
   const v = preenchimentoValido();
-  v.set("pesos.super_destaque.semelhanca_perfil", "26");
+  v.set("portal.peso_nota", "71");
   const p = validar(v);
   assert.equal(p.length, 1);
   assert.match(p[0].mensagem, /Somam 101/);
@@ -119,18 +127,10 @@ test("resultado_esperado exige super MAIOR que destaque", () => {
   assert.ok(p.some((x) => /MAIOR/.test(x.mensagem)));
 });
 
-test("campo condicional inativo NÃO é cobrado", () => {
-  // `quando_ausente` só existe quando a forma é `nota`. Cobrá-lo sempre faria o
-  // formulário exigir do dono um valor que a rodada nem lê.
-  const v = preenchimentoValido("visualizacoes");
-  assert.ok(!v.has("externo.desempenho.quando_ausente"));
-  assert.deepEqual(validar(v), []);
-});
-
 test("o TOML sai com inteiro SEM casa decimal", () => {
   const toml = paraToml(preenchimentoValido(), "teste");
-  assert.match(toml, /semelhanca_perfil = 25\b/);
-  assert.doesNotMatch(toml, /= 25\.0/);
+  assert.match(toml, /^peso_nota = 70$/m);
+  assert.doesNotMatch(toml, /= 70\.0/);
 });
 
 test("a seção opcional não declarada NÃO aparece no TOML", () => {
@@ -140,12 +140,6 @@ test("a seção opcional não declarada NÃO aparece no TOML", () => {
   assert.doesNotMatch(toml, /\[resultado_esperado\]/);
 });
 
-test("campo condicional inativo não vaza para o TOML", () => {
-  const toml = paraToml(preenchimentoValido("visualizacoes"), "teste");
-  assert.doesNotMatch(toml, /quando_ausente/);
-  assert.doesNotMatch(toml, /^tipo = /m);
-});
-
 test("o TOML declara que os valores são PROVISÓRIOS", () => {
   const toml = paraToml(preenchimentoValido(), "trabalho 7");
   assert.match(toml, /PROVISÓRIO/);
@@ -153,21 +147,20 @@ test("o TOML declara que os valores são PROVISÓRIOS", () => {
 });
 
 test("toda seção esperada aparece quando preenchida", () => {
-  const toml = paraToml(preenchimentoValido("cliques_do_tipo"), "teste");
-  for (const secao of ["semelhanca", "intensidades", "decaimento_janela", "externo"]) {
-    assert.match(toml, new RegExp(`\\[${secao}\\]`), `faltou [${secao}]`);
+  const toml = paraToml(preenchimentoValido(), "teste");
+  for (const secao of ["conversao", "corretor", "portal", "desconto"]) {
+    assert.match(toml, new RegExp(`^\\[${secao}\\]$`, "m"), `faltou [${secao}]`);
   }
-  assert.match(toml, /\[externo\.desempenho\]/);
-  assert.match(toml, /^tipo = "clique/m);
+  assert.match(toml, /^sem_anuncio = "fim_da_fila"$/m, "escolha sai entre aspas");
 });
 
 test("o problema DO CAMPO vem antes do problema de REGRA", () => {
   // A ordem não é estética: a tela mostra o primeiro problema de cada campo, e um
-  // peso com casa decimal produz DOIS — "precisa ser inteiro" e "os quatro somam
+  // peso com casa decimal produz DOIS — "precisa ser inteiro" e "os três somam
   // 100.5". Se o de regra viesse primeiro, o dono veria a soma errada sem ver a causa.
   const v = preenchimentoValido();
-  v.set("pesos.super_destaque.semelhanca_perfil", "40.5");
-  const doCampo = validar(v).filter((p) => p.caminho === "pesos.super_destaque.semelhanca_perfil");
+  v.set("portal.peso_nota", "70.5");
+  const doCampo = validar(v).filter((p) => p.caminho === "portal.peso_nota");
   assert.ok(doCampo.length >= 2, "esperava o erro do campo E o da regra");
   assert.match(doCampo[0].mensagem, /inteiro/, "o erro do campo precisa vir primeiro");
 });
@@ -205,26 +198,30 @@ test("inteiro grande demais é RECUSADO em vez de virar notação científica", 
   // formulário verde produzindo arquivo que a rodada rejeita. E acima do inteiro
   // seguro o JavaScript perde precisão em silêncio.
   const v = preenchimentoValido();
-  v.set("externo.idade_maxima_dias", "1000000000000000000000");
+  v.set("portal.idade_maxima_dias", "1000000000000000000000");
   const p = validar(v);
   assert.equal(p.length, 1);
   assert.match(p[0].mensagem, /grande demais/);
 });
 
-
 test("escolha com espaço supérfluo NÃO desativa o campo que ela governa", () => {
   // Havia DUAS noções de igualdade: `validar` comparava com trim, `campoAtivo` cru.
-  // "cliques_do_tipo " era aceito pela validação E desativava `tipo`, que então não
-  // era exigido nem serializado — o console dizia "Guardado", e a rodada morria com
-  // "falta externo.desempenho.tipo", na única tentativa da semana.
-  const v = preenchimentoValido("cliques_do_tipo");
-  v.set("externo.desempenho.forma", "cliques_do_tipo ");
-  assert.ok(
-    campoAtivo(POR_CAMINHO.get("externo.desempenho.tipo")!, v),
-    "o campo condicional foi desativado por um espaço",
-  );
+  // Uma escolha com espaço no fim era aceita pela validação E desativava o campo
+  // condicional, que então não era exigido nem serializado — o console dizia
+  // "Guardado", e a rodada morria com "falta ...", na única tentativa da semana.
+  // O contrato de hoje não tem campo condicional; a garantia fica num campo
+  // sintético, para o dia em que voltar a ter.
+  const governante = POR_CAMINHO.get("portal.sem_anuncio")!;
+  const condicional = {
+    ...governante,
+    caminho: "portal.x",
+    quando: ["portal.sem_anuncio", "mediana"] as [string, string],
+  };
+  const v = preenchimentoValido();
+  v.set("portal.sem_anuncio", "mediana ");
+  assert.ok(campoAtivo(condicional, v), "o campo condicional foi desativado por um espaço");
   assert.deepEqual(validar(v), [], "e continua válido");
-  assert.match(paraToml(v, "t"), /^tipo = "clique/m, "e o campo condicional é serializado");
+  assert.match(paraToml(v, "t"), /^sem_anuncio = "mediana"$/m, "e a escolha sai limpa");
 });
 
 test("caractere de controle na procedência não quebra o TOML", () => {

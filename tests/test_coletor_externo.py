@@ -21,11 +21,9 @@ from dados.coletor_externo import (
     taxa_amarracao,
 )
 
-# Parâmetros PROVISÓRIOS de teste (nº 5/nº 7 são nulos): limiar 50%, janela 8 dias,
-# F3 = visualizações.
-PARAMS_EXT = ParametrosExterno(
-    limiar_amarracao=0.5, idade_maxima_dias=8, compor_desempenho=lambda a: a.visualizacoes
-)
+# Parâmetros de teste: limiar 50%, janela 8 dias. Desde a D-028 o coletor NÃO compõe
+# sinal nenhum — os anúncios crus sobem e a nota do portal é da costura.
+PARAMS_EXT = ParametrosExterno(limiar_amarracao=0.5, idade_maxima_dias=8)
 HOJE = date(2026, 9, 1)
 
 
@@ -284,16 +282,23 @@ def _coleta_fresca(tmp_path, linhas, dias_atras=0):
     return ler_coleta(tmp_path)
 
 
-def test_avaliar_entra_e_compoe_f3(tmp_path):
+def test_avaliar_entra_sem_compor_nada(tmp_path):
+    """Passando as portas, `entra=True` e os números da §3.1; os anúncios CRUS continuam
+    em `coleta.por_imovel` — a composição da nota é da costura (D-028), e o resultado
+    não carrega mais `desempenho_por_imovel`."""
     coleta = _coleta_fresca(
         tmp_path, [_anuncio("1", "101", visualizacoes=300), _anuncio("2", "202", visualizacoes=50)]
     )
     r = avaliar_coleta(coleta, [101, 202], PARAMS_EXT, HOJE)
     assert r.entra is True
     assert r.motivo == ""
-    assert r.desempenho_por_imovel == {101: 300.0, 202: 50.0}  # F3 = visualizações (provisório)
     assert r.taxa_amarracao == 1.0
     assert r.idade_dias == 0
+    assert not hasattr(r, "desempenho_por_imovel")
+    assert not hasattr(PARAMS_EXT, "compor_desempenho")
+    assert coleta.por_imovel[101].visualizacoes == 300
+    assert coleta.por_imovel[202].visualizacoes == 50
+    assert coleta.por_imovel[101].cliques["cliqueWhatsapp"] == 15  # por tipo, cru
 
 
 def test_avaliar_amarracao_baixa_nao_entra(tmp_path):
@@ -302,15 +307,12 @@ def test_avaliar_amarracao_baixa_nao_entra(tmp_path):
     r = avaliar_coleta(coleta, [101, 202, 303, 404], PARAMS_EXT, HOJE)
     assert r.entra is False
     assert "amarração" in r.motivo
-    assert r.desempenho_por_imovel == {}
     assert r.taxa_amarracao == 0.25
 
 
 def _params_de_piloto():
     """O que um piloto DECLARARIA para ver a raspagem entrar: limiar zero."""
-    return ParametrosExterno(
-        limiar_amarracao=0.0, idade_maxima_dias=8, compor_desempenho=lambda a: a.visualizacoes
-    )
+    return ParametrosExterno(limiar_amarracao=0.0, idade_maxima_dias=8)
 
 
 def test_amarracao_vazia_nao_entra_mesmo_com_limiar_zero(tmp_path):
@@ -326,19 +328,17 @@ def test_amarracao_vazia_nao_entra_mesmo_com_limiar_zero(tmp_path):
     # O diagnóstico nomeia o formato esperado — com chaves SIMPLES (os literais não são
     # f-strings; `{{` sairia literal, e foi o que o orquestrador apanhou).
     assert "o formato esperado é {Id}{letra}" in r.motivo and "{{" not in r.motivo
-    assert r.desempenho_por_imovel == {}
     assert r.taxa_amarracao == 0.0
 
 
 def test_amarracao_disjunta_da_lista_alvo_nao_entra(tmp_path):
-    """Linhas amarradas a imóveis que NÃO são candidatos: a composição do F3 hoje
-    percorre `por_imovel` inteiro, então sem a porta o resultado seria `entra=True`
-    com desempenho só para quem não está na lista — e zero para todos os alvos."""
+    """Linhas amarradas a imóveis que NÃO são candidatos: sem a porta o resultado
+    seria `entra=True` com anúncio só para quem não está na lista — e a costura daria
+    a todos os alvos o tratamento de "sem anúncio", indistinguível de empate."""
     coleta = _coleta_fresca(tmp_path, [_anuncio("1", "101", visualizacoes=300)])
     r = avaliar_coleta(coleta, [202, 303], _params_de_piloto(), HOJE)
     assert r.entra is False
     assert "NENHUMA amarrou" in r.motivo
-    assert r.desempenho_por_imovel == {}
 
 
 def test_csv_vazio_com_status_ok_nao_entra(tmp_path):
@@ -377,7 +377,7 @@ def test_idade_da_coleta_e_medida_no_fuso_da_OPERACAO_nao_no_da_maquina(tmp_path
     assert FUSO_DA_OPERACAO.key == "America/Sao_Paulo"  # type: ignore[attr-defined]
     assert r.idade_dias == 0 and r.entra is True
     # Em UTC a mesma coleta é "de amanhã": a diferença é o fuso declarado, não a máquina.
-    em_utc = ParametrosExterno(0.5, 8, lambda a: a.visualizacoes, fuso=UTC)
+    em_utc = ParametrosExterno(0.5, 8, fuso=UTC)
     assert avaliar_coleta(coleta, [431347], em_utc, hoje).idade_dias == -1
     # E um `finishedAt` sem offset é UTC, explicitamente.
     _status(tmp_path, result="ok", finishedAt="2026-09-04T00:04:48", portal="canalpro")

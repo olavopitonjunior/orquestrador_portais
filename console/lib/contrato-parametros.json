@@ -2,30 +2,16 @@
   "_gerado_por": "uv run rodada-contrato > console/lib/contrato-parametros.json",
   "grupos": [
     {
-      "id": "contrato",
+      "id": "quem_entra_imovel",
       "ordem": 1,
-      "titulo": "Contrato com o portal",
-      "funcao": "contrato",
-      "fontes": [
-        "contrato"
-      ],
-      "explicacao": "As posições pagas que a decisão preenche. As cotas são teto rígido: nenhuma posição além delas é proposta (invariante 6). Hoje moram no código e na restrição do Registro; a noção de CONTRATO como dado vem em fatia própria.",
-      "fixos_no_codigo": [
-        "475 posições de super destaque e 6.495 de destaque — plano Exclusivo do Grupo OLX (OLX, Zap e Viva Real)"
-      ],
-      "pendentes_sem_campo": []
-    },
-    {
-      "id": "excluidos_pelo_imovel",
-      "ordem": 2,
-      "titulo": "Excluídos pelo imóvel",
+      "titulo": "Quem entra: o imóvel",
       "funcao": "excludente",
       "fontes": [
         "banco_imovel"
       ],
-      "explicacao": "Regras eliminatórias, binárias e sem compensação, sobre o cadastro do imóvel: reprovar em uma basta, e nenhuma nota recupera (Spec §6.1). Imóvel sem avaliação por categoria não é excluído — passa e recebe penalidade.",
+      "explicacao": "Estas regras excluem. Reprovar em uma basta, e nenhuma nota compensa (Spec §6.1). São seis, sobre o cadastro do imóvel, e todas seguem fixas: imóvel sem avaliação por categoria não é excluído — passa e recebe desconto.",
       "fixos_no_codigo": [
-        "Status: publicação ativa",
+        "Publicação ativa",
         "Categoria: Casa, Casa de condomínio, Sobrado, Cobertura ou Apartamento",
         "Preço igual ou superior a R$ 300.000",
         "Dez fotos ou mais",
@@ -35,176 +21,94 @@
       "pendentes_sem_campo": []
     },
     {
-      "id": "excluidos_pelo_corretor",
+      "id": "quem_entra_perfil",
+      "ordem": 2,
+      "titulo": "Quem entra: parece com o que vendeu",
+      "funcao": "excludente",
+      "fontes": [
+        "banco_imovel"
+      ],
+      "explicacao": "O perfil de conversão FILTRA (D-027): só entra quem se parece com o que vendeu na janela. Um perfil é uma combinação de uma ou duas características (região, faixa de preço, faixa de metragem, dormitórios, vagas) observada nas vendas assinadas; conta se tem pelo menos 3 vendas E contém a faixa de preço — sem essa exigência o filtro deixava passar 100% do estoque (medido em 04/09/2026). Com ela, passam 84% dos elegíveis e 64% dos candidatos ao super destaque. No destaque, é o PRIMEIRO degrau cedido pelo relaxamento quando faltam imóveis; no super destaque nunca cede.",
+      "fixos_no_codigo": [
+        "Evidência mínima por perfil: 3 vendas (D-014)",
+        "O perfil precisa conter a faixa de preço (D-027)",
+        "Entrada do perfil: só vendas assinadas — leads não entram, porque a base os traz pré-agregados em 180 dias e 'mais leads' sem régua seria regra inventada"
+      ],
+      "pendentes_sem_campo": []
+    },
+    {
+      "id": "quem_entra_corretor",
       "ordem": 3,
-      "titulo": "Excluídos pelo corretor",
+      "titulo": "Quem entra: o corretor",
       "funcao": "excludente",
       "fontes": [
         "banco_corretor"
       ],
-      "explicacao": "As duas regras que olham para quem cuida do imóvel, não para o imóvel. A definição de corretor ATIVO é decisão do dono, não detalhe de operação: mudá-la muda quem é elegível (D-015). O distrito vem da tabela analítica de relação de imóveis, não do endereço (zona de valor nula em 98% dos casos).",
+      "explicacao": "As regras que olham para quem cuida do imóvel. 'Gestor produtivo' (captou ou vendeu em 30 dias) e 'capacidade do distrito' excluem. 'Gestor sem login' NÃO exclui — medido em 04/09/2026, quem não loga também não captou nem vendeu, então excluiria zero imóveis a mais; ele TRAVA o relaxamento: o degrau do gestor produtivo não traz de volta imóvel de gestor que nem entra no sistema (105 imóveis por rodada, D-029).",
       "fixos_no_codigo": [
-        "Gestor produtivo: captou ou vendeu nos últimos 30 dias",
-        "Capacidade do distrito: dois ou mais corretores que captaram ou venderam nos últimos 30 dias"
+        "Gestor produtivo: captou ou vendeu nos últimos 30 dias — a janela NÃO é configurável: a base só traz a captação pré-agregada em 30 dias",
+        "O distrito vem da tabela analítica de relação de imóveis, não do endereço"
       ],
       "pendentes_sem_campo": []
     },
     {
-      "id": "condicao_de_nivel",
+      "id": "em_que_ordem_portal",
       "ordem": 4,
-      "titulo": "Condição de nível",
-      "funcao": "condicao_de_nivel",
-      "fontes": [
-        "banco_imovel"
-      ],
-      "explicacao": "O que separa candidato ao super destaque do restante. Aplicada na alocação, não elimina do destaque (D-002).",
-      "fixos_no_codigo": [
-        "Preço igual ou superior a R$ 700.000 para candidatura ao super destaque"
-      ],
-      "pendentes_sem_campo": []
-    },
-    {
-      "id": "relaxamento",
-      "ordem": 5,
-      "titulo": "Relaxamento",
-      "funcao": "relaxamento",
-      "fontes": [
-        "banco_imovel",
-        "banco_corretor"
-      ],
-      "explicacao": "Cedência controlada das regras eliminatórias, só nas posições de destaque, para não deixar benefício pago sem uso. Cada degrau cedido gera linha no relatório (Spec §6.6). As posições de super destaque nunca relaxam (invariante 7). Referência do quanto cada degrau recupera, medida na base e só como ordem de grandeza (medida com mínimo de TRÊS corretores por distrito; o adotado é dois): fotos ~133, cadastro ~569, atualização ~1.680, gestor ~1.747, distrito ~5.686.",
-      "fixos_no_codigo": [
-        "Ordem de cedência: fotos → cadastro completo → atualização em 90 dias → gestor produtivo → capacidade do distrito"
-      ],
-      "pendentes_sem_campo": []
-    },
-    {
-      "id": "classificador_banco_imovel",
-      "ordem": 6,
-      "titulo": "Classificadores pelo banco: o imóvel (F1 e F2)",
-      "funcao": "classificador",
-      "fontes": [
-        "banco_imovel"
-      ],
-      "explicacao": "F1, semelhança com o perfil de conversão: combinações de características que venderam nos últimos 180 dias, analisadas uma ou duas dimensões por vez, cada uma com o número de vendas que a sustenta (Spec §6.2). F2, leads que o imóvel já atraiu em 180 dias.",
-      "fixos_no_codigo": [
-        "Entrada do perfil: vendas assinadas nos últimos 180 dias",
-        "Evidência mínima por combinação: N ≥ 3 (D-014); abaixo disso o perfil é frágil",
-        "Ordem das dimensões do F1: preço > localização > metragem > dormitórios > vagas (D-017); só a magnitude do decaimento é parâmetro",
-        "F2: leads contados em 180 dias"
-      ],
-      "pendentes_sem_campo": []
-    },
-    {
-      "id": "classificador_banco_corretor",
-      "ordem": 7,
-      "titulo": "Classificador pelo banco: o corretor (F4)",
-      "funcao": "classificador",
-      "fontes": [
-        "banco_corretor"
-      ],
-      "explicacao": "F4, produtividade do gestor nos últimos 30 dias, contínua: taxa semanal de captação mais a marca de venda recente (D-017). Não confundir com a regra binária 'gestor produtivo', que é eliminatória.",
-      "fixos_no_codigo": [
-        "Janela de 30 dias",
-        "A base não expõe contagem de vendas em 30 dias: a venda entra como marca (sim/não) — limitação declarada na planilha"
-      ],
-      "pendentes_sem_campo": []
-    },
-    {
-      "id": "classificador_raspagem",
-      "ordem": 8,
-      "titulo": "Classificador pela raspagem: o portal (F3)",
-      "funcao": "classificador",
+      "titulo": "Em que ordem: o portal",
+      "funcao": "classificatorio",
       "fontes": [
         "raspagem"
       ],
-      "explicacao": "F3, desempenho do anúncio no Canal Pro, lido da coleta feita antes da rodada. Só entra se a coleta estiver ok, amarrada acima do limiar e dentro da idade máxima; senão o fator não entra e a rodada sai degradada, com o motivo declarado. A forma do sinal é escolha sua com pendência aberta (P-15 em docs/perguntas-abertas.md): na primeira raspagem real, visualizações vieram zeradas e cliques quase todos zero.",
-      "fixos_no_codigo": [],
-      "pendentes_sem_campo": []
-    },
-    {
-      "id": "mistura_por_nivel",
-      "ordem": 9,
-      "titulo": "Mistura por nível: os pesos",
-      "funcao": "classificador",
-      "fontes": [],
-      "explicacao": "Como os quatro fatores se combinam numa nota, por nível. Os níveis perseguem objetivos diferentes, e essa assimetria é a parte do modelo a preservar. Os pesos da Spec §6.3 (60/25/15 e 80/10/10) foram anulados pelo redesenho D-017.",
-      "fixos_no_codigo": [
-        "Objetivo do super destaque: valor esperado (probabilidade de conversão ponderada pelo ticket)",
-        "Objetivo do destaque: probabilidade de gerar lead"
-      ],
-      "pendentes_sem_campo": []
-    },
-    {
-      "id": "normalizacao",
-      "ordem": 10,
-      "titulo": "Normalização dos fatores",
-      "funcao": "classificador",
-      "fontes": [],
-      "explicacao": "Como cada fator vai para uma escala comparável antes da mistura (Spec §6.3). Não há campo no TOML: a forma em uso é a provisória da planilha-piloto, rotulada como tal, e o parâmetro segue nulo.",
+      "explicacao": "Estas não excluem ninguém: ordenam quem passou (D-028). A nota vai de 0 a 100 e é a soma ponderada de três sinais do anúncio no Canal Pro — nota do anúncio, cliques (somados entre tipos) e visualizações — cada um reescalado entre os elegíveis. Medido em 03/09/2026: visualizações vieram zero em 300 de 300 anúncios e só a nota tem variância; por isso o peso adotado das visualizações é zero, declarado. A raspagem só entra se cobrir a fração mínima dos candidatos e for recente; senão a ordem cai para o desempate de banco e a rodada declara isso.",
       "fixos_no_codigo": [],
       "pendentes_sem_campo": [
         2
       ]
     },
     {
-      "id": "descontos",
-      "ordem": 11,
-      "titulo": "Descontos: as três penalidades",
-      "funcao": "desconto",
+      "id": "em_que_ordem_descontos",
+      "ordem": 5,
+      "titulo": "Em que ordem: os descontos",
+      "funcao": "classificatorio",
       "fontes": [
         "registro",
         "banco_imovel"
       ],
-      "explicacao": "Descontadas da nota final e sempre visíveis na planilha (Spec §6.4). Imóvel sem histórico de destaque não é penalizado por ausência de histórico.",
-      "fixos_no_codigo": [
-        "Janela anterior sem resultado: ocupou posição e não atingiu o resultado esperado do nível; decai ao longo dos ciclos",
-        "Sem avaliação por categoria",
-        "Sem lead em 180 dias"
-      ],
-      "pendentes_sem_campo": []
-    },
-    {
-      "id": "historico",
-      "ordem": 12,
-      "titulo": "Histórico das janelas",
-      "funcao": "desconto",
-      "fontes": [
-        "registro"
-      ],
-      "explicacao": "O que conta como resultado de uma janela paga, por nível. Sem os dois valores nenhuma janela é julgada e a planilha declara isso — não penalizar por falta de régua não é o mesmo que passar no critério (D-022).",
+      "explicacao": "Três descontos, em pontos de 100, subtraídos da nota (Spec §6.4). O da janela anterior sem resultado só incide quando a régua de resultado por nível existir (nº 14, ainda nula) — até lá fica declarado como inerte. O de 'sem avaliação por categoria' é baixo de propósito: o pipeline de avaliação está morto desde 16/10/2025 e quase todo o estoque novo não tem nota.",
       "fixos_no_codigo": [],
       "pendentes_sem_campo": []
     },
     {
-      "id": "cadencia",
-      "ordem": 13,
-      "titulo": "Cadência",
-      "funcao": "operacao",
-      "fontes": [],
-      "explicacao": "Sexta decide; segunda acompanha. Não existe execução diária. A hora exata de cada rodada é parâmetro pendente, sem campo aqui.",
-      "fixos_no_codigo": [
-        "Sexta-feira: rodada de decisão, a única que raspa o portal (uma tentativa)",
-        "Segunda-feira: acompanhamento, lê só o banco"
+      "id": "quantos",
+      "ordem": 6,
+      "titulo": "Quantos e onde",
+      "funcao": "decisorio",
+      "fontes": [
+        "contrato"
       ],
-      "pendentes_sem_campo": [
-        8
-      ]
+      "explicacao": "As cotas contratadas são teto rígido (invariante 6). Primeiro o super destaque, entre quem tem preço acima do piso; depois o destaque, com o que sobrou. Se faltar imóvel no destaque, o relaxamento cede regras na ordem fixa; o super destaque nunca relaxa (invariante 7). A régua de resultado por nível (quantos leads uma janela paga precisa gerar para não ser descontada) segue nula por decisão do dono: 88% das janelas históricas geraram zero lead, e qualquer régua de 1 puniria quase todo mundo.",
+      "fixos_no_codigo": [
+        "475 posições de super destaque e 6.495 de destaque — plano Exclusivo do Grupo OLX (OLX, Zap e Viva Real)",
+        "Piso de R$ 700.000 para candidatura ao super destaque (D-002)",
+        "Ordem de cedência no destaque: perfil → fotos → cadastro completo → atualização em 90 dias → gestor produtivo (travado para gestor sem login) → capacidade do distrito"
+      ],
+      "pendentes_sem_campo": []
     },
     {
       "id": "operacao",
-      "ordem": 14,
+      "ordem": 7,
       "titulo": "Operação",
-      "funcao": "operacao",
+      "funcao": "decisorio",
       "fontes": [],
-      "explicacao": "O que governa a execução, não a lista: repetição do Orquestrador, sinalização de variação de volume, retenção do Registro, aprovação tácita, atendimento de lead e a saída por alteração de preço (§6.7). Nenhum tem campo ainda; todos seguem nulos.",
+      "explicacao": "O que governa a execução, não a lista: sexta decide e segunda acompanha (a hora é pendente); repetição do Orquestrador, sinalização de variação de volume, retenção do Registro, aprovação tácita, atendimento de lead e a saída por alteração de preço (§6.7). Nenhum tem campo; seguem nulos.",
       "fixos_no_codigo": [
-        "Saída imediata fora do ciclo: venda, reserva, despublicação ou alteração relevante de preço (§6.7)",
+        "Sexta-feira: rodada de decisão, a única que raspa o portal (uma tentativa); segunda-feira: acompanhamento, lê só o banco",
         "Aprovação humana antes da carga (D-001); nenhuma aprovação automática enquanto o prazo tácito é nulo"
       ],
       "pendentes_sem_campo": [
         4,
         6,
+        8,
         9,
         10,
         11,
@@ -214,336 +118,283 @@
   ],
   "campos": [
     {
-      "caminho": "semelhanca.desconto_fragil",
-      "tipo": "numero",
-      "ajuda": "Quanto vale um perfil FRÁGIL comparado a um robusto. A Spec §6.2 diz que perfil frágil 'não recebe peso pleno', sem quantificar. Fator que multiplica o número de vendas do perfil frágil: 0 o ignora, 1 o trata como robusto.",
-      "grupo": "classificador_banco_imovel",
+      "caminho": "conversao.janela_dias",
+      "tipo": "inteiro",
+      "ajuda": "Olhamos para trás quantos dias para descobrir o que vende? A janela medida tem cerca de 180 vendas assinadas; em 30 dias seriam cerca de 25 — evidência de menos para sustentar perfis.",
+      "grupo": "quem_entra_perfil",
       "obrigatorio": true,
-      "minimo": 0.0,
-      "maximo": 1.0,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": null
-    },
-    {
-      "caminho": "semelhanca.decaimento",
-      "tipo": "numero",
-      "ajuda": "Quanto o peso cai a cada degrau da ordem de dimensões adotada pela D-017 (preço > localização > metragem > dormitórios > vagas). A ORDEM é adotada; só esta magnitude é nula. Precisa ser menor que 1 para a ordem produzir efeito — foi a saturação por uma única dimensão (443 dos 475 super destaques puxados pelo mesmo perfil) que motivou a D-017.",
-      "grupo": "classificador_banco_imovel",
-      "obrigatorio": true,
-      "minimo": 0.0,
-      "maximo": 1.0,
-      "minimo_aberto": true,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 13 (decaimento do peso por dimensão do F1)"
-    },
-    {
-      "caminho": "intensidades.janela_sem_resultado",
-      "tipo": "numero",
-      "ajuda": "Quanto desconta da nota ter tido janela de destaque anterior sem resultado.",
-      "grupo": "descontos",
-      "obrigatorio": true,
-      "minimo": 0.0,
+      "minimo": 1,
       "maximo": null,
       "minimo_aberto": false,
       "escolhas": null,
       "exige": null,
-      "pendencia": "nº 3 (intensidade das três penalidades)"
+      "pendencia": null,
+      "unidade": "dias",
+      "adotado": 180,
+      "se_aumentar": "Mais vendas sustentam os perfis, mas o padrão fica menos recente."
     },
     {
-      "caminho": "intensidades.sem_avaliacao_por_categoria",
-      "tipo": "numero",
-      "ajuda": "Quanto desconta da nota não ter avaliação na categoria.",
-      "grupo": "descontos",
+      "caminho": "corretor.login_janela_dias",
+      "tipo": "inteiro",
+      "ajuda": "Gestor que não entra no sistema há mais dias que isto conta como 'sem login': o relaxamento não traz de volta os imóveis dele (D-029).",
+      "grupo": "quem_entra_corretor",
       "obrigatorio": true,
-      "minimo": 0.0,
+      "minimo": 1,
       "maximo": null,
       "minimo_aberto": false,
       "escolhas": null,
       "exige": null,
-      "pendencia": "nº 3 (intensidade das três penalidades)"
+      "pendencia": null,
+      "unidade": "dias",
+      "adotado": 30,
+      "se_aumentar": "Menos gestores contam como sem login; o relaxamento trava menos imóveis."
     },
     {
-      "caminho": "intensidades.sem_lead_180d",
-      "tipo": "numero",
-      "ajuda": "Quanto desconta da nota não ter recebido nenhum lead em 180 dias.",
-      "grupo": "descontos",
+      "caminho": "corretor.minimo_no_distrito",
+      "tipo": "inteiro",
+      "ajuda": "Quantos corretores ativos (captaram ou venderam em 30 dias) o distrito precisa ter para os imóveis dele entrarem. Passar de 3 para 2 elevou a cobertura de vendas de 62% para 75% e os distritos elegíveis de 39 para 61 (D-015).",
+      "grupo": "quem_entra_corretor",
       "obrigatorio": true,
-      "minimo": 0.0,
+      "minimo": 1,
       "maximo": null,
       "minimo_aberto": false,
       "escolhas": null,
       "exige": null,
-      "pendencia": "nº 3 (intensidade das três penalidades)"
+      "pendencia": null,
+      "unidade": "corretores",
+      "adotado": 2,
+      "se_aumentar": "Exige distritos com mais equipe: menos imóveis entram, mais concentrados."
     },
     {
-      "caminho": "decaimento_janela.forma",
+      "caminho": "portal.peso_nota",
+      "tipo": "inteiro",
+      "ajuda": "Quanto a nota do anúncio no portal pesa na ordem. Os três pesos somam 100.",
+      "grupo": "em_que_ordem_portal",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": 100,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null,
+      "unidade": "pontos de 100",
+      "adotado": 70,
+      "se_aumentar": "A ordem passa a seguir mais a qualidade do anúncio que o interesse medido."
+    },
+    {
+      "caminho": "portal.peso_cliques",
+      "tipo": "inteiro",
+      "ajuda": "Quanto os cliques no anúncio (contato, telefone, WhatsApp, proposta, agendamento, somados) pesam na ordem. É intenção de compra, não curiosidade.",
+      "grupo": "em_que_ordem_portal",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": 100,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null,
+      "unidade": "pontos de 100",
+      "adotado": 30,
+      "se_aumentar": "Anúncio com clique sobe mesmo com nota baixa; sinal fraco hoje, quase todos zero."
+    },
+    {
+      "caminho": "portal.peso_visualizacoes",
+      "tipo": "inteiro",
+      "ajuda": "Quanto as visualizações pesam. Medido zero em 300 de 300 anúncios em 03/09/2026: o peso adotado é zero, declarado — não omitido. Volta a valer quando o raspador achar o campo.",
+      "grupo": "em_que_ordem_portal",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": 100,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null,
+      "unidade": "pontos de 100",
+      "adotado": 0,
+      "se_aumentar": "Hoje, nada: o campo vem zerado do portal, e o peso cairia num sinal vazio."
+    },
+    {
+      "caminho": "portal.cobertura_minima",
+      "tipo": "numero",
+      "ajuda": "A raspagem precisa cobrir pelo menos esta fração dos candidatos para a ordem vir do portal. Abaixo disso a ordem cai para o desempate de banco e a rodada declara.",
+      "grupo": "em_que_ordem_portal",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": 100,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null,
+      "unidade": "%",
+      "adotado": 50,
+      "se_aumentar": "Exige raspagem mais completa; mais rodadas saem sem ordem de portal."
+    },
+    {
+      "caminho": "portal.idade_maxima_dias",
+      "tipo": "inteiro",
+      "ajuda": "Dado do portal mais velho que isto não entra. A rodada raspa no mesmo dia; 2 tolera um retry sem aceitar dado da semana passada.",
+      "grupo": "em_que_ordem_portal",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": null,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null,
+      "unidade": "dias",
+      "adotado": 2,
+      "se_aumentar": "Aceita raspagem mais velha; a ordem pode refletir a semana anterior."
+    },
+    {
+      "caminho": "portal.sem_anuncio",
       "tipo": "escolha",
-      "ajuda": "Como a penalidade por janela anterior decai ao longo dos ciclos (Spec §6.4). Uma forma só: geométrica.",
-      "grupo": "descontos",
+      "ajuda": "O que vale o imóvel elegível que a raspagem não trouxe: 'fim_da_fila' recebe o pior sinal de quem tem anúncio; 'mediana' recebe o do meio. Antes era zero em silêncio.",
+      "grupo": "em_que_ordem_portal",
       "obrigatorio": true,
       "minimo": null,
       "maximo": null,
       "minimo_aberto": false,
       "escolhas": [
-        "geometrica"
+        "fim_da_fila",
+        "mediana"
       ],
       "exige": null,
-      "pendencia": "nº 3 (decaimento da penalidade por janela)"
+      "pendencia": null,
+      "unidade": "",
+      "adotado": "fim_da_fila",
+      "se_aumentar": ""
     },
     {
-      "caminho": "decaimento_janela.razao",
-      "tipo": "numero",
-      "ajuda": "Fator por ciclo: o desconto vale razao elevado ao número de ciclos desde a janela sem resultado mais recente. Razão 1 é aceita e significa NÃO decair — o que diverge da Spec §6.4, e a rodada declara essa divergência na planilha em vez de fingir que ela não existe.",
-      "grupo": "descontos",
-      "obrigatorio": true,
-      "minimo": 0.0,
-      "maximo": 1.0,
-      "minimo_aberto": true,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 3 (decaimento da penalidade por janela)"
-    },
-    {
-      "caminho": "pesos.super_destaque.semelhanca_perfil",
-      "tipo": "inteiro",
-      "ajuda": "Semelhança com o perfil de conversão (F1). Os quatro pesos do nível somam exatamente 100.",
-      "grupo": "mistura_por_nivel",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
-    },
-    {
-      "caminho": "pesos.super_destaque.leads_positivo",
-      "tipo": "inteiro",
-      "ajuda": "Leads recebidos (F2). Os quatro pesos do nível somam exatamente 100.",
-      "grupo": "mistura_por_nivel",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
-    },
-    {
-      "caminho": "pesos.super_destaque.desempenho_proprio",
-      "tipo": "inteiro",
-      "ajuda": "Desempenho de portal observado (F3). Os quatro pesos do nível somam exatamente 100.",
-      "grupo": "mistura_por_nivel",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
-    },
-    {
-      "caminho": "pesos.super_destaque.produtividade_gestor",
-      "tipo": "inteiro",
-      "ajuda": "Produtividade do gestor do distrito (F4). Os quatro pesos do nível somam exatamente 100.",
-      "grupo": "mistura_por_nivel",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
-    },
-    {
-      "caminho": "pesos.destaque.semelhanca_perfil",
-      "tipo": "inteiro",
-      "ajuda": "Semelhança com o perfil de conversão (F1). Os quatro pesos do nível somam exatamente 100.",
-      "grupo": "mistura_por_nivel",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
-    },
-    {
-      "caminho": "pesos.destaque.leads_positivo",
-      "tipo": "inteiro",
-      "ajuda": "Leads recebidos (F2). Os quatro pesos do nível somam exatamente 100.",
-      "grupo": "mistura_por_nivel",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
-    },
-    {
-      "caminho": "pesos.destaque.desempenho_proprio",
-      "tipo": "inteiro",
-      "ajuda": "Desempenho de portal observado (F3). Os quatro pesos do nível somam exatamente 100.",
-      "grupo": "mistura_por_nivel",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
-    },
-    {
-      "caminho": "pesos.destaque.produtividade_gestor",
-      "tipo": "inteiro",
-      "ajuda": "Produtividade do gestor do distrito (F4). Os quatro pesos do nível somam exatamente 100.",
-      "grupo": "mistura_por_nivel",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 12 (pesos dos quatro fatores do ranking, por nível)"
-    },
-    {
-      "caminho": "externo.limiar_amarracao",
-      "tipo": "numero",
-      "ajuda": "Fração mínima dos candidatos que precisa ter anúncio correspondente na raspagem para o desempenho de portal ENTRAR no ranking. Abaixo dela o fator não entra e a rodada sai degradada, com o motivo declarado.",
-      "grupo": "classificador_raspagem",
-      "obrigatorio": true,
-      "minimo": 0.0,
-      "maximo": 1.0,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 7 (limiar mínimo de taxa de amarração)"
-    },
-    {
-      "caminho": "externo.idade_maxima_dias",
-      "tipo": "inteiro",
-      "ajuda": "Idade máxima aceitável da coleta externa, em dias, contada da data de referência da rodada. Mais velha que isso, o fator de portal não entra.",
-      "grupo": "classificador_raspagem",
-      "obrigatorio": true,
-      "minimo": 0,
-      "maximo": null,
-      "minimo_aberto": false,
-      "escolhas": null,
-      "exige": null,
-      "pendencia": "nº 5 (idade máxima da coleta externa de reserva)"
-    },
-    {
-      "caminho": "externo.desempenho.forma",
+      "caminho": "portal.ordem_quando_nao_entra",
       "tipo": "escolha",
-      "ajuda": "Como o sinal de desempenho é composto a partir do que a raspagem traz por anúncio. Cliques NUNCA são somados entre tipos: tipos diferentes medem intenções diferentes.",
-      "grupo": "classificador_raspagem",
+      "ajuda": "Se a raspagem não entrar (cobertura baixa, dado velho, sessão caída), o que ordena: leads em 180 dias, produtividade do gestor, ou só o cadastro mais novo.",
+      "grupo": "em_que_ordem_portal",
       "obrigatorio": true,
       "minimo": null,
       "maximo": null,
       "minimo_aberto": false,
       "escolhas": [
-        "visualizacoes",
-        "nota",
-        "cliques_do_tipo"
+        "leads_180d",
+        "produtividade_gestor",
+        "cadastro_mais_novo"
       ],
       "exige": null,
-      "pendencia": null
+      "pendencia": null,
+      "unidade": "",
+      "adotado": "leads_180d",
+      "se_aumentar": ""
     },
     {
-      "caminho": "externo.desempenho.quando_ausente",
+      "caminho": "desconto.janela_sem_resultado",
       "tipo": "numero",
-      "ajuda": "Valor do anúncio SEM nota. Obrigatório quando a forma é 'nota', e a escolha é declarada de propósito: um zero implícito puniria a ausência do dado como se fosse desempenho ruim.",
-      "grupo": "classificador_raspagem",
+      "ajuda": "Quanto desconta ter ocupado posição paga e não ter atingido o resultado esperado. Inerte enquanto a régua nº 14 for nula — a planilha diz isso em toda linha.",
+      "grupo": "em_que_ordem_descontos",
       "obrigatorio": true,
-      "minimo": null,
-      "maximo": null,
+      "minimo": 0,
+      "maximo": 100,
       "minimo_aberto": false,
       "escolhas": null,
-      "exige": [
-        "externo.desempenho.forma",
-        "nota"
-      ],
-      "pendencia": null
+      "exige": null,
+      "pendencia": null,
+      "unidade": "pontos de 100",
+      "adotado": 20,
+      "se_aumentar": "Imóvel que já falhou numa janela cai mais na ordem (quando a régua existir)."
     },
     {
-      "caminho": "externo.desempenho.tipo",
-      "tipo": "escolha",
-      "ajuda": "Qual clique conta como desempenho. Obrigatório quando a forma é 'cliques_do_tipo'.",
-      "grupo": "classificador_raspagem",
+      "caminho": "desconto.sem_avaliacao",
+      "tipo": "numero",
+      "ajuda": "Quanto desconta não ter nenhuma avaliação por categoria. Baixo de propósito: o pipeline morreu em 16/10/2025 e 99,76% do estoque novo não tem nota.",
+      "grupo": "em_que_ordem_descontos",
       "obrigatorio": true,
-      "minimo": null,
-      "maximo": null,
+      "minimo": 0,
+      "maximo": 100,
       "minimo_aberto": false,
-      "escolhas": [
-        "cliqueAgendamento",
-        "cliqueContato",
-        "cliqueProposta",
-        "cliqueTelefone",
-        "cliqueWhatsapp"
-      ],
-      "exige": [
-        "externo.desempenho.forma",
-        "cliques_do_tipo"
-      ],
-      "pendencia": null
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null,
+      "unidade": "pontos de 100",
+      "adotado": 5,
+      "se_aumentar": "Pune o estoque novo por um defeito da base."
+    },
+    {
+      "caminho": "desconto.sem_lead_180d",
+      "tipo": "numero",
+      "ajuda": "Quanto desconta não ter recebido nenhum lead em 180 dias.",
+      "grupo": "em_que_ordem_descontos",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": 100,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null,
+      "unidade": "pontos de 100",
+      "adotado": 10,
+      "se_aumentar": "Imóvel sem lead recente cai mais na ordem."
+    },
+    {
+      "caminho": "desconto.perdao_por_semana",
+      "tipo": "numero",
+      "ajuda": "Quanto o desconto da janela anterior encolhe a cada carga aprovada. 50% = cai pela metade por semana e some em cerca de três. 0% = nunca perdoa, o que diverge da Spec §6.4 e a rodada declara.",
+      "grupo": "em_que_ordem_descontos",
+      "obrigatorio": true,
+      "minimo": 0,
+      "maximo": 100,
+      "minimo_aberto": false,
+      "escolhas": null,
+      "exige": null,
+      "pendencia": null,
+      "unidade": "% por carga",
+      "adotado": 50,
+      "se_aumentar": "O tropeço passado é esquecido mais rápido."
     },
     {
       "caminho": "resultado_esperado.super_destaque",
       "tipo": "inteiro",
-      "ajuda": "Quantos leads a janela de SUPER DESTAQUE precisa ter gerado para não ser penalizada (Spec §6.4). Seção OPCIONAL: omitida, o limiar é nulo, nenhuma janela é julgada e a planilha declara isso — porque não penalizar por falta de régua não é o mesmo que passar no critério. Se declarar, declare os DOIS níveis, e este precisa ser MAIOR que o de destaque.",
-      "grupo": "historico",
+      "ajuda": "Quantos leads a janela de SUPER DESTAQUE precisa ter gerado para não ser descontada (Spec §6.4). NULA por decisão do dono (04/09/2026). Se declarar, declare os DOIS níveis, e este MAIOR que o de destaque.",
+      "grupo": "quantos",
       "obrigatorio": false,
       "minimo": 1,
       "maximo": null,
       "minimo_aberto": false,
       "escolhas": null,
       "exige": null,
-      "pendencia": "nº 14 (resultado esperado por nível, §6.4)"
+      "pendencia": "nº 14 (resultado esperado por nível, §6.4)",
+      "unidade": "leads",
+      "adotado": null,
+      "se_aumentar": "Mais janelas de super destaque contam como sem resultado."
     },
     {
       "caminho": "resultado_esperado.destaque",
       "tipo": "inteiro",
-      "ajuda": "Quantos leads a janela de DESTAQUE precisa ter gerado para não ser penalizada. Ver a observação do nível acima: os dois, ou nenhum.",
-      "grupo": "historico",
+      "ajuda": "Quantos leads a janela de DESTAQUE precisa ter gerado para não ser descontada. NULA por decisão do dono. Os dois níveis, ou nenhum.",
+      "grupo": "quantos",
       "obrigatorio": false,
       "minimo": 1,
       "maximo": null,
       "minimo_aberto": false,
       "escolhas": null,
       "exige": null,
-      "pendencia": "nº 14 (resultado esperado por nível, §6.4)"
+      "pendencia": "nº 14 (resultado esperado por nível, §6.4)",
+      "unidade": "leads",
+      "adotado": null,
+      "se_aumentar": "Mais janelas de destaque contam como sem resultado (88% geraram zero)."
     }
   ],
   "regras": [
     {
       "tipo": "soma_igual",
-      "descricao": "Os quatro pesos de super_destaque somam exatamente 100.",
+      "descricao": "Os três pesos do portal somam exatamente 100.",
       "campos": [
-        "pesos.super_destaque.semelhanca_perfil",
-        "pesos.super_destaque.leads_positivo",
-        "pesos.super_destaque.desempenho_proprio",
-        "pesos.super_destaque.produtividade_gestor"
-      ],
-      "valor": 100
-    },
-    {
-      "tipo": "soma_igual",
-      "descricao": "Os quatro pesos de destaque somam exatamente 100.",
-      "campos": [
-        "pesos.destaque.semelhanca_perfil",
-        "pesos.destaque.leads_positivo",
-        "pesos.destaque.desempenho_proprio",
-        "pesos.destaque.produtividade_gestor"
+        "portal.peso_nota",
+        "portal.peso_cliques",
+        "portal.peso_visualizacoes"
       ],
       "valor": 100
     },
     {
       "tipo": "todos_ou_nenhum",
-      "descricao": "A seção [resultado_esperado] é opcional, mas indivisível: ou os dois níveis, ou nenhum. Meio-declarada julgaria metade das janelas e deixaria a outra metade sem julgamento, com a planilha declarando limiar nulo numa rodada que penalizou parte do estoque.",
+      "descricao": "A régua de resultado é opcional, mas indivisível: ou os dois níveis, ou nenhum. Meio-declarada julgaria metade das janelas e deixaria a outra metade sem julgamento.",
       "campos": [
         "resultado_esperado.super_destaque",
         "resultado_esperado.destaque"
@@ -552,7 +403,7 @@
     },
     {
       "tipo": "maior_que",
-      "descricao": "resultado_esperado.super_destaque precisa ser MAIOR que destaque: o PRD fixa que o resultado esperado é proporcional ao nível.",
+      "descricao": "resultado_esperado.super_destaque precisa ser MAIOR que destaque: o resultado esperado é proporcional ao nível.",
       "campos": [
         "resultado_esperado.super_destaque",
         "resultado_esperado.destaque"
