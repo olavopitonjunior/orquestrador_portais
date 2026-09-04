@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { abaDoArquivo, responderDownload, type Leituras } from "../lib/download";
+import { TETO_BYTES } from "../lib/zip";
 
 const enc = new TextEncoder();
 const SENTINELA = "(sem linhas nesta rodada)\r\n";
@@ -93,4 +94,55 @@ test("a resposta nunca cita caminho do servidor", async () => {
     const r = await responderDownload(id, arq, leituras());
     assert.doesNotMatch(await r.text(), /\/Users|\/home|saida\/sexta/);
   }
+});
+
+test("todas.zip: empacota só as abas com conteúdo, com nome carimbado pela data", async () => {
+  const r = await responderDownload("15474", "todas.zip", leituras());
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get("content-type"), "application/zip");
+  assert.equal(r.headers.get("content-disposition"), 'attachment; filename="rodada-15474-planilha-2026-09-03.zip"');
+  const z = new Uint8Array(await r.arrayBuffer());
+  const dv = new DataView(z.buffer);
+  assert.equal(dv.getUint32(0, true), 0x04034b50);
+  // duas entradas: super_destaque e relaxamento (destaque tem 0 bytes; as outras faltam)
+  assert.equal(dv.getUint16(z.length - 22 + 10, true), 2);
+  const texto = new TextDecoder().decode(z);
+  assert.match(texto, /super_destaque\.csv/);
+  assert.match(texto, /relaxamento\.csv/);
+  // "destaque.csv" só aparece como sufixo de "super_destaque.csv"
+  assert.doesNotMatch(texto, /(^|[^_])destaque\.csv/);
+});
+
+test("todas.zip com nenhuma aba em disco → 404, não um zip vazio", async () => {
+  const r = await responderDownload("15474", "todas.zip", leituras({ bytesDaAba: async () => null }));
+  assert.equal(r.status, 404);
+  assert.match(await r.text(), /sem planilha em disco/);
+});
+
+test("todas.zip é determinístico para o mesmo conteúdo", async () => {
+  const a = new Uint8Array(await (await responderDownload("15474", "todas.zip", leituras())).arrayBuffer());
+  const b = new Uint8Array(await (await responderDownload("15474", "todas.zip", leituras())).arrayBuffer());
+  assert.deepEqual(a, b);
+});
+
+test("o 404 de arquivo desconhecido cita todas.zip", async () => {
+  const r = await responderDownload("15474", "outra.csv", leituras());
+  assert.match(await r.text(), /todas\.zip/);
+});
+
+test("todas.zip acima do teto → 413 com o erro no log e sem detalhe no corpo", async () => {
+  const registrados: string[] = [];
+  // `length` forjado: a conta do teto lê só `dados.length`, e falha antes de copiar.
+  const gigante = { length: TETO_BYTES } as unknown as Uint8Array;
+  const r = await responderDownload("15474", "todas.zip", leituras({
+    bytesDaAba: async (_d, aba) => (aba === "super_destaque" ? gigante : null),
+    registrar: (m) => registrados.push(m),
+  }));
+  assert.equal(r.status, 413);
+  assert.equal(r.headers.get("cache-control"), "no-store");
+  const corpo = await r.text();
+  assert.match(corpo, /aba por aba/);
+  assert.doesNotMatch(corpo, /\/Users|TETO|bytes/);
+  assert.equal(registrados.length, 1);
+  assert.match(registrados[0], /acima do teto/);
 });
