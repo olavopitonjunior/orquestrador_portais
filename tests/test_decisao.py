@@ -510,3 +510,37 @@ def test_ordem_dos_candidatos_embaralhada_nao_muda_nada():
         assert r.relaxamento == referencia.relaxamento
         assert r.detalhes == referencia.detalhes
         assert r.reprovados_regras == referencia.reprovados_regras
+
+
+# --- cobertura pedida pelo re-review de 04/09/2026 ------------------------------------
+
+
+def test_sem_deficit_o_pool_e_montado_e_a_trava_do_login_e_contada_na_costura():
+    """O pool do relaxamento é montado MESMO sem déficit: a trava do login (D-029) é
+    fato sobre os candidatos, e a apuração precisa da nota dos reprovados. Aqui a
+    cota de destaque é preenchida exatamente por elegíveis (déficit 0) e o único
+    reprovado — gestor improdutivo e sem login — ainda assim é contado e detalhado."""
+    from dominio.alocacao import COTA_DESTAQUE, COTA_SUPER_DESTAQUE
+
+    n = COTA_SUPER_DESTAQUE + COTA_DESTAQUE
+    cands = [_candidato(i) for i in range(1, n + 1)]
+    travado = n + 1
+    cands.append(_candidato(travado, gestor=False, produtividade=0, logou=False))
+    r = _rodar(cands, {c.imovel_id: _dims() for c in cands})
+    assert len(r.alocacao.destaque) == COTA_DESTAQUE  # déficit zero
+    assert r.relaxamento.recuperados == () and r.relaxamento.deficit_restante == 0
+    assert r.relaxamento.bloqueados_por_login == 1
+    assert travado in r.detalhes and r.detalhes[travado].nota_super_destaque is None
+
+
+def test_cadastro_mais_novo_tambem_governa_o_desempate_do_pool_de_relaxamento():
+    """`_desempate` alimenta os dois lados. Sob `cadastro_mais_novo` sem portal, dois
+    reprovados em fotos com leads opostos são recuperados na ordem do id (o mais
+    novo primeiro), e sob `leads_180d` na ordem dos leads."""
+    cands = [_candidato(1, elegivel=False), _candidato(2, elegivel=False)]
+    dims = {1: _dims(), 2: _dims()}
+    leads = {1: 50, 2: 5}
+    por_id = _rodar(cands, dims, params=_params(ordem_sem_portal="cadastro_mais_novo"), leads=leads)
+    assert [x.imovel_id for x in por_id.relaxamento.recuperados] == [2, 1]
+    por_leads = _rodar(cands, dims, params=_params(ordem_sem_portal="leads_180d"), leads=leads)
+    assert [x.imovel_id for x in por_leads.relaxamento.recuperados] == [1, 2]
