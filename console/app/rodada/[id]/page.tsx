@@ -214,7 +214,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       </header>
 
       {amostral ? (
-        <div className="banner" role="alert">
+        <div className="banner banner-com-icone" role="alert">
           <IconeAlerta />
           <div>
             <b>Rodada amostral.</b> O universo foi restrito aos {recorte?.imoveis ?? "?"} imóveis que

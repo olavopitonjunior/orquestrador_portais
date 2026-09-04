@@ -30,12 +30,13 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from config.contrato import CAMPOS, PENDENTE_DE, REGRAS, Campo, contrato
+from config.contrato import CAMPOS, GRUPOS, PENDENTE_DE, REGRAS, Campo, contrato
 from config.parametros import ParametroAusente, ParametroInvalido, carregar
 from executar.contrato import main as main_contrato
 
@@ -337,3 +338,56 @@ def test_o_comando_emite_o_contrato(capsys: pytest.CaptureFixture[str]):
     aninhar `uv run` dentro da suíte a prenderia ao gerenciador de pacotes."""
     assert main_contrato([]) == 0
     assert json.loads(capsys.readouterr().out) == contrato()
+
+
+# --- B1: a taxonomia do formulário -------------------------------------------------
+
+
+def test_os_grupos_sao_uma_sequencia_unica_e_contigua():
+    ordens = [g.ordem for g in GRUPOS]
+    assert ordens == list(range(1, len(GRUPOS) + 1)), "ordem = 1..N, na ordem da tupla"
+    assert len({g.id for g in GRUPOS}) == len(GRUPOS)
+
+
+def test_todo_campo_aponta_para_um_grupo_que_existe():
+    ids = {g.id for g in GRUPOS}
+    for c in CAMPOS:
+        assert c.grupo in ids, c.caminho
+
+
+def test_um_campo_com_grupo_inexistente_e_recusado_na_construcao():
+    from config.contrato import _campo
+
+    with pytest.raises(ValueError, match="grupo inexistente"):
+        _campo("x.y", "numero", "ajuda", grupo="nao_existe")
+
+
+def test_nenhum_grupo_e_vazio():
+    """Cada seção mostra ALGO: campos, regras fixas ou pendentes sem campo. Uma seção
+    sem nada seria um título sem explicação — o defeito que o dono apontou."""
+    com_campo = {c.grupo for c in CAMPOS}
+    for g in GRUPOS:
+        assert g.explicacao.strip(), g.id
+        assert g.id in com_campo or g.fixos_no_codigo or g.pendentes_sem_campo, g.id
+
+
+def test_os_pendentes_sem_campo_nao_repetem_os_que_tem_campo():
+    """O número de um parâmetro pendente aparece ou como campo (via `pendencia`) ou como
+    `pendentes_sem_campo` — nunca nos dois, e nunca em dois grupos."""
+    com_campo: set[int] = set()
+    for c in CAMPOS:
+        if c.pendencia:
+            m = re.match(r"nº (\d+)", c.pendencia)
+            assert m, c.pendencia
+            com_campo.add(int(m.group(1)))
+    sem_campo: list[int] = [n for g in GRUPOS for n in g.pendentes_sem_campo]
+    assert len(sem_campo) == len(set(sem_campo)), "número em dois grupos"
+    assert not com_campo & set(sem_campo), com_campo & set(sem_campo)
+    # Os catorze pendentes da tabela do CLAUDE.md (nº 2 a nº 15), todos alcançados.
+    assert com_campo | set(sem_campo) == set(range(2, 16))
+
+
+def test_o_contrato_emite_os_grupos_na_ordem():
+    saida = contrato()
+    assert [g["id"] for g in saida["grupos"]] == [g.id for g in GRUPOS]
+    assert all("grupo" in c for c in saida["campos"])

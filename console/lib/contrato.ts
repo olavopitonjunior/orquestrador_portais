@@ -13,10 +13,38 @@ import contratoJson from "./contrato-parametros.json";
 
 export type TipoCampo = "inteiro" | "numero" | "escolha";
 
+export type Funcao =
+  | "contrato"
+  | "excludente"
+  | "condicao_de_nivel"
+  | "relaxamento"
+  | "classificador"
+  | "desconto"
+  | "operacao";
+export type Fonte = "contrato" | "banco_imovel" | "banco_corretor" | "raspagem" | "registro";
+
+/** Uma seção do formulário, na ordem em que a decisão acontece — vem do contrato
+ *  gerado, como os campos. O console não tem taxonomia própria: tinha
+ *  (`TITULO_DA_SECAO` + `secaoDe`), e duas taxonomias divergem. */
+export type Grupo = {
+  id: string;
+  ordem: number;
+  titulo: string;
+  funcao: Funcao;
+  fontes: Fonte[];
+  explicacao: string;
+  /** Regras da seção que hoje são constantes (PRD/Spec): exibição, nunca default. */
+  fixos_no_codigo: string[];
+  /** Números dos parâmetros pendentes desta seção que ainda não têm campo no TOML. */
+  pendentes_sem_campo: number[];
+};
+
 export type Campo = {
   caminho: string;
   tipo: TipoCampo;
   ajuda: string;
+  /** O id do `Grupo` a que o campo pertence. */
+  grupo: string;
   obrigatorio: boolean;
   minimo: number | null;
   maximo: number | null;
@@ -40,22 +68,13 @@ export type RegraCruzada = {
   valor: number | null;
 };
 
+export const GRUPOS: Grupo[] = [...(contratoJson.grupos as Grupo[])].sort((a, b) => a.ordem - b.ordem);
 export const CAMPOS: Campo[] = contratoJson.campos as Campo[];
 export const REGRAS: RegraCruzada[] = contratoJson.regras as RegraCruzada[];
 
 export const POR_CAMINHO: ReadonlyMap<string, Campo> = new Map(
   CAMPOS.map((c) => [c.caminho, c]),
 );
-
-/** A seção a que o campo pertence, para agrupar o formulário. `pesos.super_destaque`
- *  e `pesos.destaque` são seções distintas de propósito: os dois níveis perseguem
- *  objetivos diferentes, e essa assimetria é a parte do modelo que o dono precisa
- *  preservar ao decidir. */
-export function secaoDe(campo: Campo | string): string {
-  const caminho = typeof campo === "string" ? campo : campo.caminho;
-  const partes = caminho.split(".");
-  return partes.length > 2 ? partes.slice(0, 2).join(".") : partes[0];
-}
 
 /** A ÚNICA noção de igualdade para valor de escolha.
  *
