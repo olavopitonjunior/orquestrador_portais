@@ -364,7 +364,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <>
           <p className="nota" style={{ margin: 0 }}>
             Lida de <code>{planilha.diretorio}</code>. Atenção: a planilha é por DATA — duas rodadas
-            no mesmo dia escrevem no mesmo lugar, e o que está em disco é a última.
+            no mesmo dia escrevem no mesmo lugar, e o que está em disco é a última. Cada aba tem
+            o botão "Baixar CSV": o arquivo vai como foi entregue (UTF-8, sem BOM) — o Google
+            Sheets importa direto; no Excel use "Dados › De texto/CSV" para acentos e vírgulas
+            saírem certos.
           </p>
           {planilha.ausentes.length ? (
             <div className="banner" role="alert">
@@ -381,7 +384,20 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     {aba.replace(/_/g, " ")}{" "}
                     <span className="pill pill-muted">{t.vazia || t.semConteudo ? "0" : t.linhas.length.toLocaleString("pt-BR")}</span>
                   </h2>
-                  <span className="nota" style={{ maxWidth: 640 }}>{SOBRE_A_ABA[aba]}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+                    <span className="nota" style={{ maxWidth: 560 }}>{SOBRE_A_ABA[aba]}</span>
+                    {/* Só quando há arquivo com conteúdo: aba ausente ou de 0 bytes não ganha
+                        link — a rota devolveria 404, e o alarme da tela é o que importa. */}
+                    {t.semConteudo ? null : (
+                      <a
+                        className="botao-secundario botao-pequeno"
+                        href={`/rodada/${rodada.id}/planilha/${aba}.csv`}
+                        download={`rodada-${rodada.id}-${aba}.csv`}
+                      >
+                        Baixar CSV
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <Tabela aba={aba} t={t} />
               </section>

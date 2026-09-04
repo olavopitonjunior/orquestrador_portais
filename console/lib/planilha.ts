@@ -116,10 +116,29 @@ export async function datasComPlanilha(): Promise<string[]> {
   }
 }
 
+const DATA_VALIDA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Os bytes CRUS de uma aba, para download — o artefato como foi entregue, sem BOM,
+ *  sem reescrita. É o ÚNICO outro lugar que transforma data em caminho, e reaplica as
+ *  duas guardas de `lerPlanilha`: a data só vira caminho se for `AAAA-MM-DD`, e a aba
+ *  só se estiver na lista fechada `ABAS`. `null` para data inválida, aba desconhecida
+ *  ou arquivo ausente — o chamador decide o que dizer. Um arquivo de 0 bytes volta
+ *  como Buffer vazio de propósito: é `semConteudo`, não "sem linhas", e quem serve
+ *  precisa distinguir em vez de entregar um CSV vazio como se fosse planilha. */
+export async function arquivoDaAba(data: string, aba: string): Promise<Buffer | null> {
+  if (!DATA_VALIDA.test(data)) return null;
+  if (!(ABAS as readonly string[]).includes(aba)) return null;
+  try {
+    return await readFile(resolve(raizDaSaida(), data, `${aba}.csv`));
+  } catch {
+    return null;
+  }
+}
+
 /** A planilha de UMA data. `null` se o diretório não existe. O nome da data é
  *  validado antes de virar caminho: nada além de `AAAA-MM-DD` chega ao disco. */
 export async function lerPlanilha(data: string): Promise<Planilha | null> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return null;
+  if (!DATA_VALIDA.test(data)) return null;
   const diretorio = resolve(raizDaSaida(), data);
   try {
     if (!(await stat(diretorio)).isDirectory()) return null;
