@@ -129,9 +129,9 @@ def _recorte_da_raspagem(externo: Path) -> tuple[frozenset[int], ColetaExterna]:
     if not ids:
         raise RecorteVazio(
             f"recorte pela raspagem VAZIO: {coleta.total_linhas} linhas lidas em {externo}, "
-            f"{coleta.sem_amarracao} sem código numérico, estado {coleta.estado!r} — nenhum "
-            "imóvel amarrou, não há amostra sobre a qual decidir. Confira o formato do "
-            "codigoImovel (externalId) contra o id do Newcore"
+            f"{coleta.sem_amarracao} fora do formato {{Id}}{{letra}}, estado {coleta.estado!r} — "
+            "nenhum imóvel amarrou, não há amostra sobre a qual decidir. Confira o "
+            "codigoImovel (externalId): o formato esperado é {Id}{letra}"
         )
     return ids, coleta
 

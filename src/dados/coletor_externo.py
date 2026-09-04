@@ -13,9 +13,14 @@ performance + amarração (o RECIPE exclui endereço/imagens), então nada de da
 pessoal transita aqui.
 
 Amarração: a coluna `codigoImovel` (externalId) casa com o `imovel_id` interno
-(`realties.Id`). Assume-se o id NUMÉRICO do Newcore (papel do externalId no
-RECIPE); uma linha sem `codigoImovel`, ou de formato não-numérico, não amarra e
-conta como `sem_amarracao`. `_imovel_id_de` é a única costura desse formato.
+(`realties.Id`). O formato REAL, visto na primeira raspagem (03/09/2026 à noite, 300 de 300):
+`{Id}{letra}` — seis dígitos e uma letra maiúscula (ex.: `431347A`). O prefixo é o
+`realties.Id`; a letra varia entre anúncios do mesmo dia (21 letras em 300) e é o
+marcador de rotação de marketing do portal, não parte da chave — é o
+`realties.NewIdMarketingRotation` (300 de 300 iguais; registrado em
+`docs/mapa-de-dados.md`), o id sob o qual a Newcore republica o anúncio. `_imovel_id_de` é a
+única costura desse formato: dígitos ASCII, uma letra opcional, nada mais; o que não
+casar conta como `sem_amarracao`.
 
 URL vem sempre vazia da listagem do Canal Pro (lacuna documentada); preservada
 como None, não é recuperável depois. Os cliques ficam por tipo, NUNCA somados
@@ -26,10 +31,12 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime, tzinfo
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 # Colunas do CSV, na ordem exata do raspador (canalpro.ts csvColumns).
 COLUNAS = (
@@ -59,6 +66,12 @@ CLIQUES = (
     "cliqueAgendamento",
 )
 NEEDS_WARM_FLAG = "NEEDS_WARM.flag"
+# O fuso em que a IDADE da coleta é medida. Fato operacional (a máquina do gestor roda
+# aqui — CLAUDE.md, "hospedagem na máquina física do gestor"), não parâmetro de decisão;
+# FIXO e nomeado, nunca o fuso do SO: `astimezone()` sem argumento leria o ambiente, e a
+# mesma coleta com o mesmo `--hoje` daria idade diferente noutra máquina (invariante 5 —
+# o revisor provou com TZ=Pacific/Pago_Pago).
+FUSO_DA_OPERACAO: tzinfo = ZoneInfo("America/Sao_Paulo")
 
 
 @dataclass(frozen=True)
@@ -85,14 +98,21 @@ class ColetaExterna:
     coletado_em: datetime | None  # finishedAt do status.json (idade é derivada)
     por_imovel: Mapping[int, DesempenhoAnuncio]
     total_linhas: int  # linhas lidas do CSV (antes de dedupe por imóvel)
-    sem_amarracao: int  # linhas sem codigoImovel numérico (não amarraram)
+    sem_amarracao: int  # linhas com codigoImovel fora do formato {Id}{letra} (não amarraram)
+
+
+# Dígitos ASCII (não `\d`, não `isdigit()`: "²" e "١" não são ids) e UMA letra MAIÚSCULA
+# opcional — o marcador de rotação do portal. Minúscula, duas letras, hífen, espaço: não é
+# o formato, e "nada mais" é a promessa.
+_CODIGO_DO_PORTAL = re.compile(r"([0-9]+)[A-Z]?")
 
 
 def _imovel_id_de(codigo: str) -> int | None:
-    """Costura do formato da amarração: hoje assume o id numérico do Newcore. Um
-    código vazio ou não-numérico não amarra (retorna None)."""
-    codigo = codigo.strip()
-    return int(codigo) if codigo.isdigit() else None
+    """Costura do formato da amarração: `{realties.Id}{letra opcional}`. A primeira
+    versão exigia decimal puro e teria amarrado 0% do CSV real. Um código vazio ou
+    fora do formato não amarra (retorna None)."""
+    m = _CODIGO_DO_PORTAL.fullmatch(codigo.strip())
+    return int(m.group(1)) if m else None
 
 
 def _para_int(cell: str) -> int:
@@ -116,9 +136,12 @@ def _para_float(cell: str) -> float | None:
 
 
 def _para_datetime(iso: str | None) -> datetime | None:
+    """Sempre AWARE: o raspador escreve `toISOString()` (UTC com `Z`); um instante sem
+    offset é tratado como UTC, explicitamente — nunca como o fuso da máquina."""
     if not iso:
         return None
-    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 def ler_status(out_dir: Path) -> dict | None:
@@ -233,6 +256,9 @@ class ParametrosExterno:
     limiar_amarracao: float  # nº 7 (nulo): taxa mínima de amarração p/ entrar
     idade_maxima_dias: int  # nº 5 (nulo): idade máxima aceitável da coleta
     compor_desempenho: Callable[[DesempenhoAnuncio], float]  # sinal F3 (provisório)
+    # Fuso da medição da idade: entrada EXPLÍCITA, com default fixo e nomeado. Ver
+    # `FUSO_DA_OPERACAO`.
+    fuso: tzinfo = FUSO_DA_OPERACAO
 
 
 @dataclass(frozen=True)
@@ -263,10 +289,9 @@ def avaliar_coleta(
        Porta própria porque a de baixo não a cobre: com zero casados a taxa é 0.0,
        e `0.0 < 0.0` é falso — um limiar 0.0 (o que um piloto declararia) deixaria
        passar uma raspagem que não amarrou nada, e a rodada sairia COMPLETA com F3
-       = 0 para todos, indistinguível de "todos empatados". O `codigoImovel` real do
-       Canal Pro nunca foi visto (a fixture do raspador é sintética e não-numérica),
-       então esta é exatamente a falha mais provável da primeira rodada com
-       raspagem, e ela precisa sair DECLARADA;
+       = 0 para todos, indistinguível de "todos empatados". O formato real do
+       `codigoImovel` é `{Id}{letra}` (primeira raspagem, 03/09/2026); se o portal
+       o mudar, esta é a falha, e ela precisa sair DECLARADA;
     3. taxa de amarração < limiar (nº 7) → performance externa NÃO entra, sinaliza;
     4. idade > máxima (nº 5) → fora da janela aceitável → não entra (a "reserva"
        da Spec §7.3 — reusar a última coleta válida — é fatia futura; aqui só se
@@ -277,7 +302,15 @@ def avaliar_coleta(
     alvo = set(imoveis_alvo)  # uma vez: a taxa e a porta 2 contam sobre o mesmo conjunto
     n_casados = casados(coleta, alvo)
     taxa = n_casados / len(alvo) if alvo else 0.0
-    idade = (data_referencia - coleta.coletado_em.date()).days if coleta.coletado_em else None
+    # `finishedAt` é UTC (o raspador grava `toISOString()`), a data de referência é do
+    # fuso da operação: sem converter, uma coleta das 21h de hoje (00h de amanhã em UTC)
+    # sai com idade -1 — visto na primeira rodada real, 03/09/2026. Converte para
+    # `params.fuso` (explícito, fixo) ANTES de tirar a data — nunca para o fuso do SO.
+    idade = (
+        (data_referencia - coleta.coletado_em.astimezone(params.fuso).date()).days
+        if coleta.coletado_em
+        else None
+    )
 
     def _nao(motivo: str) -> ResultadoExterno:
         return ResultadoExterno(False, {}, taxa, idade, motivo)
@@ -286,10 +319,10 @@ def avaliar_coleta(
         return _nao(f"coleta externa {coleta.estado} — sem performance de portal")
     if n_casados == 0:
         return _nao(
-            f"raspagem lida ({coleta.total_linhas} linhas, {coleta.sem_amarracao} sem "
-            "código numérico), mas NENHUMA amarrou com a lista-alvo — performance externa "
-            "não entra. Não é 'todos iguais': é dado ausente. Confira o formato do "
-            "codigoImovel (externalId) contra o id do Newcore"
+            f"raspagem lida ({coleta.total_linhas} linhas, {coleta.sem_amarracao} fora "
+            "do formato {Id}{letra}), mas NENHUMA amarrou com a lista-alvo — performance "
+            "externa não entra. Não é 'todos iguais': é dado ausente. Confira o "
+            "codigoImovel (externalId): o formato esperado é {Id}{letra}"
         )
     if taxa < params.limiar_amarracao:
         return _nao(

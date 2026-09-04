@@ -80,20 +80,21 @@ test("amarração: conta numéricos, vazios e não numéricos, com exemplos", as
   comOut({
     "canalpro.csv": csv([
       ["idPortal", "codigoImovel", "nota"],
-      ["1", "123456", "8000"],
+      ["1", "431347A", "8000"], // o formato real: {Id}{letra}
       ["2", "IMOVEL-0001", "8000"],
       ["3", "", ""],
       ["4", "7890", ""],
       ["5", "7890", ""], // repetido: exemplo não duplica
+      ["6", "431347a", ""], // minúscula: fora do formato, como na rodada
     ]),
   });
   const a = await amarracaoDoCsv();
   assert.ok(a);
-  assert.equal(a.linhas, 5);
-  assert.equal(a.numericos, 3);
+  assert.equal(a.linhas, 6);
+  assert.equal(a.noFormato, 3);
   assert.equal(a.vazios, 1);
-  assert.equal(a.naoNumericos, 1);
-  assert.deepEqual(a.exemplos, ["123456", "IMOVEL-0001", "7890"]);
+  assert.equal(a.foraDoFormato, 2);
+  assert.deepEqual(a.exemplos, ["431347A", "IMOVEL-0001", "7890"]);
 });
 
 test("amarração: sem CSV → null; CSV só com cabeçalho → zeros", async () => {
@@ -101,7 +102,7 @@ test("amarração: sem CSV → null; CSV só com cabeçalho → zeros", async ()
   assert.equal(await amarracaoDoCsv(), null);
   comOut({ "canalpro.csv": csv([["idPortal", "codigoImovel"]]) });
   assert.deepEqual(await amarracaoDoCsv(), {
-    linhas: 0, numericos: 0, vazios: 0, naoNumericos: 0, exemplos: [],
+    linhas: 0, noFormato: 0, vazios: 0, foraDoFormato: 0, exemplos: [],
   });
 });
 
@@ -114,7 +115,7 @@ test("amarração: aspas escapadas e vírgula dentro da célula não deslocam a 
   });
   const a = await amarracaoDoCsv();
   assert.ok(a);
-  assert.equal(a.numericos, 1);
+  assert.equal(a.noFormato, 1);
   assert.deepEqual(a.exemplos, ["42"]);
 });
 
@@ -123,5 +124,5 @@ test("amarração: sem a coluna codigoImovel, tudo conta como não numérico", a
   const a = await amarracaoDoCsv();
   assert.ok(a);
   assert.equal(a.linhas, 2);
-  assert.equal(a.naoNumericos, 2);
+  assert.equal(a.foraDoFormato, 2);
 });

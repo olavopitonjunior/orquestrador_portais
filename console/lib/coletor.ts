@@ -97,9 +97,9 @@ export async function saudeColeta(): Promise<SaudeColeta> {
 
 export type Amarracao = {
   linhas: number; // linhas de dado (sem o cabeçalho)
-  numericos: number; // codigoImovel decimal puro — o que o leitor da rodada amarra
+  noFormato: number; // codigoImovel no formato `{Id}{letra opcional}` — o que o leitor da rodada amarra
   vazios: number;
-  naoNumericos: number;
+  foraDoFormato: number;
   exemplos: string[]; // até 3 valores distintos do campo, para o operador VER o formato
 };
 
@@ -132,25 +132,27 @@ function celulasDaLinha(linha: string): string[] {
 }
 
 /** Mede a amarração do CSV que o canário escreveu — SEM ler o Newcore (invariante 1):
- *  "numérico" é a condição que `dados/coletor_externo._imovel_id_de` exige; casar de
- *  fato com um imóvel ativo só a rodada confere. `null` se não há CSV. */
+ *  o formato `{Id}{letra opcional}` é a condição que `dados/coletor_externo._imovel_id_de`
+ *  exige (visto na primeira raspagem real, 03/09/2026: `431347A`, 300 de 300 — a letra é a rotação de
+ *  marketing, `realties.NewIdMarketingRotation`); casar de fato com um imóvel ativo só a
+ *  rodada confere. `null` se não há CSV. */
 export async function amarracaoDoCsv(portal = "canalpro"): Promise<Amarracao | null> {
   const caminho = resolve(outDir(), `${portal}.csv`);
   if (!(await existe(caminho))) return null;
   const texto = await readFile(caminho, "utf-8");
   const linhas = texto.split(/\r?\n/).filter((l) => l.length > 0);
-  if (linhas.length === 0) return { linhas: 0, numericos: 0, vazios: 0, naoNumericos: 0, exemplos: [] };
+  if (linhas.length === 0) return { linhas: 0, noFormato: 0, vazios: 0, foraDoFormato: 0, exemplos: [] };
   const cabecalho = celulasDaLinha(linhas[0]);
   const col = cabecalho.indexOf("codigoImovel");
-  if (col < 0) return { linhas: linhas.length - 1, numericos: 0, vazios: 0, naoNumericos: linhas.length - 1, exemplos: [] };
-  const r: Amarracao = { linhas: 0, numericos: 0, vazios: 0, naoNumericos: 0, exemplos: [] };
+  if (col < 0) return { linhas: linhas.length - 1, noFormato: 0, vazios: 0, foraDoFormato: linhas.length - 1, exemplos: [] };
+  const r: Amarracao = { linhas: 0, noFormato: 0, vazios: 0, foraDoFormato: 0, exemplos: [] };
   const vistos = new Set<string>();
   for (const linha of linhas.slice(1)) {
     r.linhas++;
     const v = (celulasDaLinha(linha)[col] ?? "").trim();
     if (v === "") r.vazios++;
-    else if (/^\d+$/.test(v)) r.numericos++;
-    else r.naoNumericos++;
+    else if (/^\d+[A-Z]?$/.test(v)) r.noFormato++;  // maiúscula, como `_imovel_id_de`
+    else r.foraDoFormato++;
     if (v !== "" && !vistos.has(v) && r.exemplos.length < 3) {
       vistos.add(v);
       r.exemplos.push(v);

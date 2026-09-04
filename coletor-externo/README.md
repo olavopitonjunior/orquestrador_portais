@@ -6,16 +6,9 @@ portal, visualizações, cliques e URL, mais a taxa de amarração e a idade do
 dado. Vive fora do caminho da decisão — o produto consome o CSV de saída por
 contrato de arquivo, então o determinismo da decisão não depende desta coleta.
 
-## Estado: bootstrap
+## Estado: em uso
 
-O **núcleo genérico** (conexão CDP, transporte in-page, classificação de
-bloqueio, sessão, sharding, CSV com checkpoint) está portado e testado. O
-**adapter do Canal Pro é um stub que lança `NotImplementedError`** —
-`src/portals/canalpro.ts`. A implementação real depende do **reconhecimento do
-painel** (mapear a API interna, o header de sessão, os shapes de nota/
-visualizações e o código de amarração com o imóvel interno), feito com o
-operador logado uma vez no Chrome real. Rodar `full` hoje falha ruidosamente
-no primeiro método do stub, por desenho — nunca devolve lista vazia.
+a primeira raspagem real aconteceu em 03/09/2026 (canário de 10 e de 300 anúncios, `status ok`, pelo trabalhador do console). O adapter do Canal Pro está implementado (API listings, D-010); o que resta são as pendências do `bug.md` (canário e full no mesmo CSV; pausa/repetição entre páginas).
 
 ## Arquitetura
 
@@ -38,7 +31,8 @@ do operador, herdando a sessão autenticada. Ver `docs/decisoes.md` D-010.
 
 ## Fluxo do operador
 
-1. Feche **todo** o Chrome (a porta de depuração só abre na 1ª instância do perfil).
+1. (Só se for usar o perfil padrão, o que o Chrome ≥ 136 não permite mais — ver passo 2.)
+   Feche **todo** o Chrome: a porta de depuração só abre na 1ª instância do perfil.
 2. Reabra com a porta e as flags anti-throttling:
    ```
    chrome --remote-debugging-port=9222 \
@@ -46,9 +40,20 @@ do operador, herdando a sessão autenticada. Ver `docs/decisoes.md` D-010.
      --disable-backgrounding-occluded-windows \
      --disable-renderer-backgrounding
    ```
-3. Faça login no Canal Pro nessa janela e deixe a aba do painel aberta.
+   **Chrome ≥ 136 recusa `--remote-debugging-port` no perfil padrão.** Use um perfil
+   separado — fora do repositório (D-012) — e nem precisa fechar o Chrome normal. No macOS:
+   ```
+   open -na "Google Chrome" --args --remote-debugging-port=9222 \
+     --user-data-dir="$HOME/.chrome-canalpro" \
+     --disable-background-timer-throttling \
+     --disable-backgrounding-occluded-windows \
+     --disable-renderer-backgrounding "https://canal-pro.grupozap.com/"
+   ```
+3. Faça login no Canal Pro nessa janela (perfil novo = login e Cloudflare de novo) e
+   deixe a aba do painel aberta.
 4. `npm run canary` (valida sem bloqueio) e depois `npm run full`.
-5. Se aparecer o arquivo `out/NEEDS_WARM.flag`, a sessão caiu — repita do passo 1.
+5. Se aparecer o arquivo `out/NEEDS_WARM.flag`, a sessão caiu — logue de novo na janela
+   de depuração (passo 3) e rode de novo.
 
 ## Segredos — o que NUNCA entra neste repositório
 

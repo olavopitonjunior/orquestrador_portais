@@ -122,3 +122,35 @@ test('csvColumns cobre exatamente os campos do Anuncio de performance', () => {
   assert.ok(canalPro.csvColumns.includes('nota'));
   assert.ok(canalPro.csvColumns.includes('visualizacoes'));
 });
+
+test('captureSessionId tolera contexto destruído por navegação tardia do SPA', async () => {
+  let chamadas = 0;
+  const page = {
+    evaluateOnNewDocument: async () => undefined,
+    goto: async () => undefined,
+    evaluate: async () => {
+      // 1ª chamada: readBlocked (retorna false). 2ª: contexto morto. 3ª: sessão capturada.
+      chamadas++;
+      if (chamadas === 1) return false;
+      if (chamadas === 2) throw new Error('Execution context was destroyed, most likely because of a navigation.');
+      return { authorization: 'Bearer x', 'x-domain': 'canalpro' };
+    },
+  } as unknown as import('puppeteer-core').Page;
+  const s = await canalPro.captureSessionId(page);
+  assert.equal((s as Record<string, string>).authorization, 'Bearer x');
+  assert.equal(chamadas, 3);
+});
+
+test('captureSessionId NÃO engole outros erros do evaluate', async () => {
+  let chamadas = 0;
+  const page = {
+    evaluateOnNewDocument: async () => undefined,
+    goto: async () => undefined,
+    evaluate: async () => {
+      chamadas++;
+      if (chamadas === 1) return false;
+      throw new Error('ReferenceError: window is not defined');
+    },
+  } as unknown as import('puppeteer-core').Page;
+  await assert.rejects(canalPro.captureSessionId(page), /ReferenceError/);
+});

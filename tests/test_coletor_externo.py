@@ -8,8 +8,10 @@ célula vazia) e confere o parse, a amarração, o dedupe e a taxa de amarraçã
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import UTC, date
 from pathlib import Path
+
+import pytest
 
 from dados.coletor_externo import (
     COLUNAS,
@@ -100,6 +102,61 @@ def test_codigo_nao_numerico_nao_amarra(tmp_path):
     coleta = ler_coleta(tmp_path)
     assert coleta.por_imovel == {}
     assert coleta.sem_amarracao == 1
+
+
+def test_o_formato_REAL_do_canal_pro_amarra_pelo_prefixo(tmp_path):
+    """Primeira raspagem real (03/09/2026): `codigoImovel` vem como `{realties.Id}{letra}`
+    — 300 de 300 casaram pelo prefixo; a letra varia (21 em 300) e é rotação de
+    marketing, não chave. A versão que exigia decimal puro teria amarrado 0%."""
+    _escrever_csv(
+        tmp_path,
+        [
+            _anuncio("1", "431347A"),
+            _anuncio("2", "431348Z", visualizacoes=7),
+            _anuncio("3", "431372"),
+        ],
+    )
+    _status(tmp_path, result="ok", finishedAt="2026-09-01T09:00:00Z", portal="canalpro")
+    coleta = ler_coleta(tmp_path)
+    assert set(coleta.por_imovel) == {431347, 431348, 431372}
+    assert coleta.sem_amarracao == 0
+
+
+def test_a_letra_e_rotacao_o_mesmo_imovel_pode_ter_dois_anuncios(tmp_path):
+    """`431347A` e `431347B` são o mesmo imóvel republicado: os dois amarram, e fica o
+    de mais visualizações (desempate por `id_portal`, determinístico)."""
+    _escrever_csv(
+        tmp_path,
+        [_anuncio("1", "431347A", visualizacoes=10), _anuncio("2", "431347B", visualizacoes=200)],
+    )
+    _status(tmp_path, result="ok", finishedAt="2026-09-01T09:00:00Z", portal="canalpro")
+    coleta = ler_coleta(tmp_path)
+    assert coleta.total_linhas == 2 and coleta.sem_amarracao == 0
+    assert set(coleta.por_imovel) == {431347}
+    assert coleta.por_imovel[431347].visualizacoes == 200
+
+
+@pytest.mark.parametrize(
+    "ruim",
+    [
+        "431347AB",
+        "431347-A",
+        " 431347 A",
+        "A431347",
+        "\u00b2",
+        "\u0661",
+        "\uff11\uff10",
+        "431347a",
+        "",
+    ],
+)
+def test_fora_do_formato_nao_amarra(tmp_path, ruim):
+    """`isdigit()` aceitava "²" (e `int()` estourava) e "١" (e amarrava um id falso) —
+    issue #61. Só dígitos ASCII e uma letra opcional."""
+    _escrever_csv(tmp_path, [_anuncio("1", ruim)])
+    _status(tmp_path, result="ok", finishedAt="2026-09-01T09:00:00Z", portal="canalpro")
+    coleta = ler_coleta(tmp_path)
+    assert coleta.por_imovel == {} and coleta.sem_amarracao == 1
 
 
 def test_celulas_vazias_viram_none_ou_zero(tmp_path):
@@ -259,13 +316,16 @@ def _params_de_piloto():
 def test_amarracao_vazia_nao_entra_mesmo_com_limiar_zero(tmp_path):
     """Mutação que este teste apanha: sem a porta de zero casados, `0.0 < 0.0` é
     falso, a coleta passa, e a rodada sai COMPLETA com F3 = 0 para todos — a falha
-    mais provável da primeira raspagem real, porque o formato do codigoImovel nunca
-    foi visto."""
+    mais provável da primeira raspagem real, porque o formato do codigoImovel não
+    tolera desvio."""
     coleta = _coleta_fresca(tmp_path, [_anuncio("1", "IMOVEL-0001"), _anuncio("2", "IMOVEL-0002")])
     assert coleta.por_imovel == {}  # nada amarrou
     r = avaliar_coleta(coleta, [101, 202], _params_de_piloto(), HOJE)
     assert r.entra is False
     assert "NENHUMA amarrou" in r.motivo
+    # O diagnóstico nomeia o formato esperado — com chaves SIMPLES (os literais não são
+    # f-strings; `{{` sairia literal, e foi o que o orquestrador apanhou).
+    assert "o formato esperado é {Id}{letra}" in r.motivo and "{{" not in r.motivo
     assert r.desempenho_por_imovel == {}
     assert r.taxa_amarracao == 0.0
 
@@ -298,6 +358,30 @@ def test_um_casado_ja_passa_a_porta_de_vazio_e_cai_na_de_limiar(tmp_path):
     assert r.entra is False
     assert "NENHUMA" not in r.motivo
     assert "limiar" in r.motivo
+
+
+def test_idade_da_coleta_e_medida_no_fuso_da_OPERACAO_nao_no_da_maquina(tmp_path):
+    """`finishedAt` é UTC; a data de referência é do fuso da operação (America/Sao_Paulo).
+    Uma coleta das 21h04 de 03/09 (00h04 de 04/09 em UTC) tinha idade -1 na primeira rodada
+    real. Data FIXA e fuso EXPLÍCITO: o resultado não pode depender do TZ do host (o revisor
+    provou que dependia, com TZ=Pacific/Pago_Pago)."""
+    from dados.coletor_externo import FUSO_DA_OPERACAO
+
+    _escrever_csv(tmp_path, [_anuncio("1", "431347A")])
+    _status(tmp_path, result="ok", finishedAt="2026-09-04T00:04:48.974Z", portal="canalpro")
+    coleta = ler_coleta(tmp_path)
+    assert coleta.coletado_em is not None and coleta.coletado_em.tzinfo is not None
+
+    hoje = date(2026, 9, 3)
+    r = avaliar_coleta(coleta, [431347], PARAMS_EXT, hoje)  # default: FUSO_DA_OPERACAO
+    assert FUSO_DA_OPERACAO.key == "America/Sao_Paulo"  # type: ignore[attr-defined]
+    assert r.idade_dias == 0 and r.entra is True
+    # Em UTC a mesma coleta é "de amanhã": a diferença é o fuso declarado, não a máquina.
+    em_utc = ParametrosExterno(0.5, 8, lambda a: a.visualizacoes, fuso=UTC)
+    assert avaliar_coleta(coleta, [431347], em_utc, hoje).idade_dias == -1
+    # E um `finishedAt` sem offset é UTC, explicitamente.
+    _status(tmp_path, result="ok", finishedAt="2026-09-04T00:04:48", portal="canalpro")
+    assert avaliar_coleta(ler_coleta(tmp_path), [431347], PARAMS_EXT, hoje).idade_dias == 0
 
 
 def test_avaliar_coleta_velha_nao_entra(tmp_path):
