@@ -188,6 +188,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </p>
         </div>
         <div className="cabecalho-acoes">
+          {/* Só quando há pelo menos uma aba com conteúdo em disco: a rota devolveria 404. */}
+          {planilha && ORDEM_DAS_ABAS.some((a) => planilha.abas[a] && !planilha.abas[a].semConteudo) ? (
+            <a
+              className="botao-secundario"
+              href={`/rodada/${rodada.id}/planilha/todas.zip`}
+              download={`rodada-${rodada.id}-planilha-${dataReferencia ?? ""}.zip`}
+            >
+              Baixar as cinco abas (.zip)
+            </a>
+          ) : null}
           {rodada.aprovadaEm ? (
             <span className="pill pill-ok" style={{ padding: "6px 12px" }}>
               aprovada {dataHora(rodada.aprovadaEm)} por {rodada.aprovadaPor ?? "?"}
