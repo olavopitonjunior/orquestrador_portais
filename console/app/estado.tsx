@@ -24,3 +24,11 @@ const FMT = new Intl.DateTimeFormat("pt-BR", {
 export function dataHora(iso: string | null): string {
   return iso ? FMT.format(new Date(iso)) : "—";
 }
+
+/** Duração entre início e fim, curta: "43 s" até um minuto e meio, "2 min" depois;
+ *  "—" enquanto não terminou. */
+export function duracao(inicio: string, fim: string | null): string {
+  if (!fim) return "—";
+  const s = Math.round((new Date(fim).getTime() - new Date(inicio).getTime()) / 1000);
+  return s < 90 ? `${s} s` : `${Math.round(s / 60)} min`;
+}

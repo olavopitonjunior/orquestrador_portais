@@ -28,6 +28,7 @@ function rodada(id: number, p: Partial<RodadaResumo> = {}): RodadaResumo {
     posicoesVaziasDestaque: 0,
     superDestaque: 475,
     destaque: 6495,
+    amostral: false,
     ...p,
   };
 }
