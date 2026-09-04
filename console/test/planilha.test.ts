@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { SENTINELA_VAZIA, datasComPlanilha, lerPlanilha, parsearCsv, tabelaDe } from "../lib/planilha";
+import {
+  SENTINELA_VAZIA,
+  arquivoDaAba,
+  datasComPlanilha,
+  lerPlanilha,
+  parsearCsv,
+  tabelaDe,
+} from "../lib/planilha";
 import { limitacoesDe } from "../lib/registro";
 
 test("parseia o dialeto do csv do Python: aspas mínimas, escape, vírgula e quebra dentro da célula", () => {
@@ -82,4 +89,40 @@ test("datas mais recentes primeiro; nome fora do padrão é ignorado e nunca vir
   assert.deepEqual(await datasComPlanilha(), ["2026-09-05", "2026-09-01"]);
   assert.equal(await lerPlanilha("../../etc"), null);
   assert.equal(await lerPlanilha("2026-09-09"), null);
+});
+
+// --- arquivoDaAba: os bytes crus, com as mesmas guardas de lerPlanilha ---------------
+
+function raizComPlanilha(): string {
+  const raiz = mkdtempSync(join(tmpdir(), "saida-"));
+  mkdirSync(join(raiz, "2026-09-03"));
+  writeFileSync(join(raiz, "2026-09-03", "super_destaque.csv"), "imovel_id,nota\r\n1,\"a, b\"\r\n");
+  writeFileSync(join(raiz, "2026-09-03", "destaque.csv"), "");
+  mkdirSync(join(raiz, "fora"));
+  writeFileSync(join(raiz, "fora", "super_destaque.csv"), "não deve ser alcançado");
+  return raiz;
+}
+
+test("arquivoDaAba devolve os bytes como estão em disco, sem reescrever", async () => {
+  process.env.SAIDA_SEXTA_DIR = raizComPlanilha();
+  const b = await arquivoDaAba("2026-09-03", "super_destaque");
+  assert.ok(b);
+  assert.equal(b.toString("utf-8"), "imovel_id,nota\r\n1,\"a, b\"\r\n");
+});
+
+test("arquivo de 0 bytes volta como Buffer vazio, não como null — o chamador distingue", async () => {
+  process.env.SAIDA_SEXTA_DIR = raizComPlanilha();
+  const b = await arquivoDaAba("2026-09-03", "destaque");
+  assert.ok(b);
+  assert.equal(b.length, 0);
+});
+
+test("arquivoDaAba: data fora do formato, aba fora da lista e arquivo ausente → null", async () => {
+  process.env.SAIDA_SEXTA_DIR = raizComPlanilha();
+  assert.equal(await arquivoDaAba("fora", "super_destaque"), null);
+  assert.equal(await arquivoDaAba("../2026-09-03", "super_destaque"), null);
+  assert.equal(await arquivoDaAba("2026-09-03", "../fora/super_destaque"), null);
+  assert.equal(await arquivoDaAba("2026-09-03", "outra_aba"), null);
+  assert.equal(await arquivoDaAba("2026-09-03", "relaxamento"), null);
+  assert.equal(await arquivoDaAba("2026-09-04", "super_destaque"), null);
 });
