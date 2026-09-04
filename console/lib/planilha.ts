@@ -17,6 +17,9 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export const ABAS = [
+  // O resultado TOTAL: uma linha por candidato, inclusive os excluídos, com as
+  // características do imóvel. Vem primeiro porque é o que se leva para aplicar a carga.
+  "apuracao",
   "super_destaque",
   "destaque",
   "excluidos_por_regra",
