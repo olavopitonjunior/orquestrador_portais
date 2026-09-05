@@ -59,7 +59,43 @@ const POR_CODIGO: Record<number, Desfecho> = {
   },
 };
 
-/** A tradução vale para a SEXTA, e o tipo é exigido por isso.
+/** Os códigos da PRÉVIA (`executar/previa.py`): três, e nenhum fala de planilha ou
+ *  Registro, porque a prévia não escreve em lugar nenhum. */
+const PREVIA_POR_CODIGO: Record<number, Desfecho> = {
+  1: {
+    titulo: "Falha ao MONTAR a prévia",
+    explicacao:
+      "O Newcore foi lido, mas o cálculo ou a gravação do resultado falhou. É defeito, não " +
+      "dado: o log abaixo diz o tipo do erro.",
+    grave: true,
+  },
+  2: {
+    titulo: "Argumento inválido",
+    explicacao: "O comando foi montado com um argumento que a prévia recusa (data no futuro).",
+    grave: true,
+  },
+  0: {
+    titulo: "Prévia pronta",
+    explicacao: "O funil foi calculado com os valores declarados. O resultado está abaixo.",
+    grave: false,
+  },
+  3: {
+    titulo: "Falha de FONTE",
+    explicacao:
+      "Não foi possível ler o Newcore (candidatos, vendas ou dimensões). Nada foi calculado; " +
+      "tente de novo quando a fonte responder.",
+    grave: true,
+  },
+  5: {
+    titulo: "Parâmetros recusados",
+    explicacao:
+      "Um valor está fora da faixa, uma chave é desconhecida, ou a régua de resultado foi " +
+      "declarada pela metade. Corrija em /parametros e peça a prévia de novo.",
+    grave: false,
+  },
+};
+
+/** A tradução vale para a SEXTA e para a PRÉVIA, e o tipo é exigido por isso.
  *
  *  Os códigos são o contrato de `executar/sexta.py`, e outros tipos os reusam com
  *  significados DIFERENTES: em `executar/segunda.py` o código 4 quer dizer "sem carga
@@ -70,6 +106,15 @@ const POR_CODIGO: Record<number, Desfecho> = {
  *  Para os demais tipos devolve-se o código cru: não saber é melhor que inventar. */
 export function desfechoDe(tipo: string, codigo: number | null): Desfecho | null {
   if (codigo === null) return null;
+  if (tipo === "previa") {
+    return (
+      PREVIA_POR_CODIGO[codigo] ?? {
+        titulo: `Código ${codigo}`,
+        explicacao: "Código de saída que o console ainda não sabe traduzir para a prévia.",
+        grave: true,
+      }
+    );
+  }
   if (tipo !== "sexta") {
     return {
       titulo: `Código ${codigo}`,

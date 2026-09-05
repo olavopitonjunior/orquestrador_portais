@@ -1086,3 +1086,44 @@ th.num {
 .soma-erro {
   margin: 0;
 }
+
+/* ---- a prévia do funil ------------------------------------------------- */
+
+.previa-frase {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  max-width: 64ch;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.funil td,
+.funil th {
+  vertical-align: middle;
+}
+
+.funil td:last-child {
+  width: 34%;
+  min-width: 140px;
+}
+
+.funil-barra {
+  display: block;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  box-sizing: border-box;
+}
+
+.funil-corta td:nth-child(3) {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.acoes-do-formulario {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+

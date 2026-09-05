@@ -2,11 +2,25 @@
 
 import { useMemo, useState } from "react";
 
-import { CAMPOS, GRUPOS, REGRAS, campoAtivo, type Campo, type Fonte, type Funcao, type Grupo } from "@/lib/contrato";
+import {
+  CAMPOS,
+  GRUPOS,
+  POR_CAMINHO,
+  REGRAS,
+  campoAtivo,
+  type Campo,
+  type Fonte,
+  type Funcao,
+  type Grupo,
+} from "@/lib/contrato";
 import { PARAMETROS } from "@/lib/parametros";
 import { validar } from "@/lib/toml";
 
-import { salvarParametros, type Resposta } from "./acoes";
+import Link from "next/link";
+
+import { ESPERA_DA_PREVIA } from "@/lib/previa";
+
+import { salvarParametros, verPrevia, type Resposta } from "./acoes";
 
 // O que cada função e cada fonte significam para quem lê a seção. Rótulos de
 // exibição — a taxonomia em si vem do contrato gerado (`GRUPOS`), não daqui.
@@ -115,14 +129,27 @@ export function Formulario({ inicial }: { inicial: Record<string, string> }) {
   // o vermelho, e aí o erro que importa passa despercebido.
   const [tocados, setTocados] = useState<Record<string, boolean>>({});
 
+  // A soma EFETIVA: o declarado ou, vazio, o adotado — como a rodada resolve (D-034).
   function somaDe(caminhos: string[]): number {
-    return caminhos.reduce((a, c) => a + (Number(valores[c]) || 0), 0);
+    return caminhos.reduce((a, c) => {
+      const bruto = valores[c];
+      const efetivo = bruto === undefined || bruto.trim() === "" ? POR_CAMINHO.get(c)?.adotado : bruto;
+      return a + (Number(efetivo) || 0);
+    }, 0);
   }
 
   async function enviar() {
     setEnviando(true);
     setResposta(await salvarParametros(valores, por));
     setEnviando(false);
+  }
+
+  const [pedindoPrevia, setPedindoPrevia] = useState(false);
+  async function previa() {
+    setPedindoPrevia(true);
+    // Com sucesso a ação REDIRECIONA para /trabalho/<id> e esta linha não volta.
+    setResposta(await verPrevia(valores, por));
+    setPedindoPrevia(false);
   }
 
   return (
@@ -216,15 +243,31 @@ export function Formulario({ inicial }: { inicial: Record<string, string> }) {
             Vai para o Registro junto dos valores. Não é autenticação: é o que você declara de si.
           </span>
         </label>
-        <p>
-          <button className="botao" disabled={problemas.length > 0 || enviando} onClick={() => void enviar()}>
+        <p className="acoes-do-formulario">
+          <button
+            className="botao"
+            disabled={problemas.length > 0 || enviando || pedindoPrevia}
+            onClick={() => void enviar()}
+          >
             {enviando ? "guardando…" : "Guardar os parâmetros"}
+          </button>
+          <button
+            className="botao botao-secundario"
+            disabled={problemas.length > 0 || enviando || pedindoPrevia}
+            onClick={() => void previa()}
+            title={ESPERA_DA_PREVIA}
+          >
+            {pedindoPrevia ? "pedindo a prévia…" : "Ver a prévia"}
           </button>
           {problemas.length > 0 ? (
             <span className="pendente-contagem">
               {problemas.length} {problemas.length === 1 ? "pendência" : "pendências"} antes de enviar
             </span>
           ) : null}
+        </p>
+        <p className="campo-ajuda">
+          <b>Ver a prévia</b> guarda estes valores e conta quantos imóveis sobram para as posições,
+          regra a regra, sem rodar a semana. {ESPERA_DA_PREVIA}
         </p>
         {resposta?.ok === true ? (
           <div className="banner banner-ok" role="status">
@@ -235,6 +278,12 @@ export function Formulario({ inicial }: { inicial: Record<string, string> }) {
         {resposta?.ok === false ? (
           <div className="banner" role="alert">
             {"erro" in resposta ? resposta.erro : "há campos inválidos — corrija acima."}
+            {"emVoo" in resposta && resposta.emVoo ? (
+              <>
+                {" "}
+                <Link href={`/trabalho/${resposta.emVoo}`}>Abrir a prévia nº {resposta.emVoo}</Link>.
+              </>
+            ) : null}
           </div>
         ) : null}
       </section>

@@ -10,6 +10,9 @@ import {
   trabalhadorVivo,
 } from "@/lib/operacao";
 
+import { lerPrevia } from "@/lib/previa";
+
+import { PreviaDoFunil, PreviaEmCurso } from "./previa";
 import { RelatorioDosAgentes } from "./relatorio";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +44,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   const emCurso = EM_CURSO.has(trabalho.estado);
   const desfecho = desfechoDe(trabalho.tipo, trabalho.codigo_saida);
+  const ehPrevia = trabalho.tipo === "previa";
+  const previa = ehPrevia ? lerPrevia(resumos.get("previa")) : null;
   // Quais etapas já se anunciaram. O nó vem do NDJSON que a rodada emite ao vivo; a
   // ordem de apresentação é a de ETAPAS, não a de chegada — dois nós do mesmo passo do
   // grafo terminam juntos, e listá-los na ordem de chegada sugeriria uma sequência que
@@ -59,9 +64,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           código é o que garante que a tela funcione antes de haver o que otimizar. */}
       {emCurso ? <meta httpEquiv="refresh" content="5" /> : null}
 
-      <h1>
-        Trabalho {trabalho.id} · {trabalho.tipo}
-      </h1>
+      <h1>{ehPrevia ? `Prévia nº ${trabalho.id}` : `Trabalho ${trabalho.id} · ${trabalho.tipo}`}</h1>
       <p className="subtitulo">
         pedido {new Date(trabalho.pedido_em).toLocaleString("pt-BR")}
         {trabalho.pedido_por ? ` por ${trabalho.pedido_por}` : ""} ·{" "}
@@ -98,23 +101,33 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </div>
       ) : null}
 
-      <section className="secao">
-        <h2>Etapas</h2>
-        <ol className="etapas">
-          {ETAPAS.map((etapa) => (
-            <li key={etapa} className={concluidas.has(etapa) ? "etapa etapa-feita" : "etapa"}>
-              {etapa.replace(/_/g, " ")}
-            </li>
-          ))}
-        </ol>
-        <p className="campo-ajuda">
-          {concluidas.size} de {ETAPAS.length} anunciadas. Duas delas — perfil e coleta externa —
-          correm em paralelo e terminam juntas: aparecem ao mesmo tempo, e o instante de ambas é o
-          do mais lento.
-        </p>
-      </section>
+      {ehPrevia && emCurso ? <PreviaEmCurso /> : null}
+      {previa ? <PreviaDoFunil previa={previa} /> : null}
+      {ehPrevia && !emCurso && !previa ? (
+        <div className="banner" role="alert">
+          A prévia terminou sem deixar resultado legível. O log abaixo diz o que aconteceu.
+        </div>
+      ) : null}
 
-      <RelatorioDosAgentes etapas={ETAPAS} porNo={resumos} />
+      {ehPrevia ? null : (
+        <section className="secao">
+          <h2>Etapas</h2>
+          <ol className="etapas">
+            {ETAPAS.map((etapa) => (
+              <li key={etapa} className={concluidas.has(etapa) ? "etapa etapa-feita" : "etapa"}>
+                {etapa.replace(/_/g, " ")}
+              </li>
+            ))}
+          </ol>
+          <p className="campo-ajuda">
+            {concluidas.size} de {ETAPAS.length} anunciadas. Duas delas — perfil e coleta externa —
+            correm em paralelo e terminam juntas: aparecem ao mesmo tempo, e o instante de ambas é o
+            do mais lento.
+          </p>
+        </section>
+      )}
+
+      {ehPrevia ? null : <RelatorioDosAgentes etapas={ETAPAS} porNo={resumos} />}
 
       <section className="secao">
         <h2>Log</h2>
