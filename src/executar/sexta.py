@@ -232,9 +232,9 @@ def _serializaveis(
     """O que vai para `parametros_da_rodada` do Registro.
 
     É o TOML declarado VERBATIM mais a procedência — não uma reconstrução a partir
-    de `ParametrosDecisao`. As duas FORMAS (decaimento da penalidade e composição do
-    F3) viram função e não sobrevivem à dataclass: gravar só os números deixaria a
-    rodada irreproduzível a partir do Registro.
+    de `ParametrosDecisao`. O perdão da penalidade por janela vira função lá
+    (`decaimento_janela`) e não sobrevive à dataclass: reconstruir os parâmetros a
+    partir dela deixaria a rodada irreproduzível pelo Registro.
 
     Mas o TOML não é a entrada inteira. Quatro coisas fora dele também mudam a lista e
     por isso viajam junto (a quarta, o recorte amostral, está comentada no corpo):
@@ -245,7 +245,7 @@ def _serializaveis(
       recorte, tornando a rodada reproduzível".
     - `definicao_ativo_distrito` é entrada de elegibilidade fixada em código (D-015):
       se a decisão mudar, as rodadas antigas precisam dizer sob qual regra saíram.
-    - `coleta_externa` identifica a raspagem que alimentou o F3. Fica o CAMINHO, que
+    - `coleta_externa` identifica a raspagem que alimentou a nota. Fica o CAMINHO, que
       é o que o runner tem; a identificação plena da coleta (`coletado_em`,
       `total_linhas`) mora na `ColetaExterna` dentro do grafo e ainda não sobe até
       aqui — lacuna DECLARADA, não resolvida.
@@ -750,7 +750,7 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--externo",
         type=Path,
-        help="pasta de saída do raspador (out/). Ausente, o desempenho de portal (F3) "
+        help="pasta de saída do raspador (out/). Ausente, a nota do portal "
         "não entra e a rodada sai DEGRADADA nesse fator, com a limitação declarada.",
     )
     p.add_argument(

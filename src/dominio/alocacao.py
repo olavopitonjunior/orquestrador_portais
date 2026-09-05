@@ -10,7 +10,7 @@ estruturalmente incapaz de exceder a cota.
 
 PRECONDIÇÃO NÃO VERIFICADA AQUI: a entrada JÁ é o conjunto elegível
 (dominio.elegibilidade aplicada pelo Decisor antes). Este módulo não reaplica
-as oito regras; o piso de R$ 700.000 é o único filtro que ele aplica, e só
+as nove regras; o piso de R$ 700.000 é o único filtro que ele aplica, e só
 para o nível super. Alimentá-lo com estoque não filtrado distribui posição
 paga a imóvel inelegível sem erro algum.
 
@@ -52,11 +52,13 @@ COTA_DESTAQUE = 6_495
 class CandidatoAlocacao:
     """Um imóvel elegível com as duas notas finais, uma por nível.
 
-    As notas são campos distintos de propósito: os pesos diferem por nível
-    (Spec §6.3) e nota de super destaque nunca se compara com nota de
+    Os campos continuam distintos embora a D-028 tenha feito os dois níveis
+    usarem a MESMA nota: nota de super destaque nunca se compara com nota de
     destaque — a fase 1 só lê `nota_super_destaque`, a fase 2 só lê
-    `nota_destaque`. Abaixo do piso de R$ 700.000, `nota_super_destaque` é
-    obrigatória porém ignorada: o candidato nunca entra na fase 1.
+    `nota_destaque` —, e separá-los mantém a alocação indiferente a uma
+    eventual volta de notas por nível. Abaixo do piso de R$ 700.000,
+    `nota_super_destaque` é obrigatória porém ignorada: o candidato nunca
+    entra na fase 1.
     """
 
     imovel_id: int

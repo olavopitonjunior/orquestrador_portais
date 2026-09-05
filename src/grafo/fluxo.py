@@ -16,8 +16,8 @@ retry do Orquestrador (parâmetro nº 4, nulo) são fatias próprias.
 
 Limitações declaradas (honestas quanto ao estado, Spec §7.2):
 - Coletor Externo (G4): quando `fontes.coletar_externo`/`parametros_externo` são
-  injetados, lê a saída do raspador e, passando as portas (amarração, idade), o
-  desempenho de portal (F3) entra e a rodada pode ser COMPLETA; sem eles, segue
+  injetados, lê a saída do raspador e, passando as portas (amarração, idade), a
+  nota do portal (D-028) ordena a lista e a rodada pode ser COMPLETA; sem eles, segue
   STUB (DEGRADADA, ausência declarada). A "reserva" da coleta velha (Spec §7.3)
   ainda não é reusada — coleta fora da janela degrada.
 - Sem modelo: o Analista de Perfil roda por contagem (o determinístico da Spec
@@ -85,15 +85,16 @@ def no_coletor_externo(
     fontes: Fontes,
     parametros_externo: ParametrosExterno | None,
 ) -> dict:
-    """Coletor Externo (G4): lê a saída do raspador e decide se a performance de
-    portal entra no ranking (F3, Spec §7.3).
+    """Coletor Externo (G4): lê a saída do raspador e decide se a nota do portal
+    ordena a lista (Spec §6.3 e §7.3).
 
     Sem `coletar_externo`/`parametros_externo` injetados (esqueleto), continua
     STUB: sem raspagem, rodada DEGRADADA nesse fator. Com eles, `avaliar_coleta`
     aplica as portas (estado ok, ao menos um imóvel-alvo amarrado, amarração ≥
     limiar nº 7, idade ≤ máxima nº 5) e,
-    passando, compõe o sinal F3 por imóvel; falhando qualquer porta, o desempenho
-    não entra e a degradação é declarada com o motivo — a rodada não é COMPLETA."""
+    passando, entrega os anúncios por imóvel; falhando qualquer porta, a nota do
+    portal não entra, a ordem cai para o sinal de banco declarado e a degradação é
+    declarada com o motivo — a rodada não é COMPLETA."""
     if fontes.coletar_externo is None or parametros_externo is None:
         return {
             "externo_presente": False,
@@ -331,10 +332,13 @@ def construir_grafo(
 ):
     """Monta e compila o grafo da rodada de sexta.
 
-    `fontes`, `parametros`, `parametros_externo` e `registrar` são INJETADOS
-    (run-local; provisórios, nunca adotados). `parametros_externo` (G4) leva os
-    limiares nulos da coleta externa (amarração nº 7, idade nº 5) e a composição
-    do sinal F3 — provisórios; None (com `fontes.coletar_externo` None) mantém o
+    `fontes`, `parametros`, `parametros_externo` e `registrar` são INJETADOS: o
+    valor efetivo da semana chega por eles, e nenhum módulo do grafo guarda cópia.
+    `parametros_externo` (G4) leva as duas portas da coleta externa — cobertura
+    mínima (nº 7) e idade máxima (nº 5), ambas DEFINIDAS pela D-034 e adotadas
+    quando a semana não declara outra coisa. Não leva composição nenhuma: desde a
+    D-028 a nota é montada na costura, não no coletor. None (com
+    `fontes.coletar_externo` None) mantém o
     Coletor Externo em STUB e a rodada DEGRADADA nesse fator. `registrar` é o SINK
     de persistência (G2a-wire): se fornecido, a rodada NÃO-abortada passa por um
     nó que grava no Registro; se None, o grafo termina sem persistir. `checkpointer`
