@@ -43,7 +43,7 @@ from dominio.penalidades import (
 )
 from dominio.perfil import Dimensao, PerfilConversao
 from piloto.decisao import DetalheImovel, ResultadoDecisao
-from piloto.semelhanca import DimensoesImovel
+from piloto.semelhanca import DimensoesImovel, perfis_que_contam
 
 # As três penalidades, em ordem fixa de coluna (Spec §3.2, grupo Penalidades).
 _PENALIDADES_COLUNAS = (
@@ -330,6 +330,37 @@ def linhas_parametros_e_limitacoes(
     return linhas
 
 
+def linhas_perfis(
+    perfis: Sequence[PerfilConversao], exigir_dimensao: Dimensao | None
+) -> list[dict[str, object]]:
+    """A aba Perfis da Spec §3.1: os padrões que o Analista encontrou na semana.
+
+    TODOS os perfis, robustos e frágeis, porque a classificação é parte do que se
+    lê — sem os frágeis não dá para ver que a evidência era pouca. E, desde a D-027,
+    uma coluna a mais: `conta_para_o_filtro`, que é o que separa o perfil que
+    ELIMINA candidatos daquele que só descreve. Um perfil robusto que não contenha a
+    dimensão exigida não filtra ninguém, e a planilha diz isso em vez de deixar quem
+    lê supor.
+
+    Ordem canônica preservada (invariante 5): os perfis chegam ordenados do domínio.
+    """
+    # A MESMA função que o filtro usa, não um predicado equivalente reescrito aqui:
+    # duas definições de "conta" divergiriam em silêncio, e a coluna passaria a
+    # descrever uma regra que não é a aplicada.
+    contam = set(perfis_que_contam(perfis, exigir_dimensao))
+    return [
+        {
+            "ordem": i,
+            "dimensoes": "; ".join(d.value for d in p.dimensoes),
+            "valores": _perfil_texto(p),
+            "vendas_sustentam": p.num_vendas,
+            "classificacao": "frágil" if p.fragil else "robusto",
+            "conta_para_o_filtro": _sim_nao(p in contam),
+        }
+        for i, p in enumerate(perfis, start=1)
+    ]
+
+
 @dataclass(frozen=True)
 class ContextoApuracao:
     """O que o CSV único precisa ALÉM do ResultadoDecisao: as características de CADA
@@ -529,11 +560,15 @@ def escrever_planilha(
     resultado_esperado: Mapping[str, int] | None,
     notas_coleta: Sequence[str] = (),
     contexto: ContextoApuracao,
+    perfis: Sequence[PerfilConversao],
 ) -> list[Path]:
-    """Escreve os seis CSVs em `destino` e devolve os caminhos: as cinco abas e o
-    `apuracao.csv` (uma linha por candidato). `contexto` é OBRIGATÓRIO: o arquivo que
-    a pessoa leva para aplicar a carga não pode depender de um kwarg que dá para
-    esquecer — fail-closed, como o resto da fiação.
+    """Escreve os sete CSVs em `destino` e devolve os caminhos: as cinco abas, a de
+    perfis e o `apuracao.csv` (uma linha por candidato). `contexto` e `perfis` são
+    OBRIGATÓRIOS: o arquivo que a pessoa leva para aplicar a carga não pode depender de
+    um kwarg que dá para esquecer — fail-closed, como o resto da fiação. Esquecer
+    `perfis` faria a aba sair só com o cabeçalho, e a prova da nona regra — a que
+    ELIMINA candidatos — sumiria sem erro e sem limitação declarada, indistinguível de
+    uma semana em que o Analista não achou perfil nenhum.
 
     I/O de ARQUIVO LOCAL (entregável, não estado — invariante 2 é sobre o
     Registro, preservado). Vai para `saida/piloto/` (ignorada pelo .gitignore):
@@ -560,6 +595,12 @@ def escrever_planilha(
         _escrever_csv(
             destino / "parametros_e_limitacoes.csv",
             linhas_parametros_e_limitacoes(resultado, parametros, notas_coleta),
+        )
+    )
+    escritos.append(
+        _escrever_csv(
+            destino / "perfis.csv",
+            linhas_perfis(perfis, parametros.decisao.exigir_dimensao_no_perfil),
         )
     )
     escritos.append(

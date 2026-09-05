@@ -24,6 +24,9 @@ export const ABAS = [
   "destaque",
   "excluidos_por_regra",
   "relaxamento",
+  // Os padrões que o Analista achou na semana (Spec §3.1), com a classificação e o
+  // que conta para o filtro do perfil — a nona regra, desde a D-027.
+  "perfis",
   "parametros_e_limitacoes",
 ] as const;
 export type Aba = (typeof ABAS)[number];

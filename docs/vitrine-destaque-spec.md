@@ -52,13 +52,14 @@ A planilha de decisão é adicionalmente enviada por e-mail ao gestor da vitrine
 | imóvel | Identificador interno |
 | nível | Destaque ou super destaque |
 | posição no ranking | Colocação dentro do nível |
-| nota bruta e os sinais que a compõem | A nota do portal (§6.3) — ou o sinal de banco declarado, quando a raspagem não entra — e os sinais que entraram nela |
+| nota bruta e os sinais que a compõem | A nota do portal (§6.3) — ou o sinal de banco declarado, quando a raspagem não entra — em pontos de 100, mais cada sinal reescalado que entrou nela: nota do anúncio, cliques, visualizações, e os dois de banco que só desempatam |
+| casa o perfil | Veredito da nona regra. Tri-estado: nulo quer dizer que a regra não foi avaliada (§6.1), que é diferente de não casou |
 | descontos aplicados | Valor de cada um dos três, em pontos de 100 (§6.4) |
 | nota final | Nota bruta menos os descontos |
 | perfil | Se casa o perfil de conversão (a nona regra, §6.1), o perfil que puxou e a evidência dele |
 | entrou por relaxamento | Qual das seis regras cedeu, quando aplicável |
 
-**Limitação declarada (05/09/2026).** O que a tabela guarda hoje ainda é o desenho anterior à D-028: as colunas são `nota_perfil` (1/0 do casamento), `nota_leads`, `nota_desempenho` e `nota_gestor` — **a nota do anúncio, os cliques e as visualizações reescalados não são gravados**, e `nota_desempenho` guarda a nota bruta dividida por 100 enquanto `nota_final` está em pontos de 100. Quem auditar a composição da nota usa o `apuracao.csv` da rodada, que tem os três sinais. Migrar essas colunas é fatia de código; enquanto não vier, a promessa desta seção vale para o `apuracao.csv`, não para o Registro.
+A conta fecha lendo só o Registro: `nota final = nota bruta − descontos`, com tudo na mesma unidade (pontos de 100), e `nota bruta = Σ peso × sinal` com os pesos efetivos gravados nos parâmetros da mesma rodada. As colunas do desenho anterior à D-028 continuam na tabela, com prefixo `legado_` e nulas em linha nova: são o histórico das rodadas antigas, não coluna viva.
 
 **perfil_da_rodada** — os padrões que o Analista encontrou naquela semana.
 
@@ -70,7 +71,7 @@ A planilha de decisão é adicionalmente enviada por e-mail ao gestor da vitrine
 | vendas que sustentam | Número de casos |
 | classificação | Robusto ou frágil |
 
-**Limitação declarada (05/09/2026).** Esta tabela existe no esquema e **nenhum módulo a escreve**: o identificador do perfil fica nulo em `decisao_imovel` e só a evidência (número de vendas) é gravada. Desde a D-027, em que o perfil é regra eliminatória, isso significa que o Registro não permite reconstituir *qual* perfil filtrou a rodada. Fatia de código.
+Escrita a cada rodada com **todos** os perfis da semana, robustos e frágeis, na ordem canônica do domínio; `decisao_imovel.perfil_id` aponta para o que puxou cada imóvel. O par (rodada, dimensões, valores) é único, o que é o que torna o vínculo não ambíguo.
 
 **relaxamento** — uma linha por regra cedida em cada rodada.
 
@@ -129,11 +130,11 @@ Produzida na sexta pelo Redator, a partir da saída do Decisor.
 | Super Destaque | 475 linhas escolhidas |
 | Destaque | 6.495 linhas escolhidas |
 | Relaxamento | Regras cedidas e posições dependentes de cada uma |
-| Perfis | Padrões encontrados na semana, com o número de vendas que sustenta cada um |
+| Perfis | Padrões encontrados na semana, com o número de vendas que sustenta cada um, a classificação e se contam para o filtro (§6.2) |
 
 A aba de resumo carrega obrigatoriamente: variação do estoque elegível em relação à semana anterior, idade do dado do portal, taxa de amarração entre anúncio e imóvel, e estado completa ou degradada.
 
-**O que a geração atual entrega (05/09/2026), declarado.** São seis arquivos: `super_destaque`, `destaque`, `excluidos_por_regra`, `relaxamento`, `parametros_e_limitacoes` e `apuracao` — este último com uma linha por candidato, inclusive os que ficaram fora. O conteúdo obrigatório do Resumo existe, como linhas de nota e de limitação dentro de `parametros_e_limitacoes`, com cada ausência declarada; **a aba Perfis ainda não é produzida**, pela mesma razão que `perfil_da_rodada` não é escrita (§2.1).
+**O que a geração atual entrega, declarado.** São sete arquivos: `super_destaque`, `destaque`, `excluidos_por_regra`, `relaxamento`, `perfis`, `parametros_e_limitacoes` e `apuracao` — este último com uma linha por candidato, inclusive os que ficaram fora. O conteúdo obrigatório do Resumo existe, como linhas de nota e de limitação dentro de `parametros_e_limitacoes`, com cada ausência declarada. A aba Perfis traz, além do que a tabela acima pede, a coluna que separa o perfil que ELIMINA candidatos daquele que só descreve: conta para o filtro quem é robusto e contém a faixa de preço (§6.2).
 
 ### 3.2 Colunas das abas de imóvel
 
