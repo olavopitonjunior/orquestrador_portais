@@ -5,12 +5,10 @@ import { useState } from "react";
 import { dispararSexta, type ModoDisparo, type RespostaDisparo } from "./acoes";
 
 export function Disparo({
-  podeDisparar,
   declaracaoVista,
   coletaOk,
   chromeNoAr,
 }: {
-  podeDisparar: boolean;
   declaracaoVista: number | null;
   coletaOk: boolean; // há um `out/` com status ok — a rodada pode ler o F3 de lá
   chromeNoAr: boolean; // a rodada completa começa raspando: precisa do Chrome logado
@@ -33,7 +31,7 @@ export function Disparo({
 
   const rotulo =
     modo === "seco" ? "Rodar em modo seco" : modo === "real" ? "Rodar e gravar" : "Rodada completa";
-  const bloqueado = !podeDisparar || enviando || (modo === "completa" && !chromeNoAr);
+  const bloqueado = enviando || (modo === "completa" && !chromeNoAr);
 
   return (
     <section className="secao">
@@ -60,7 +58,7 @@ export function Disparo({
               ? "Um clique, dois trabalhos encadeados: o canário raspa; terminando com 0, o " +
                 "trabalhador enfileira a decisão apontando para o out/, recortada pela raspagem. " +
                 "É uma rodada AMOSTRAL: declarada, nunca COMPLETA, nunca aprovável — existe para " +
-                "ver a corrente inteira funcionar com o fator de portal entrando de verdade. " +
+                "ver a corrente inteira funcionar com a nota do portal entrando de verdade. " +
                 "GRAVA no Registro e escreve a planilha em saida/sexta, como o modo real."
               : "O modo seco percorre a rodada inteira contra o banco de verdade e descarta o " +
                 "resultado. É o jeito de ver os números antes de gravar uma decisão."}
@@ -78,7 +76,7 @@ export function Disparo({
           </label>
         ) : (
           <label className="campo">
-            <span className="campo-nome">fator de portal (F3)</span>
+            <span className="campo-nome">a raspagem do portal</span>
             <span>
               <input
                 type="checkbox"
@@ -90,11 +88,12 @@ export function Disparo({
             </span>
             <span className="campo-ajuda">
               {coletaOk
-                ? "Há uma coleta 'ok' no disco. Marcado, a rodada lê o CSV e o desempenho de " +
-                  "portal entra no ranking (passando as portas de amarração e idade). " +
-                  "Desmarcado, o F3 fica de fora e a rodada sai DEGRADADA nesse fator."
-                : "Não há coleta 'ok' no disco: sem raspagem, o F3 fica de fora e a rodada sai " +
-                  "DEGRADADA nesse fator, com a limitação declarada. Rode um canário em Coleta."}
+                ? "Há uma coleta 'ok' no disco. Marcado, a rodada lê o CSV e a nota do anúncio " +
+                  "ordena a lista (se a raspagem cobrir o mínimo e for recente). Desmarcado, a " +
+                  "ordem cai para o desempate de banco e a rodada sai DEGRADADA, com a limitação " +
+                  "declarada."
+                : "Não há coleta 'ok' no disco: sem raspagem, a ordem cai para o desempate de banco " +
+                  "e a rodada sai DEGRADADA, com a limitação declarada. Rode um canário em Coleta."}
             </span>
           </label>
         )}

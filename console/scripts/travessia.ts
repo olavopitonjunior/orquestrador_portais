@@ -20,11 +20,17 @@ import { paraToml, validar } from "../lib/toml";
 // Duas variações: com ou sem a SEÇÃO OPCIONAL (a régua nº 14). Sem a segunda,
 // `_ler_resultado_esperado` — o único ramo condicional do carregador — nunca seria
 // exercitado pela travessia.
-const comOpcionais = process.argv[2] === "com_opcionais";
+const caso = process.argv[2] ?? "sem_opcionais";
+const comOpcionais = caso === "com_opcionais";
+// `vazio`: o TOML que o disparo gera SOZINHO quando não há declaração (rodada com os
+// adotados, D-034). Não passa por `validar` — o validador do console cobraria os 14
+// obrigatórios, e é justamente por isso que a rede é a travessia, não o validador.
+const vazio = caso === "vazio";
 const destino = process.argv[3] ?? "/tmp/travessia.toml";
 
 const valores = new Map<string, string>();
 for (const campo of CAMPOS) {
+  if (vazio) break;
   if (!campo.obrigatorio || valores.has(campo.caminho) || !campoAtivo(campo, valores)) continue;
   if (campo.tipo === "escolha") {
     valores.set(campo.caminho, (campo.escolhas ?? [])[0]);
@@ -50,7 +56,7 @@ if (comOpcionais) {
   valores.set("resultado_esperado.destaque", "1");
 }
 
-const problemas = validar(valores);
+const problemas = vazio ? [] : validar(valores);
 if (problemas.length > 0) {
   console.error("o validador do console reprovou o próprio preenchimento:", problemas);
   process.exit(1);
@@ -64,4 +70,4 @@ writeFileSync(
   destino.replace(/\.toml$/, ".esperado.json"),
   JSON.stringify(Object.fromEntries(valores), null, 2),
 );
-console.log(`TOML de travessia escrito em ${destino} (${comOpcionais ? "com" : "sem"} opcionais)`);
+console.log(`TOML de travessia escrito em ${destino} (${caso})`);

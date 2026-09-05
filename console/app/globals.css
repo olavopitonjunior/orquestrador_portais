@@ -1251,3 +1251,60 @@ th.num {
   color: var(--ink-2);
 }
 
+/* ---- a rodada em prosa (/rodada/nova) ---------------------------------- */
+
+.prosa-blocos {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.prosa-bloco {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.prosa-bloco:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.prosa-titulo {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.prosa-titulo a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.prosa-titulo a:hover {
+  text-decoration: underline;
+}
+
+.prosa-texto {
+  margin: 0.2rem 0 0;
+  max-width: 78ch;
+  line-height: 1.55;
+}
+
+.prosa-valor {
+  padding: 0 0.15rem;
+  margin: 0 0.05rem;
+  border-radius: 4px;
+  background: var(--surface-2);
+  text-decoration: none;
+  color: var(--ink);
+  border-bottom: 1px solid var(--border);
+}
+
+.prosa-valor:hover {
+  border-bottom-color: var(--accent);
+}
+
+.prosa-declarado {
+  font-weight: 700;
+  background: var(--accent-bg);
+  border-bottom-color: var(--accent);
+}
+

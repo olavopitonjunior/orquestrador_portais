@@ -58,11 +58,21 @@ def main(argv: list[str]) -> int:
         if str(obtido) != str(valor):
             faltando.append(f"  {caminho}: o console pediu {valor!r}, chegou {obtido!r}")
 
+    esperados_json = json.loads(esperados.read_text(encoding="utf-8"))
+    if not esperados_json:
+        # O caso VAZIO: o TOML que o disparo gera sozinho sem declaração. Um esperado
+        # vazio passaria o laço acima sem conferir nada; a prova aqui é o contrário —
+        # nada declarado, TUDO adotado, com a procedência rotulada (D-034).
+        if parametros.declarados_diferentes_do_adotado or any(
+            not proc.startswith("adotado") for proc in parametros.procedencia.values()
+        ):
+            faltando.append("  TOML vazio deveria resolver tudo como adotado")
+
     if faltando:
         print(f"a travessia divergiu em {toml.name}:", file=sys.stderr)
         print("\n".join(faltando), file=sys.stderr)
         return 1
-    print(f"  travessia ok: {toml.name}")
+    print(f"  travessia ok: {toml.name}" + (" (vazio: tudo adotado)" if not esperados_json else ""))
     return 0
 
 
