@@ -105,7 +105,7 @@ Deriva medida em 29/08/2026 (um dia depois da referência):
 
 ### Aviso sobre os ganhos de relaxamento
 
-Os ganhos por regra relaxada — fotos +133, cadastro completo +569, atualização em 90 dias +1.680, gestor produtivo +1.747, capacidade do distrito +5.686 — foram medidos com **mínimo de TRÊS corretores por distrito**, enquanto o parâmetro adotado é **DOIS**. O próprio PRD os mantém como "referência de ordem de grandeza; os valores absolutos mudam com o mínimo de dois". **Não usar como conferência exata.** A Spec §6.6 reproduz esses números sem a ressalva — o PRD prevalece.
+Os ganhos por regra relaxada — fotos +133, cadastro completo +569, atualização em 90 dias +1.680, gestor produtivo +1.747, capacidade do distrito +5.686 — foram medidos com **mínimo de TRÊS corretores por distrito**, enquanto o parâmetro adotado é **DOIS**. O próprio PRD os mantém como "referência de ordem de grandeza; os valores absolutos mudam com o mínimo de dois". **Não usar como conferência exata.** A Spec §6.6, revisada em 05/09/2026 (versão 1.1), passou a reproduzi-los **com** a ressalva; o ganho do degrau do perfil (primeiro da ordem desde a D-027) não foi medido nesta data, e quem quiser o número do dia pede uma prévia no console.
 
 ---
 

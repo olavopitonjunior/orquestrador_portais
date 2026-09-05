@@ -105,17 +105,11 @@ Nenhum desses ônus é impeditivo. Todos são reversíveis: migrar para servidor
 
 - Provedor específico do modelo. O critério está definido: qualidade em navegação por visão, que é a tarefa determinante. A comparação deve ser feita contra o portal real, não em benchmark genérico.
 
-**Parâmetros sem valor, herdados da spec**
+**Parâmetros sem valor, herdados da spec** *(atualizado em 05/09/2026; a fonte da verdade é a tabela do `CLAUDE.md`, e a Spec 1.1 §8 a resume — esta lista só aponta)*
 
-- Evidência mínima por combinação de perfil.
-- Forma de normalização de cada fator do ranking.
-- Intensidade das três penalidades e decaimento da penalidade por janela.
-- Tentativas e intervalo de repetição do Orquestrador.
-- Idade máxima aceitável da coleta externa de reserva.
-- Limiar de variação de volume que dispara sinalização.
-- Limiar mínimo de taxa de amarração.
-- Horários exatos de execução na sexta e na segunda, e prazo da aprovação tácita.
-- Política de retenção do Registro.
+Seguem **nulos**, sem valor inventado: forma de normalização de cada sinal do ranking (nº 2, min-max provisório no código); tentativas e intervalo de repetição do Orquestrador (nº 4); limiar de variação de volume (nº 6); horários de execução (nº 8); política de retenção do Registro (nº 9); prazo da aprovação tácita (nº 10); prazo de atendimento de lead (nº 11); resultado esperado por nível (nº 14); magnitude da alteração relevante de preço (nº 15).
+
+Deixaram de ser nulos: evidência mínima do perfil (nº 1, N ≥ 3, D-014); descontos das três penalidades e perdão (nº 3, D-030/D-034); idade máxima da coleta externa (nº 5, 2 dias) e limiar mínimo de amarração (nº 7, 50 %), ambos pela D-034. Deixaram de existir: os pesos por fator e o decaimento por dimensão (nº 12 e nº 13, D-031).
 
 **Investigações abertas, que podem alterar regras já definidas**
 
