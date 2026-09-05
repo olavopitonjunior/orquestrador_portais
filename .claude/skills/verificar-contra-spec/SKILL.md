@@ -11,8 +11,8 @@ PRD > Spec > Ferramentas > código. Divergência entre código e documento é **
 
 ## Procedimento
 
-1. **Localize a regra no documento.** Elegibilidade: Spec §6.1. Perfil: §6.2. Ranking e pesos: §6.3. Penalidades: §6.4. Alocação: §6.5. Relaxamento: §6.6. Rotação: §6.7. Estados e falhas: §7. Contratos entre agentes: §5.
-2. **Compare literal por literal**: limiares (R$ 300.000, R$ 700.000, 10 fotos, 90 dias, 30 dias, 2 corretores, 180 dias), as cinco categorias aceitas, os pesos do portal em pontos de 100 (adotados 70/30/0, D-028/D-034 — os 60/25/15 e 80/10/10 da Spec §6.3 estão superados), a ordem de relaxamento (perfil de conversão → fotos → cadastro → atualização → gestor → distrito, D-027) e a trava do login no degrau do gestor (D-029).
+1. **Localize a regra no documento.** Elegibilidade (nove regras, o perfil incluído): Spec §6.1. Perfil: §6.2. Ranking (a nota do portal): §6.3. Descontos: §6.4. Alocação: §6.5. Relaxamento: §6.6. Rotação: §6.7. Estados e falhas: §7. Contratos entre agentes: §5.
+2. **Compare literal por literal**: limiares (R$ 300.000, R$ 700.000, 10 fotos, 90 dias, 30 dias, 2 corretores, 180 dias), as cinco categorias aceitas, os pesos do portal em pontos de 100 (adotados 70/30/0, Spec §6.3 revisada em 2026-09-05, D-028/D-034), os descontos em pontos de 100 (20/5/10, perdão 50 % por carga, §6.4), a ordem de relaxamento (perfil de conversão → fotos → cadastro → atualização → gestor → distrito, D-027) e a trava do login no degrau do gestor (D-029).
 3. **Confira os invariantes** (CLAUDE.md): especialmente cotas como teto rígido e relaxamento restrito ao nível destaque.
 4. **Confira que nenhum parâmetro pendente ganhou valor.** Os nove nulos da tabela do CLAUDE.md permanecem nulos (resolvidos: nº 1 pela D-014; nº 3, 5 e 7 pela D-034; nº 12 e 13 deixaram de existir, D-031). Os adotados vivem só em `src/config/adotados.py`, com procedência. Valor inventado é erro grave, mesmo "provisório".
 5. **Rode a implementação contra a base e compare com os números de referência**:
