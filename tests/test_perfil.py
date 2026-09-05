@@ -14,7 +14,6 @@ from dominio.perfil import (
     ImovelVendido,
     PerfilConversao,
     perfis_de_conversao,
-    pesos_por_prioridade,
 )
 
 
@@ -187,34 +186,3 @@ def test_prioridade_e_a_ordem_adotada_do_dono():
 def test_prioridade_cobre_as_cinco_dimensoes_sem_repetir():
     assert set(PRIORIDADE_DIMENSOES) == set(Dimensao)
     assert len(PRIORIDADE_DIMENSOES) == len(Dimensao)
-
-
-def test_decaimento_1_nao_de_satura_todas_iguais():
-    pesos = pesos_por_prioridade(1.0)
-    assert set(pesos.values()) == {1.0}
-    assert set(pesos) == set(Dimensao)
-
-
-def test_decaimento_menor_que_1_e_estritamente_decrescente_na_prioridade():
-    pesos = pesos_por_prioridade(0.5)
-    valores_em_ordem = [pesos[dim] for dim in PRIORIDADE_DIMENSOES]
-    assert valores_em_ordem == [1.0, 0.5, 0.25, 0.125, 0.0625]
-    # estritamente decrescente
-    assert all(a > b for a, b in zip(valores_em_ordem, valores_em_ordem[1:], strict=False))
-
-
-def test_preco_pesa_mais_que_vagas_quando_de_satura():
-    pesos = pesos_por_prioridade(0.7)
-    assert pesos[Dimensao.FAIXA_PRECO] > pesos[Dimensao.VAGAS]
-
-
-@pytest.mark.parametrize("invalido", [0.0, -0.1, 1.0001, 2.0])
-def test_decaimento_fora_de_0_1_e_erro(invalido):
-    with pytest.raises(ValueError, match="decaimento fora de"):
-        pesos_por_prioridade(invalido)
-
-
-def test_pesos_por_prioridade_e_deterministico():
-    a = pesos_por_prioridade(0.6)
-    b = pesos_por_prioridade(0.6)
-    assert a == b

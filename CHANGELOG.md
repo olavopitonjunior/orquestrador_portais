@@ -55,6 +55,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
   Divergências apontadas, não resolvidas em silêncio: Spec §6.1 (nona regra), §6.2 (peso não pleno), §6.3 (fatores e pesos) e §6.6 (ordem de cedência) ficam superadas por estas decisões até a reescrita da Spec.
 
+### Removed
+
+- **`pesos_por_prioridade` sai do domínio (issue #73).** Implementava o parâmetro nº 13 — o decaimento do peso por dimensão do perfil —, que a **D-031 dissolveu sem lhe dar valor: não foi resolvido, deixou de existir**. Manter máquina executável que produz um peso que não pesa nada é a confusão que a issue ataca; o histórico fica no git e na entrada que descreve a função. `PRIORIDADE_DIMENSOES` **fica**: a D-027 preservou a ordem das dimensões como critério de exibição, e ela é a única memória em código de uma decisão do dono nas palavras dele. O consumidor de exibição ainda não existe, e ligá-lo está registrado na issue.
+
 ### Fixed
 
 - **`resultado_esperado` escalar no TOML estourava TypeError cru.** `resultado_esperado = 3` é TOML válido e caía em `set(3)` dentro da validação de chaves; passa a ser `ParametroInvalido` como as demais seções (achado dos testes reescritos).
