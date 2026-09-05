@@ -384,3 +384,16 @@ def test_nenhuma_regra_le_o_codigo_do_portal():
     sem = linha_para_candidato(LINHA, None)
     hoje = date(2026, 9, 3)
     assert regras_reprovadas(com, hoje) == regras_reprovadas(sem, hoje)
+
+
+def test_o_default_da_janela_de_login_nao_diverge_do_adotado():
+    """Mesma trava do mínimo do distrito: `dados` não importa `config` (seria inverter
+    a camada), então o default duplica o adotado e é o teste que os amarra. Nos
+    caminhos fiados o valor vem do carregador; o default só vale em chamada direta."""
+    import inspect
+
+    from config.adotados import ADOTADOS
+    from dados.coletor_interno import coletar
+
+    padrao = inspect.signature(coletar).parameters["login_janela_dias"].default
+    assert padrao == ADOTADOS["corretor.login_janela_dias"] == 30

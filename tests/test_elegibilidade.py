@@ -189,9 +189,13 @@ def test_minimo_de_corretores_do_distrito_e_parametrizado(minimo, corretores, re
 
 
 def test_minimo_de_corretores_default_e_o_adotado():
+    # Contra o ADOTADO, não contra o literal: o domínio não importa `config` (seria
+    # inverter a camada), então o default vive em dois lugares e é este teste que
+    # impede os dois de divergirem em silêncio.
+    from config.adotados import ADOTADOS
     from dominio.elegibilidade import MINIMO_CORRETORES_ATIVOS_DISTRITO
 
-    assert MINIMO_CORRETORES_ATIVOS_DISTRITO == 2  # D-015
+    assert MINIMO_CORRETORES_ATIVOS_DISTRITO == ADOTADOS["corretor.minimo_no_distrito"] == 2
     imovel = replace(APROVADO, corretores_ativos_no_distrito=1)
     assert regras_reprovadas(imovel, REF) == regras_reprovadas(
         imovel, REF, minimo_corretores_distrito=MINIMO_CORRETORES_ATIVOS_DISTRITO

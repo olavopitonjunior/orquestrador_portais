@@ -110,8 +110,10 @@ class DetalheImovel:
     nota_destaque: float
     perfil_que_puxou: PerfilConversao | None
     # A nota ANTES dos descontos (0–100): a do portal, ou a do desempate de banco quando
-    # o portal não entrou. A planilha mostra as duas; o Registro grava esta.
-    nota_bruta: float = 0.0
+    # o portal não entrou. A planilha mostra as duas; o Registro grava esta. Sem
+    # default: é campo autoritativo, e um zero por omissão seria indistinguível de uma
+    # nota bruta medida em zero.
+    nota_bruta: float
 
 
 @dataclass(frozen=True)
