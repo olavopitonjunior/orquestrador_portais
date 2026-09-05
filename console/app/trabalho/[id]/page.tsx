@@ -10,7 +10,10 @@ import {
   trabalhadorVivo,
 } from "@/lib/operacao";
 
+import { montarBlocos } from "@/lib/blocos-da-rodada";
 import { lerPrevia } from "@/lib/previa";
+
+import { BlocosRealizados } from "./blocos";
 
 import { PreviaDoFunil, PreviaEmCurso } from "./previa";
 import { RelatorioDosAgentes } from "./relatorio";
@@ -46,6 +49,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const desfecho = desfechoDe(trabalho.tipo, trabalho.codigo_saida);
   const ehPrevia = trabalho.tipo === "previa";
   const previa = ehPrevia ? lerPrevia(resumos.get("previa")) : null;
+  // A decisão de sexta em três blocos, enchendo conforme os nós concluem. Os
+  // parâmetros efetivos só existem no Registro depois de gravada; aqui os blocos
+  // mostram o que os agentes reportaram.
+  const blocos =
+    trabalho.tipo === "sexta" ? montarBlocos({ resumos, efetivo: null, contagens: null, relaxamento: [] }) : null;
   // Quais etapas já se anunciaram. O nó vem do NDJSON que a rodada emite ao vivo; a
   // ordem de apresentação é a de ETAPAS, não a de chegada — dois nós do mesmo passo do
   // grafo terminam juntos, e listá-los na ordem de chegada sugeriria uma sequência que
@@ -108,6 +116,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           A prévia terminou sem deixar resultado legível. O log abaixo diz o que aconteceu.
         </div>
       ) : null}
+
+      {blocos ? <BlocosRealizados b={blocos} emCurso={emCurso} /> : null}
 
       {ehPrevia ? null : (
         <section className="secao">

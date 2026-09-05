@@ -47,7 +47,7 @@ export function condicoes(
             titulo: "Coleta do portal",
             nivel: "warn",
             texto:
-              "Nenhuma coleta em disco. Sem ela o desempenho de portal (F3) não entra e a rodada sai degradada.",
+              "Nenhuma coleta em disco. Sem ela a nota do anúncio não ordena a lista e a rodada sai degradada.",
             href: "/coleta",
             rotulo: "Coletar",
           }

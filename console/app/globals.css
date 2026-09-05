@@ -1308,3 +1308,25 @@ th.num {
   border-bottom-color: var(--accent);
 }
 
+/* ---- os três blocos realizados (/trabalho, /rodada) -------------------- */
+
+.blocos-realizados {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0.75rem 0 1.25rem;
+}
+
+.bloco-realizado {
+  scroll-margin-top: 1rem;
+}
+
+.bloco-realizado .caixa-cabecalho h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bloco-realizado .kpis {
+  margin-bottom: 0.6rem;
+}
+
