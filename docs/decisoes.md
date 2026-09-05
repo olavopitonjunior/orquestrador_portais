@@ -27,6 +27,8 @@ A elegibilidade tem **oito regras binárias gerais**: status ativo, categoria, p
 
 Onde os documentos disserem "nove regras", leia-se "oito regras gerais + piso de nível".
 
+**Adendo 2026-09-05 — esta regra de leitura vale para o PISO, não para a contagem.** A D-027 fez o perfil de conversão voltar a ser a nona regra, por outro caminho: desde ela a elegibilidade é oito regras gerais **mais o perfil**, e o piso de R$ 700.000 segue fora, como condição de nível — que é o que esta decisão fixou e continua valendo. A Spec 1.1 (05/09/2026) §6.1 já lista as nove assim. Em documento anterior a essa data, "nove regras" ainda se lê "oito gerais + piso"; da Spec 1.1 em diante, lê-se "oito gerais + perfil". O PRD é o texto que ainda depende dessa distinção — ver a [P-23], no fim deste arquivo.
+
 ## D-003 — Status impeditivo é regra de saída imediata, não de elegibilidade
 
 **Data**: 2026-08-29 · **Resolve**: contradição C5 (tabela do Estágio 1 do PRD vs. glossário do PRD e Spec §6.7)
@@ -893,3 +895,32 @@ Entram no contrato, todos em unidade que uma pessoa julga: `conversao.janela_dia
 ### [P-13] Adendo (2026-09-04) — o código do portal existe no banco
 
 A pendência estava registrada como refutada ("não existe id nem URL de anúncio do portal em tabela nenhuma"). A primeira raspagem real (03/09/2026) mostrou `realties.NewIdMarketingRotation` **igual ao `codigoImovel` do Canal Pro em 300 de 300** anúncios amarrados. A apuração já o entrega como `codigo_portal` (PR #72). O que resta é fato do dono, não medição: **é esse o código que quem aplica a carga usa para achar o anúncio?** Se sim, a [P-13] fecha; a planilha entregue passa a ser aplicável sem consulta ao banco.
+
+## Spec revisada para 1.1 (2026-09-05) — as divergências declaradas nas D-027, D-028 e D-030 foram incorporadas
+
+`docs/vitrine-destaque-spec.md` passou à versão 1.1. O que mudou no texto, e por quê:
+
+- **§6.1**: nove regras = oito gerais + o perfil de conversão (D-027); o piso de R$ 700.000 sai da tabela e vai para a §6.5 como condição de nível (D-002); status impeditivo é saída imediata (D-003); mínimo do distrito é declarável (D-033); login não exclui, trava (D-029).
+- **§6.2**: evidência mínima N ≥ 3 (D-014); o perfil é regra, conta só se robusto e contendo a faixa de preço (D-027); só vendas na base (D-032); "não recebe peso pleno" deixa de existir.
+- **§6.3**: a nota é a soma ponderada dos três sinais do portal em pontos de 100 (adotados 70/30/0), leads e produtividade viram desempate com a D-009 por último, imóvel sem anúncio tem tratamento declarado, e sem raspagem a ordem cai para o sinal do banco declarado com rodada degradada (D-028). A tabela 60/25/15 e 80/10/10 sai; os objetivos por nível ficam como intenção.
+- **§6.4**: passa a chamar-se "Descontos": pontos de 100 e perdão por carga (D-030), com os adotados; o nº 14 nulo deixa o desconto por janela inerte e declarado (D-022).
+- **§6.5**: piso como condição de nível; cotas lidas do Registro.
+- **§6.6**: perfil como primeiro degrau (D-027), trava do login (D-029), linha com zero para degrau cedido sem recuperação, ressalva do PRD sobre os ganhos medidos com três corretores.
+- **§3.2, §5, §7.3, §8**: colunas da planilha, contratos dos agentes, tratamento de falha do perfil e da amarração, e a lista de parâmetros (definidos, declaráveis, nulos, dissolvidos) alinhados ao `CLAUDE.md`.
+
+### O que esta revisão NÃO fez, e a pendência que ela cria — [P-23]
+
+Com isso, as frases "a Spec §6.x precisa ser reescrita" das D-027, D-028 e D-030 estão cumpridas. Mas a revisão abre uma divergência nova, no topo da hierarquia, e ela precisa ficar visível em vez de resolvida em silêncio.
+
+**Antes:** PRD e Spec estavam velhos JUNTOS, e este arquivo superava os dois — desconfortável, porém uniforme. **Agora:** a Spec diz o que o código faz, e o PRD, que é o documento SUPERIOR, contradiz os dois. Enquanto durar, vale a regra do topo daqui: a decisão registrada prevalece sobre o trecho divergente de qualquer documento, PRD incluído.
+
+**[P-23] Vai ao dono: autorizar a revisão do PRD para incorporar as D-027 a D-034.** Os pontos medidos, em `docs/vitrine-destaque-prd.md`:
+
+- **A tabela de pesos do ranking** (linha 236, e a tabela de parâmetros em :278-299): ainda traz semelhança 60/80, desempenho 25/10, produtividade 15/10, e "A definir" para as intensidades das penalidades. Superada pelas D-028 e D-030 — a nota passou a ser do portal, em pontos de 100, e os descontos têm valor adotado.
+- **A disputa do super destaque**: "4.852 candidatos, dez por vaga" (:17 e :187). A medição de 02/09/2026 achou 3.562 candidatos e 7,5 por vaga, e o filtro de perfil da D-027 reduz mais. Ver o aviso de deriva em `docs/perguntas-abertas.md`.
+- **As "nove regras"** (:490, :574, :654) — e aqui a **[P-18] mudou de sentido**. Ela foi aberta para perguntar se o PRD podia trocar "nove" por "oito", leitura correta sob as D-002/D-003. Depois da **D-027** o número voltou a ser nove (oito gerais mais o perfil), por outro caminho: **executar a [P-18] como está escrita tornaria o PRD errado de um jeito novo.** A pergunta certa hoje é a desta pendência — rever o PRD inteiro contra as decisões —, e a [P-18] deve ser respondida dentro dela, não antes.
+
+Enquanto o dono não autorizar, o PRD segue como está e nada no código muda: o PRD é fonte de INTENÇÃO, e a intenção dele — valor esperado no super destaque, não deixar benefício pago sem uso no destaque — continua sendo perseguida. O que mudou foi a mecânica, não o objetivo.
+
+Nesta revisão o PRD **não** foi tocado, e a hierarquia continua PRD > Spec: onde os dois divergirem, o PRD prevalece **exceto** no que uma decisão registrada já resolveu, que é o caso dos três pontos acima. Reescrever o PRD é fatia própria, e depende da [P-23].
+
