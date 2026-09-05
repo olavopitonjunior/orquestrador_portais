@@ -63,9 +63,11 @@ export function validar(valores: Valores): Problema[] {
   for (const campo of ativos) {
     const bruto = valores.get(campo.caminho);
     if (vazio(bruto)) {
-      // Campo opcional vazio é legítimo — a seção inteira fica de fora. A regra
-      // `todos_ou_nenhum` abaixo é quem cobra a indivisibilidade.
-      if (campo.obrigatorio) {
+      // Vazio cai no ADOTADO (D-034) — é o mesmo que `config.parametros.carregar` faz
+      // com chave ausente, então cobrar aqui faria a tela exigir o que a rodada não
+      // exige. Só é problema quando não há adotado (o nº 14, que segue nulo): aí a
+      // seção inteira fica de fora, e a regra `todos_ou_nenhum` cobra a indivisibilidade.
+      if (campo.obrigatorio && campo.adotado === null) {
         problemas.push({ caminho: campo.caminho, mensagem: "falta preencher" });
       }
       continue;
@@ -94,6 +96,15 @@ function validarRegras(valores: Valores): Problema[] {
   for (const regra of REGRAS) {
     const brutos = regra.campos.map((c) => valores.get(c));
     const preenchidos = brutos.filter((b) => !vazio(b));
+    // O valor EFETIVO de cada campo: o declarado, ou o adotado quando vazio — como o
+    // carregador Python resolve antes de conferir a soma. Declarar só `peso_nota = 80`
+    // deixa a soma em 110 com os adotados, e a rodada recusaria.
+    const efetivos = regra.campos.map((c) => {
+      const bruto = valores.get(c);
+      if (!vazio(bruto)) return bruto;
+      const adotado = POR_CAMINHO.get(c)?.adotado;
+      return adotado === null || adotado === undefined ? undefined : String(adotado);
+    });
 
     if (regra.tipo === "todos_ou_nenhum") {
       if (preenchidos.length > 0 && preenchidos.length !== regra.campos.length) {
@@ -104,8 +115,8 @@ function validarRegras(valores: Valores): Problema[] {
     // As demais só se aplicam quando tudo está preenchido e numérico: enquanto houver
     // campo vazio ou inválido, o problema dele já está listado e cobrar a regra em
     // cima disso produziria dois erros para uma causa só.
-    if (preenchidos.length !== regra.campos.length) continue;
-    const numeros = brutos.map((b) => Number(b));
+    if (efetivos.some((e) => vazio(e))) continue;
+    const numeros = efetivos.map((b) => Number(b));
     if (numeros.some((n) => !Number.isFinite(n))) continue;
 
     if (regra.tipo === "soma_igual") {

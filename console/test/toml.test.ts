@@ -48,20 +48,31 @@ test("um preenchimento válido não produz problema nenhum", () => {
   assert.deepEqual(validar(preenchimentoValido()), []);
 });
 
-test("campo obrigatório vazio é cobrado, e só ele", () => {
+test("campo vazio NÃO é cobrado: cai no adotado (D-034), como o carregador Python", () => {
   const v = preenchimentoValido();
   v.delete("desconto.sem_lead_180d");
-  const p = validar(v);
-  assert.equal(p.length, 1);
-  assert.equal(p[0].caminho, "desconto.sem_lead_180d");
+  assert.deepEqual(validar(v), []);
+  // A declaração VAZIA inteira é válida: a rodada e a prévia respondem com os adotados.
+  assert.deepEqual(validar(new Map()), []);
 });
 
-test("espaço em branco conta como vazio", () => {
+test("espaço em branco conta como vazio — e vazio é o adotado, não zero", () => {
   // Sem isto, `Number(" ")` vira 0 — um valor que ninguém escolheu, entrando numa
-  // rodada que decide 6.970 posições pagas.
+  // rodada que decide 6.970 posições pagas. Hoje vazio é o ADOTADO; só não pode ser 0.
   const v = preenchimentoValido();
   v.set("desconto.sem_lead_180d", "   ");
-  assert.equal(validar(v).length, 1);
+  assert.deepEqual(validar(v), []);
+  assert.doesNotMatch(paraToml(v, "t"), /sem_lead_180d = /, "vazio não vai ao TOML");
+});
+
+test("a soma dos pesos é conferida com os ADOTADOS nos campos vazios", () => {
+  // Declarar só `peso_nota = 80` deixa 80 + 30 + 0 = 110 com os adotados: a rodada
+  // recusaria, então a tela recusa igual. Declarar 70 sozinho é redundante e válido.
+  const so_nota = new Map([["portal.peso_nota", "80"]]);
+  const p = validar(so_nota);
+  assert.equal(p.length, 1);
+  assert.match(p[0].mensagem, /Somam 110/);
+  assert.deepEqual(validar(new Map([["portal.peso_nota", "70"]])), []);
 });
 
 test("inteiro com casa decimal é RECUSADO", () => {
