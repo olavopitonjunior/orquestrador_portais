@@ -25,7 +25,9 @@ exatamente como um número inventado entra numa planilha aprovada.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from types import MappingProxyType
 from typing import Any, Literal
 
 from config.adotados import ADOTADOS
@@ -59,6 +61,9 @@ class Campo:
     exige: tuple[str, str] | None = None
     # Rótulo do parâmetro pendente, vindo de `PENDENTE_DE` — nunca redigitado.
     pendencia: str | None = None
+    # O NOME que o dono lê (régua de escrita: o nome antes da sigla, unidade à parte).
+    # Vem de `ROTULOS`, pela fábrica — um campo sem rótulo é erro na importação.
+    rotulo: str = ""
     # A UNIDADE em que o dono lê o número (dias, pontos de 100, %, corretores, leads).
     # Nunca uma escala abstrata: é o que faz o campo ser julgável sem a Spec ao lado.
     unidade: str = ""
@@ -277,6 +282,30 @@ def _pendencia(caminho: str) -> str | None:
     return None
 
 
+# O nome de cada campo como o dono o lê na tela — nunca o caminho do TOML. A régua de
+# escrita das telas: o nome vem antes da sigla, a unidade fica ao lado (campo `unidade`).
+ROTULOS: Mapping[str, str] = MappingProxyType(
+    {
+        "conversao.janela_dias": "janela do que vende",
+        "corretor.login_janela_dias": "gestor sem login há mais de",
+        "corretor.minimo_no_distrito": "mínimo de corretores produtivos no distrito",
+        "portal.peso_nota": "peso da nota do anúncio",
+        "portal.peso_cliques": "peso dos cliques",
+        "portal.peso_visualizacoes": "peso das visualizações",
+        "portal.cobertura_minima": "cobertura mínima da raspagem",
+        "portal.idade_maxima_dias": "idade máxima da raspagem",
+        "portal.sem_anuncio": "imóvel sem anúncio raspado",
+        "portal.ordem_quando_nao_entra": "ordem quando a raspagem não entra",
+        "desconto.janela_sem_resultado": "janela anterior sem resultado",
+        "desconto.sem_avaliacao": "sem avaliação por categoria",
+        "desconto.sem_lead_180d": "sem lead em 180 dias",
+        "desconto.perdao_por_semana": "perdão por semana",
+        "resultado_esperado.super_destaque": "resultado esperado no super destaque",
+        "resultado_esperado.destaque": "resultado esperado no destaque",
+    }
+)
+
+
 def _campo(caminho: str, tipo: Tipo, ajuda: str, grupo: str, **resto: Any) -> Campo:
     """Fábrica única. Existe para que `pendencia` NÃO seja algo que se possa esquecer.
 
@@ -295,6 +324,7 @@ def _campo(caminho: str, tipo: Tipo, ajuda: str, grupo: str, **resto: Any) -> Ca
         grupo=grupo,
         pendencia=_pendencia(caminho),
         adotado=ADOTADOS.get(caminho),
+        rotulo=ROTULOS[caminho],  # KeyError na importação = campo novo sem nome
         **resto,
     )
 

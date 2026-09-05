@@ -129,6 +129,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "janela do que vende",
       "unidade": "dias",
       "adotado": 180,
       "se_aumentar": "Mais vendas sustentam os perfis, mas o padrão fica menos recente."
@@ -145,6 +146,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "gestor sem login há mais de",
       "unidade": "dias",
       "adotado": 30,
       "se_aumentar": "Menos gestores contam como sem login; o relaxamento trava menos imóveis."
@@ -161,6 +163,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "mínimo de corretores produtivos no distrito",
       "unidade": "corretores",
       "adotado": 2,
       "se_aumentar": "Exige distritos com mais equipe: menos imóveis entram, mais concentrados."
@@ -177,6 +180,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "peso da nota do anúncio",
       "unidade": "pontos de 100",
       "adotado": 70,
       "se_aumentar": "A ordem passa a seguir mais a qualidade do anúncio que o interesse medido."
@@ -193,6 +197,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "peso dos cliques",
       "unidade": "pontos de 100",
       "adotado": 30,
       "se_aumentar": "Anúncio com clique sobe mesmo com nota baixa; sinal fraco hoje, quase todos zero."
@@ -209,6 +214,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "peso das visualizações",
       "unidade": "pontos de 100",
       "adotado": 0,
       "se_aumentar": "Hoje, nada: o campo vem zerado do portal, e o peso cairia num sinal vazio."
@@ -225,6 +231,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "cobertura mínima da raspagem",
       "unidade": "%",
       "adotado": 50,
       "se_aumentar": "Exige raspagem mais completa; mais rodadas saem sem ordem de portal."
@@ -241,6 +248,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "idade máxima da raspagem",
       "unidade": "dias",
       "adotado": 2,
       "se_aumentar": "Aceita raspagem mais velha; a ordem pode refletir a semana anterior."
@@ -260,6 +268,7 @@
       ],
       "exige": null,
       "pendencia": null,
+      "rotulo": "imóvel sem anúncio raspado",
       "unidade": "",
       "adotado": "fim_da_fila",
       "se_aumentar": ""
@@ -280,6 +289,7 @@
       ],
       "exige": null,
       "pendencia": null,
+      "rotulo": "ordem quando a raspagem não entra",
       "unidade": "",
       "adotado": "leads_180d",
       "se_aumentar": ""
@@ -296,6 +306,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "janela anterior sem resultado",
       "unidade": "pontos de 100",
       "adotado": 20,
       "se_aumentar": "Imóvel que já falhou numa janela cai mais na ordem (quando a régua existir)."
@@ -312,6 +323,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "sem avaliação por categoria",
       "unidade": "pontos de 100",
       "adotado": 5,
       "se_aumentar": "Pune o estoque novo por um defeito da base."
@@ -328,6 +340,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "sem lead em 180 dias",
       "unidade": "pontos de 100",
       "adotado": 10,
       "se_aumentar": "Imóvel sem lead recente cai mais na ordem."
@@ -344,6 +357,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": null,
+      "rotulo": "perdão por semana",
       "unidade": "% por carga",
       "adotado": 50,
       "se_aumentar": "O tropeço passado é esquecido mais rápido."
@@ -360,6 +374,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": "nº 14 (resultado esperado por nível, §6.4)",
+      "rotulo": "resultado esperado no super destaque",
       "unidade": "leads",
       "adotado": null,
       "se_aumentar": "Mais janelas de super destaque contam como sem resultado."
@@ -376,6 +391,7 @@
       "escolhas": null,
       "exige": null,
       "pendencia": "nº 14 (resultado esperado por nível, §6.4)",
+      "rotulo": "resultado esperado no destaque",
       "unidade": "leads",
       "adotado": null,
       "se_aumentar": "Mais janelas de destaque contam como sem resultado (88% geraram zero)."
