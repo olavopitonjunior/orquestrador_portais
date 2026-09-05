@@ -14,7 +14,7 @@ export type SaudeColeta = {
   estado: EstadoColeta;
   needsWarm: boolean; // NEEDS_WARM.flag presente = sessão caiu, precisa re-login
   coletadoEm: string | null; // finishedAt do status.json (ISO); null se inválido
-  idadeDias: number | null; // dias desde a coleta (para a janela nº 5, nula)
+  idadeDias: number | null; // dias desde a coleta (a janela nº 5 vale 2 dias, D-034)
   linhas: number | null; // rows gravadas (status.json)
   // `outDir` NÃO faz parte do tipo público: é caminho absoluto do servidor e não
   // deve escapar daqui (achado do security-audit). Vai só no `title` do card, via
