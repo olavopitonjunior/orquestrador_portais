@@ -188,7 +188,7 @@ jobs:
       - name: O TOML que o console gera carrega na rodada
         run: |
           npm --prefix console ci --no-audit --no-fund
-          for caso in sem_opcionais com_opcionais; do
+          for caso in sem_opcionais com_opcionais vazio; do
             (cd console && node --import tsx scripts/travessia.ts "$caso" "/tmp/t-$caso.toml")
             uv run python scripts/conferir_travessia.py "/tmp/t-$caso.toml" "/tmp/t-$caso.esperado.json"
           done

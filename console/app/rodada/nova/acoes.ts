@@ -7,7 +7,14 @@
 
 import { redirect } from "next/navigation";
 
-import { TrabalhoEmVoo, criarTrabalho, listarTrabalhos, ultimosParametros } from "@/lib/operacao";
+import {
+  TrabalhoEmVoo,
+  criarTrabalho,
+  guardarParametros,
+  listarTrabalhos,
+  ultimosParametros,
+} from "@/lib/operacao";
+import { paraToml } from "@/lib/toml";
 
 export type RespostaDisparo = { ok: false; erro: string };
 
@@ -23,6 +30,7 @@ export type ModoDisparo = "seco" | "real" | "completa";
 
 async function declaracaoConferida(
   declaracaoVista: number | null,
+  por: string,
 ): Promise<{ id: number } | RespostaDisparo> {
   const declaracao = await ultimosParametros();
 
@@ -42,12 +50,28 @@ async function declaracaoConferida(
         `e confira antes de disparar.`,
     };
   }
+  if (declaracaoVista === null) {
+    // A tela disse "não há declaração: vai rodar com os adotados". Se uma apareceu
+    // enquanto ela estava aberta, o mesmo princípio de cima: recusa, não substitui.
+    if (declaracao !== null) {
+      return {
+        ok: false,
+        erro:
+          `uma declaração foi criada enquanto esta tela estava aberta (nº ${declaracao.id}). ` +
+          "Recarregue e confira antes de disparar.",
+      };
+    }
+    // Sem declaração, a rodada usa os ADOTADOS (D-034). Mesmo assim uma declaração é
+    // criada, vazia: é ela que registra a procedência do que a rodada usou, e o
+    // trabalhador exige um TOML para materializar.
+    const id = await guardarParametros(
+      paraToml(new Map(), `sem declaração: os adotados (D-034)${por ? `, disparo por ${por}` : ""}`),
+      por || null,
+    );
+    return { id };
+  }
   if (declaracao === null) {
-    return {
-      ok: false,
-      erro: "não há parâmetros declarados. Preencha o formulário antes — a rodada recusa "
-        + "rodar sem eles, e isso é proteção: peso inventado numa planilha aprovada é invisível.",
-    };
+    return { ok: false, erro: "a declaração que esta tela viu não existe mais. Recarregue e confira." };
   }
   return { id: declaracao.id };
 }
@@ -61,7 +85,7 @@ export async function dispararSexta(
   usarColeta: boolean,
   passosDoCanario: string,
 ): Promise<RespostaDisparo> {
-  const conferida = await declaracaoConferida(declaracaoVista);
+  const conferida = await declaracaoConferida(declaracaoVista, por);
   if ("ok" in conferida) return conferida;
 
   // Vai o ID da declaração, não o caminho de um arquivo. O trabalhador materializa o
