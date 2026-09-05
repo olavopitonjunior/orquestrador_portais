@@ -31,6 +31,7 @@ from entrega.planilha_piloto import (
     linhas_destaque,
     linhas_excluidos_por_regra,
     linhas_parametros_e_limitacoes,
+    linhas_perfis,
     linhas_relaxamento,
     linhas_super_destaque,
 )
@@ -238,7 +239,7 @@ def test_penalidade_serializada_bate_com_o_detalhe():
     assert ln["desconto_total"] == det.desconto_total
 
 
-def test_escrever_planilha_gera_os_seis_csvs(tmp_path):
+def test_escrever_planilha_gera_os_sete_csvs(tmp_path):
     r = _resultado()
     caminhos = escrever_planilha(
         r,
@@ -247,6 +248,7 @@ def test_escrever_planilha_gera_os_seis_csvs(tmp_path):
         historico_janelas=None,
         resultado_esperado=None,
         contexto=_contexto(_cands_da_apuracao()),
+        perfis=PERFIS,
     )
     nomes = sorted(p.name for p in caminhos)
     assert nomes == [
@@ -254,6 +256,7 @@ def test_escrever_planilha_gera_os_seis_csvs(tmp_path):
         "destaque.csv",
         "excluidos_por_regra.csv",
         "parametros_e_limitacoes.csv",
+        "perfis.csv",
         "relaxamento.csv",  # Spec §3.1/§6.6: obrigatória
         "super_destaque.csv",
     ]
@@ -277,6 +280,7 @@ def test_escrever_planilha_inclui_nota_de_coleta_no_csv(tmp_path):
         resultado_esperado=None,
         notas_coleta=(nota,),
         contexto=_contexto(_cands_da_apuracao()),
+        perfis=PERFIS,
     )
     with (tmp_path / "piloto" / "parametros_e_limitacoes.csv").open(encoding="utf-8") as f:
         itens = [ln["item"] for ln in csv.DictReader(f)]
@@ -557,11 +561,22 @@ def test_apuracao_codigo_do_portal_vem_do_candidato():
     assert linhas[0]["codigo_portal"] == "10A" and linhas[1]["codigo_portal"] == ""
 
 
-def test_escrever_planilha_exige_o_contexto_e_escreve_o_sexto_arquivo(tmp_path):
+def test_escrever_planilha_exige_o_contexto_e_os_perfis(tmp_path):
+    """Fail-closed nos dois: sem contexto não há apuração, e sem perfis a aba da nona
+    regra sairia só com o cabeçalho — indistinguível de uma semana sem perfil nenhum."""
     r = _resultado()
     with pytest.raises(TypeError):  # sem contexto não há apuração — e não há planilha
         escrever_planilha(
             r, PARAMS, tmp_path / "sem", historico_janelas={}, resultado_esperado=None
+        )
+    with pytest.raises(TypeError):  # sem perfis, idem
+        escrever_planilha(
+            r,
+            PARAMS,
+            tmp_path / "sem2",
+            historico_janelas={},
+            resultado_esperado=None,
+            contexto=_contexto(_cands_da_apuracao()),
         )
     com = escrever_planilha(
         r,
@@ -570,6 +585,7 @@ def test_escrever_planilha_exige_o_contexto_e_escreve_o_sexto_arquivo(tmp_path):
         historico_janelas={},
         resultado_esperado=None,
         contexto=_contexto(_cands_da_apuracao()),
+        perfis=PERFIS,
     )
     assert [p.name for p in com][-1] == "apuracao.csv"
     texto = (tmp_path / "com" / "apuracao.csv").read_text(encoding="utf-8")
@@ -655,3 +671,35 @@ def test_apuracao_ultima_janela_julga_com_o_limiar_como_as_abas():
     aba = {ln["imovel_id"]: ln for ln in linhas_super_destaque(r, historico, limiar)}
     assert apur[10]["ultima_janela"] == aba[10]["ultima_janela"]
     assert "NÃO atingiu" in apur[10]["ultima_janela"]
+
+
+# ------------------------------------------------------- a aba de perfis (§3.1)
+
+
+def test_a_aba_de_perfis_traz_todos_com_a_classificacao_e_o_que_conta_para_o_filtro():
+    """Spec §3.1: os padrões da semana. Os frágeis entram — sem eles não dá para ver
+    que a evidência era pouca — e a coluna do filtro separa o perfil que ELIMINA
+    candidatos (robusto E com a faixa de preço, D-027) daquele que só descreve."""
+    so_regiao = PerfilConversao(dimensoes=(Dimensao.REGIAO,), valores=("Centro",), num_vendas=9)
+    fragil = PerfilConversao(dimensoes=(Dimensao.FAIXA_PRECO,), valores=("até 300k",), num_vendas=1)
+    perfis = (*PERFIS, so_regiao, fragil)
+    linhas = linhas_perfis(perfis, Dimensao.FAIXA_PRECO)
+    assert [ln["ordem"] for ln in linhas] == [1, 2, 3, 4]
+    assert [ln["classificacao"] for ln in linhas] == ["robusto", "robusto", "robusto", "frágil"]
+    # robusto com faixa de preço conta; robusto só de região não; frágil nunca.
+    assert [ln["conta_para_o_filtro"] for ln in linhas] == ["sim", "sim", "não", "não"]
+    assert linhas[2]["dimensoes"] == "regiao" and linhas[2]["valores"] == "regiao=Centro"
+    assert linhas[3]["vendas_sustentam"] == 1
+
+
+def test_sem_exigencia_de_dimensao_todo_perfil_robusto_conta():
+    linhas = linhas_perfis(PERFIS, None)
+    assert all(ln["conta_para_o_filtro"] == "sim" for ln in linhas)
+
+
+def test_a_aba_de_perfis_preserva_a_ordem_canonica_do_dominio():
+    """Invariante 5: a ordem é a que o domínio devolveu, não uma reordenação da tela."""
+    invertidos = tuple(reversed(PERFIS))
+    assert [ln["valores"] for ln in linhas_perfis(invertidos, None)] == [
+        ln["valores"] for ln in reversed(linhas_perfis(PERFIS, None))
+    ]

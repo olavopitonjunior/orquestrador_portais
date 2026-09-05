@@ -701,6 +701,7 @@ def executar(
                         + len(resultado.relaxamento.recuperados)
                     ),
                 ),
+                perfis=tuple(final.get("perfis") or ()),
                 # O histórico CRU e o limiar, para a coluna que os critérios de aceite
                 # do PRD exigem. `None` já significa "não consultado" na origem — sem
                 # guarda aqui, porque duas chaves permitiam a combinação incoerente

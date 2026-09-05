@@ -39,6 +39,10 @@ const SOBRE_A_ABA: Record<Aba, string> = {
   relaxamento:
     "A ordem de cedência aplicada nas posições de destaque e quantas posições cada degrau " +
     "cobriu. A última linha diz quantas ficaram vazias mesmo assim.",
+  perfis:
+    "Os padrões de imóvel que venderam na janela, com quantas vendas sustentam cada um. " +
+    "Robusto é o que tem ao menos três vendas; e só conta para o filtro — a nona regra de " +
+    "elegibilidade — quem é robusto E contém a faixa de preço, o que a última coluna diz.",
   parametros_e_limitacoes:
     "O que produziu esta lista: os parâmetros PROVISÓRIOS declarados, e cada limitação que " +
     "a rodada declarou sobre si mesma. Leia esta aba antes das outras.",
@@ -76,6 +80,7 @@ const ORDEM_DAS_ABAS: readonly Aba[] = [
   "destaque",
   "excluidos_por_regra",
   "relaxamento",
+  "perfis",
 ];
 
 const LINHAS_NA_TELA = 300;
@@ -243,7 +248,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               href={`/rodada/${rodada.id}/planilha/todas.zip`}
               download={`rodada-${rodada.id}-planilha-${dataReferencia ?? ""}.zip`}
             >
-              Baixar as cinco abas (.zip)
+              Baixar as abas (.zip)
             </a>
           ) : null}
           {rodada.aprovadaEm ? (

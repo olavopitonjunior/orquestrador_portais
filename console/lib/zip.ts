@@ -1,4 +1,4 @@
-// Um zip "store" (sem compressão), escrito à mão para o console entregar as cinco abas
+// Um zip "store" (sem compressão), escrito à mão para o console entregar as abas
 // da planilha num arquivo só sem dependência nova. Os CSVs são pequenos (a maior aba
 // tem milhares de linhas); comprimir não vale uma dependência, e o formato store é a
 // parte trivial e estável do ZIP (PKWARE APPNOTE §4.3): cabeçalho local + dados por

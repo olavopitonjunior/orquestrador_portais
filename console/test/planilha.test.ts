@@ -81,7 +81,12 @@ test("lê as abas de uma data e lista as ausentes (a apuração inclusive)", asy
   assert.equal(p.abas.super_destaque?.linhas.length, 1);
   assert.equal(p.abas.destaque?.vazia, true);
   assert.equal(p.abas.relaxamento?.semConteudo, false);
-  assert.deepEqual(p.ausentes, ["apuracao", "excluidos_por_regra", "parametros_e_limitacoes"]);
+  assert.deepEqual(p.ausentes, [
+    "apuracao",
+    "excluidos_por_regra",
+    "perfis",
+    "parametros_e_limitacoes",
+  ]);
 });
 
 test("datas mais recentes primeiro; nome fora do padrão é ignorado e nunca vira caminho", async () => {
