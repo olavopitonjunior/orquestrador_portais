@@ -39,6 +39,15 @@ export async function salvarParametros(
   }
 }
 
+/** Guarda e leva à tela de disparo: a terceira saída do rodapé, em ordem de
+ *  compromisso (guardar · ver a prévia · guardar e ir rodar). O disparo em si continua
+ *  em /rodada/nova, com a prontidão e os modos — aqui só se guarda. */
+export async function salvarEIrRodar(entradas: Record<string, string>, por: string): Promise<Resposta> {
+  const r = await salvarParametros(entradas, por);
+  if (!r.ok) return r;
+  redirect("/rodada/nova");
+}
+
 /** Guarda a declaração E enfileira a prévia sobre ela — o elo entre definir e rodar.
  *  Uma declaração VAZIA é legítima: a prévia responde com os adotados (D-034). */
 export async function verPrevia(entradas: Record<string, string>, por: string): Promise<Resposta> {

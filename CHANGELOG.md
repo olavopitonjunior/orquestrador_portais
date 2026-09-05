@@ -18,6 +18,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Changed
 
+- **`/parametros` em três blocos, com a régua de escrita (Fatia 5, PR B1).** A tela deixa de ser sete grupos soltos e passa a ter os três blocos da jornada — **Quem entra · Em que ordem · Quantos** — com âncoras no topo, cada um aberto pela frase que diz o que as regras dele fazem ("Estas regras excluem. Reprovar em uma basta…"). O bloco "Quem entra" traz o funil da última prévia (regra a regra, cada uma ligada ao grupo que a governa), diz de qual prévia veio e avisa quando há declaração mais nova que ela. Todo campo ganha um **rótulo humano** vindo do contrato (`Campo.rotulo` em `src/config/contrato.py`: "peso da nota do anúncio · pontos de 100" em vez de `peso_nota`), e o JSON do console foi regenerado. O rodapé vira fixo, com as três saídas em ordem de compromisso — **Guardar · Ver a prévia · Guardar e ir rodar** — e diz o que cada uma faz e quanto declarado difere do adotado. Nenhuma regra de decisão muda.
+
 - **O banco manda, o portal classifica — reforma do critério (D-027 a D-034, 2026-09-04).** Oito decisões do dono, cada uma registrada em `docs/decisoes.md` com a medição que a antecedeu. Regras de decisão que mudam, nesta ordem:
 
   1. **O perfil de conversão vira regra ELIMINATÓRIA (D-027)**, nos dois níveis: `Regra.PERFIL_DE_CONVERSAO` reprova quem não casa nenhum perfil robusto (N ≥ 3) **que contenha a faixa de preço** — exigência medida (sem ela, 100 % dos elegíveis passavam; com ela, 83,8 % dos elegíveis e 64 % dos candidatos ao super destaque). Deixa de ser fator de nota; o "perfil que puxou" sobrevive como rótulo. O desconto de fragilidade ([P-16]) e o decaimento por dimensão deixam de existir.

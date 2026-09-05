@@ -1127,3 +1127,127 @@ th.num {
   gap: 0.6rem;
 }
 
+/* ---- os três blocos de /parametros ------------------------------------- */
+
+.bloco {
+  margin: 1.25rem 0 2rem;
+  scroll-margin-top: 1rem;
+}
+
+.bloco-cabecalho {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.bloco-numero {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+.bloco-titulo {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.bloco-tese {
+  max-width: 68ch;
+  margin: 0 0 0.9rem;
+  color: var(--ink-2);
+}
+
+.bloco .grupo {
+  margin-top: 0.75rem;
+}
+
+.funil-mini {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  margin: 0 0 0.9rem;
+}
+
+.funil-mini-vazio p {
+  margin: 0;
+}
+
+.funil-mini-frase {
+  margin: 0 0 0.5rem;
+  max-width: 70ch;
+}
+
+.funil-mini-linhas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.funil-mini-linhas li {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) 5rem 5rem minmax(120px, 1fr);
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.funil-mini-cortou {
+  text-align: right;
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.funil-mini-sobram {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.funil-mini-barra-caixa {
+  display: block;
+}
+
+.rodape-acoes {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-top: 1.5rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.06);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.rodape-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.rodape-por {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 280px;
+}
+
+.rodape-por input {
+  flex: 1;
+}
+
+.rodape-estado {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+

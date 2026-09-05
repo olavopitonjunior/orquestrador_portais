@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { POR_CAMINHO } from "@/lib/contrato";
+
 import {
   ESPERA_DA_PREVIA,
   ROTULO_DO_DEGRAU,
@@ -211,7 +213,7 @@ export function PreviaDoFunil({ previa }: { previa: Previa }) {
             <li className="linha-kv" key={caminho}>
               <span>
                 <Link href={linkDoGrupo(grupoDoCaminho(caminho))}>
-                  {caminho.replace(/_/g, " ")}
+                  {POR_CAMINHO.get(caminho)?.rotulo ?? caminho.replace(/_/g, " ")}
                 </Link>
               </span>
               {declarados.has(caminho) ? (
