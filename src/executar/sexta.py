@@ -345,6 +345,7 @@ def _registrador(
                     inicio=agora,
                     fim=datetime.now(),
                     motivo_degradacao=motivo,
+                    perfis=tuple(estado.get("perfis") or ()),
                 )
         except Exception as e:
             # Só o TIPO: a mensagem pode ecoar valor vindo do banco, e a saída do
@@ -652,8 +653,11 @@ def executar(
         for no in pendentes:
             ao_terminar_no(no, final)
 
-    estado = final.get("estado")
-    if estado == Estado.ABORTADA:
+    # `estado_da_rodada`, não `estado`: neste módulo `estado` é o dicionário do grafo
+    # (o parâmetro dos nós), e reusar o nome para o enum faria as duas coisas terem o
+    # mesmo nome no mesmo arquivo.
+    estado_da_rodada = final.get("estado")
+    if estado_da_rodada == Estado.ABORTADA:
         # Sem estoque (ou veto do crivo) não há entrega: Spec §7.2, "não há entrega;
         # sem estoque não há decisão possível". A ausência é declarada por log,
         # Registro e aviso — o aviso importa: no disco, uma sexta abortada seria
@@ -665,7 +669,7 @@ def executar(
     if resultado is None:
         # Estado não-abortado sem resultado é incoerência: o nó de registro já rodou.
         # Sair 0 aqui diria ao agendador que a sexta entregou.
-        raise RuntimeError(f"rodada terminou {estado} sem resultado — nada a entregar")
+        raise RuntimeError(f"rodada terminou {estado_da_rodada} sem resultado — nada a entregar")
 
     if not dry_run:
         try:
@@ -675,7 +679,7 @@ def executar(
                 destino_da_rodada,
                 notas_coleta=notas_da_planilha(
                     parametros,
-                    estado,
+                    estado_da_rodada,
                     [
                         *final.get("degradacoes", []),
                         # A MESMA lista que foi para o motivo gravado no Registro.

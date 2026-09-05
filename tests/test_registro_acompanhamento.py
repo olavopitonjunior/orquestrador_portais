@@ -48,9 +48,11 @@ def _rodada_decisao(conn, *, aprovada: bool, imoveis=((1, "super_destaque"), (2,
         rid = cur.fetchone()[0]
         for pos, (imovel_id, nivel) in enumerate(imoveis, start=1):
             cur.execute(
+                # Só as colunas que a migração 010 manteve obrigatórias: os sinais
+                # nascem nulos, e nulo aqui quer dizer "esta fixture não os mede".
                 "INSERT INTO registro.decisao_imovel "
-                "(rodada_id, imovel_id, nivel, posicao_ranking, nota_perfil, nota_desempenho, "
-                " nota_gestor, nota_final) VALUES (%s, %s, %s, %s, 0, 0, 0, 0)",
+                "(rodada_id, imovel_id, nivel, posicao_ranking, nota_final) "
+                "VALUES (%s, %s, %s, %s, 0)",
                 (rid, imovel_id, nivel, pos),
             )
     return rid
