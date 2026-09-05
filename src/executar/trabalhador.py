@@ -132,8 +132,9 @@ def comando(trabalho: Trabalho) -> tuple[list[str], Path]:
             toml = a.get("parametros")
             if not toml:
                 raise ArgumentosInvalidos(
-                    "a sexta exige `parametros` (caminho do TOML declarado pelo dono): "
-                    "treze dos catorze parâmetros são nulos e não há default"
+                    "a sexta pelo trabalhador exige `parametros` (a declaração do console "
+                    "materializada em TOML): mesmo com os adotados (D-034), a procedência "
+                    "do que a rodada usou precisa ficar registrada na rodada"
                 )
             argv += ["--parametros", str(toml)]
             if a.get("externo"):
@@ -161,6 +162,18 @@ def comando(trabalho: Trabalho) -> tuple[list[str], Path]:
             argv += ["--hoje", str(a["hoje"])]
         if a.get("dry_run"):
             argv.append("--dry-run")
+        return argv, RAIZ
+
+    if trabalho.tipo == "previa":
+        # O funil com os parâmetros da tela, sem raspagem e sem Registro. `parametros`
+        # é opcional: sem ele a prévia responde com os adotados (D-034). O resultado
+        # volta pelo mesmo arquivo de contrato que a sexta usa, e o ciclo o grava como
+        # resumo do trabalho — é por aí que a tela o lê.
+        argv = [*py, "executar.previa", "--resultado", str(resultado_de(trabalho.id))]
+        if a.get("parametros"):
+            argv += ["--parametros", str(a["parametros"])]
+        if a.get("hoje"):
+            argv += ["--hoje", str(a["hoje"])]
         return argv, RAIZ
 
     if trabalho.tipo in ("canario", "full"):
@@ -571,15 +584,35 @@ def _ciclo() -> bool:
     # e ninguém a preenchia — o acervo do console nunca ligaria execução a rodada.
     declarado = ler_resultado(trabalho.id)
     rodada_id = declarado.get("rodada_id")
+    try:
+        _fechar(trabalho, codigo, rodada_id, declarado)
+    except ValueError as e:
+        # O trabalho sumiu ou já não está `executando`: acontece quando a linha veio de
+        # uma transação que foi desfeita depois de reivindicada (a suíte de testes
+        # contra o banco vigente, `bug.md`). O laço não pode morrer por isso — morria,
+        # e o console passava a dizer "trabalhador fora" sem ninguém entender por quê.
+        log.error("trabalho %s não pôde ser concluído: %s", trabalho.id, e)
+    return True
+
+
+def _fechar(
+    trabalho: Trabalho, codigo: int, rodada_id: int | None, declarado: dict[str, Any]
+) -> None:
     with conectar() as conn:
         conn.autocommit = True
+        if trabalho.tipo == "previa" and isinstance(declarado.get("previa"), dict):
+            # A prévia não grava rodada: o que ela tem a dizer é o funil, e ele entra
+            # como resumo do trabalho — o mesmo canal do relatório dos agentes, que o
+            # console já lê. Só contagens, rótulos e parâmetros; nenhum id de imóvel.
+            evento(
+                conn, trabalho.id, "prévia concluída", no_grafo="previa", resumo=declarado["previa"]
+            )
         concluir(conn, trabalho.id, codigo_saida=codigo, rodada_id=rodada_id)
         if rodada_id is not None:
             evento(conn, trabalho.id, f"rodada {rodada_id} gravada no Registro")
         evento(conn, trabalho.id, f"terminou com código {codigo}")
         # O "um clique" do console: só depois de o pai estar terminal, na mesma conexão.
         encadear(conn, trabalho, codigo)
-    return True
 
 
 def main(argv: Sequence[str] | None = None) -> int:

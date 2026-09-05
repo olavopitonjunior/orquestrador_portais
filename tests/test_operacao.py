@@ -734,3 +734,37 @@ def test_encadear_com_encadeado_malformado_NAO_levanta(conn):
     with conn.cursor() as cur:
         cur.execute("SELECT texto FROM operacao.trabalho_evento WHERE trabalho_id=%s", (pai,))
         assert any("inválido" in linha[0] for linha in cur.fetchall())
+
+
+# ------------------------------------------------------------------ a prévia
+
+
+def test_comando_da_previa_sem_parametros_roda_com_os_adotados():
+    argv, cwd = comando(_t("previa"))
+    assert argv[1:3] == ["-m", "executar.previa"]
+    assert "--resultado" in argv and "--parametros" not in argv
+    assert cwd == RAIZ
+
+
+def test_comando_da_previa_leva_o_toml_e_o_hoje():
+    argv, _ = comando(_t("previa", parametros="/x/p.toml", hoje="2026-09-04"))
+    assert argv[argv.index("--parametros") + 1] == "/x/p.toml"
+    assert argv[argv.index("--hoje") + 1] == "2026-09-04"
+
+
+def test_a_lista_de_tipos_do_python_e_a_do_ddl_sao_a_mesma():
+    """A tupla e o CHECK já divergiram uma vez (a 009 existe por isso). O teste lê a
+    ÚLTIMA definição do CHECK nas migrações, na ordem em que são aplicadas."""
+    import re
+
+    pasta = Path(__file__).resolve().parent.parent / "src" / "dados" / "registro"
+    ultima: set[str] | None = None
+    for sql in sorted(pasta.glob("*.sql")):
+        texto = sql.read_text(encoding="utf-8")
+        for m in re.finditer(r"tipo\s+IN\s*\(([^)]*)\)", texto):
+            # Só o CHECK de `operacao.trabalho`: `registro.rodada` também tem `tipo IN`.
+            if "operacao.trabalho" not in texto[max(0, m.start() - 600) : m.start()]:
+                continue
+            ultima = set(re.findall(r"'([a-z_]+)'", m.group(1)))
+    assert ultima is not None, "nenhum CHECK de tipo encontrado nas migrações"
+    assert ultima == set(TIPOS)
