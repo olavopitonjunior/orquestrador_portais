@@ -89,6 +89,7 @@ jobs:
           uv run python -m executar.referencias --help
           uv run python -m executar.contrato --help
           uv run python -m executar.trabalhador --help
+          uv run python -m executar.previa --help
       # O formulário do console é gerado deste contrato, e o console importa uma CÓPIA
       # commitada (o painel não executa processo). Se a cópia envelhecer, o formulário
       # passa a pedir campo que o carregador não conhece — ou a esquecer o que ele

@@ -286,6 +286,49 @@ DEGRADACOES = (
 )
 
 
+@dataclass(frozen=True)
+class FiltroDePerfil:
+    """O que a costura do perfil devolve: os candidatos com veredito, os perfis que
+    contaram e as degradações a declarar."""
+
+    candidatos: list[ImovelCandidato]
+    perfis_que_contam: tuple[PerfilConversao, ...]
+    sem_dimensoes: int
+    degradacoes: tuple[str, ...]
+
+
+def aplicar_filtro_de_perfil(
+    candidatos: Sequence[ImovelCandidato],
+    dims_por_imovel: Mapping[int, DimensoesImovel],
+    perfis: Sequence[PerfilConversao],
+    exigir_dimensao: Dimensao | None,
+) -> FiltroDePerfil:
+    """A regra do perfil (D-027) como veredito por candidato. FUNÇÃO PURA.
+
+    None = NÃO AVALIADO, e a elegibilidade não reprova None: sem nenhum perfil que
+    conte (Spec §7.3: "sem robustez opera sem o fator") ou sem dimensões do candidato,
+    a regra não incide — e quem chama declara a degradação. Vive fora de `decidir`
+    porque a PRÉVIA (`executar.previa`) aplica exatamente o mesmo filtro, e duas cópias
+    da costura divergiriam em silêncio.
+    """
+    contam = perfis_que_contam(perfis, exigir_dimensao)
+    sem_dimensoes = sum(1 for c in candidatos if c.imovel_id not in dims_por_imovel)
+
+    def _veredito(c: ImovelCandidato) -> bool | None:
+        dims = dims_por_imovel.get(c.imovel_id)
+        if not contam or dims is None:
+            return None
+        return casa_algum(dims, contam)
+
+    filtrados = [replace(c, casa_perfil_de_conversao=_veredito(c)) for c in candidatos]
+    degradacoes: list[str] = []
+    if not contam:
+        degradacoes.append(degradacao_sem_perfil(exigir_dimensao))
+    if sem_dimensoes:
+        degradacoes.append(degradacao_sem_dimensoes(sem_dimensoes))
+    return FiltroDePerfil(filtrados, contam, sem_dimensoes, tuple(degradacoes))
+
+
 def decidir(
     candidatos: Sequence[ImovelCandidato],
     penalizaveis: Mapping[int, ImovelPenalizavel],
@@ -316,24 +359,13 @@ def decidir(
         portal_entrou = False  # sem anúncio nenhum não há ordem de portal, entrou ou não
 
     # D-027: o filtro de perfil é calculado AQUI (só a costura conhece os perfis) e
-    # entregue à elegibilidade como veredito. None = NÃO AVALIADO, e a elegibilidade
-    # não reprova None: sem nenhum perfil que conte (Spec §7.3: "sem robustez opera sem
-    # o fator") ou sem dimensões do candidato, a regra não incide — e a rodada declara.
-    contam = perfis_que_contam(perfis, parametros.exigir_dimensao_no_perfil)
-    sem_dimensoes = sum(1 for c in candidatos if c.imovel_id not in dims_por_imovel)
-
-    def _veredito(c: ImovelCandidato) -> bool | None:
-        dims = dims_por_imovel.get(c.imovel_id)
-        if not contam or dims is None:
-            return None
-        return casa_algum(dims, contam)
-
-    candidatos = [replace(c, casa_perfil_de_conversao=_veredito(c)) for c in candidatos]
-    extras: list[str] = []
-    if not contam:
-        extras.append(degradacao_sem_perfil(parametros.exigir_dimensao_no_perfil))
-    if sem_dimensoes:
-        extras.append(degradacao_sem_dimensoes(sem_dimensoes))
+    # entregue à elegibilidade como veredito — a mesma costura que a prévia reusa.
+    filtro = aplicar_filtro_de_perfil(
+        candidatos, dims_por_imovel, perfis, parametros.exigir_dimensao_no_perfil
+    )
+    candidatos = filtro.candidatos
+    contam = filtro.perfis_que_contam
+    extras = list(filtro.degradacoes)
 
     elegiveis: list[ImovelCandidato] = []
     reprovados: list[tuple[ImovelCandidato, frozenset[Regra]]] = []

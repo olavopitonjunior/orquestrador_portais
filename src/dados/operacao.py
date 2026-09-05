@@ -22,7 +22,7 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Json
 
-TIPOS = ("sexta", "segunda", "canario", "full", "aprovar", "publicar")
+TIPOS = ("sexta", "segunda", "canario", "full", "aprovar", "publicar", "previa")
 EM_VOO = ("pendente", "executando")
 
 

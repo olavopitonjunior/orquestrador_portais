@@ -22,6 +22,15 @@ O campo **Afetou carga publicada?** é o mais importante da entrada: um defeito 
 
 <!-- Entradas abaixo desta linha, mais recente primeiro. -->
 
+## A suíte de testes contra o banco vigente derruba o trabalhador vivo
+
+- **Onde ocorreu**: infraestrutura (fila de operação + trabalhador), 2026-09-05
+- **Esperado**: a suíte cria trabalhos dentro de transações desfeitas no fim de cada teste, invisíveis a quem está fora delas; o trabalhador vivo nunca os vê.
+- **Ocorrido**: com o trabalhador no ar durante `uv run pytest`, ele reivindicou um trabalho criado pela suíte (`operacao.trabalho` id 4245) que o rollback do teste desfez em seguida; ao concluir, `concluir()` recusou ("não estava 'executando'") e a exceção — fora do `try` do ciclo — matou o laço inteiro. O console passou a mostrar "trabalhador fora". Já se sabia que a suíte podia vazar linhas `pendente` (comentário em `criar()`); o efeito de derrubar o processo é novo. Só acontece na máquina de quem desenvolve com o trabalhador ligado; em produção não há suíte.
+- **Afetou carga publicada?**: não
+- **Estado da rodada no momento**: fora de rodada
+- **Situação**: em correção — o fechamento do ciclo passou a ser resiliente (`_fechar` sob `except ValueError`, o laço continua e loga). A causa (suíte e trabalhador no mesmo banco) segue aberta: a saída é um banco de teste separado, ou a suíte recusar rodar com trabalhador vivo.
+
 ## O espelho lido pela coleta interna está defasado — a sexta pode propor imóvel já removido
 
 **Data**: 2026-09-02 · **Severidade**: alta (gasta posição contratada) · **Onde**: Coletor Interno — `src/dados/coletor_interno.py`, a coluna `publicacao_ativa` e o `WHERE` de `_SQL_CANDIDATOS` (âncora textual de propósito: número de linha dessincroniza)

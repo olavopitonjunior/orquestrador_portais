@@ -10,6 +10,12 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ## [Unreleased]
 
+### Added
+
+- **A prévia — o funil com os parâmetros da tela, antes de rodar (Fatia 5, PR A).** Novo tipo de trabalho `previa` na fila de operação (migração `009_previa_na_fila.sql` + `dados.operacao.TIPOS`, com teste que amarra a tupla ao CHECK) e o módulo `executar.previa`: lê o Newcore como a sexta lê (candidatos com o login na janela declarada, vendas na janela declarada, dimensões), aplica o MESMO filtro de perfil (`piloto.decisao.aplicar_filtro_de_perfil`, extraído de `decidir` para as duas costuras não divergirem) e as MESMAS regras (`regras_reprovadas`, com o mínimo do distrito declarado), e responde "com estes valores sobram N imóveis para as 6.970 posições" — o funil acumulado regra a regra na ordem dos três blocos da tela, a projeção aritmética de posições preenchidas e vazias por nível, o que a cedência recuperaria degrau a degrau (com a trava do login), e os valores que produziram a prévia com procedência. Não raspa, não ordena, não escreve no Registro; só contagens saem (nenhum id de imóvel). Há teste que prova que a prévia e `decidir` concordam sobre quem é elegível na mesma entrada.
+
+  No console: `/parametros` ganha **Ver a prévia** (guarda a declaração, enfileira a prévia e redireciona para `/trabalho/<id>`; uma segunda prévia em voo vira link para a que já corre, não erro), diz a espera antes do clique, e o texto da página passa a refletir a D-034 (todo campo tem adotado; declare só o que quer mudar). `/trabalho/[id]` mostra a prévia em três blocos — quem entra (funil com cada regra ligada ao parâmetro que a governa), quantos (posições por nível e a cedência) e os valores usados — com a espera nomeada enquanto corre. O trabalhador grava o resultado como resumo do trabalho (o mesmo canal do relatório dos agentes) e traduz os três códigos da prévia.
+
 ### Changed
 
 - **O banco manda, o portal classifica — reforma do critério (D-027 a D-034, 2026-09-04).** Oito decisões do dono, cada uma registrada em `docs/decisoes.md` com a medição que a antecedeu. Regras de decisão que mudam, nesta ordem:

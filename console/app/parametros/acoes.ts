@@ -5,48 +5,25 @@
 // que o lado Python usa com `Fontes` e `conectar_registro`.
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
-import { guardarParametros } from "@/lib/operacao";
-import { paraToml, validar } from "@/lib/toml";
+import { TrabalhoEmVoo, criarTrabalho, guardarParametros, listarTrabalhos } from "@/lib/operacao";
+import { conferir } from "@/lib/declaracao";
+import { previaEmVoo } from "@/lib/previa";
+import { paraToml } from "@/lib/toml";
 
 export type Resposta =
   | { ok: true; id: number }
   | { ok: false; problemas: { caminho: string; mensagem: string }[] }
-  | { ok: false; erro: string };
+  | { ok: false; erro: string; emVoo?: number };
 
 export async function salvarParametros(
   entradas: Record<string, string>,
   por: string,
 ): Promise<Resposta> {
-  const valores = new Map(Object.entries(entradas));
-
-  // `por` NÃO vem do contrato, então não passa por `validar()` — e era o único dado
-  // que chegava aqui ao lado do formulário em vez de dentro dele. Ele vira comentário
-  // no TOML, e comentário termina na quebra de linha: sem esta guarda, um nome com
-  // `\n[resultado_esperado]` definia o parâmetro nº 14, que a D-022 declara nulo.
-  // `paraToml` também limpa, por contrato próprio; aqui a recusa é explícita para o
-  // dono VER o problema em vez de ter o nome dele silenciosamente encurtado.
-  // Qualquer caractere de controle, não só quebra de linha: a gramática do TOML os
-  // proíbe dentro de comentário, e um `\x01` faz o arquivo inteiro deixar de parsear.
-  // `paraToml` também os remove, por contrato próprio; aqui a recusa é explícita para
-  // o dono VER o problema em vez de ter o nome silenciosamente alterado.
-  if (/[\u0000-\u001F\u007F]/.test(por)) {
-    return {
-      ok: false,
-      problemas: [
-        { caminho: "por", mensagem: "não pode conter quebra de linha nem caractere de controle" },
-      ],
-    };
-  }
-  if (por.length > 200) {
-    return { ok: false, problemas: [{ caminho: "por", mensagem: "no máximo 200 caracteres" }] };
-  }
-
-  // Revalida no SERVIDOR, mesmo o cliente já tendo validado. O cliente é conveniência
-  // para o dono corrigir enquanto digita; ele não é garantia, porque quem chama a
-  // ação não é obrigado a ser o formulário.
-  const problemas = validar(valores);
-  if (problemas.length > 0) return { ok: false, problemas };
+  const exame = conferir(entradas, por);
+  if ("ok" in exame) return exame;
+  const { valores } = exame;
 
   try {
     const id = await guardarParametros(
@@ -60,4 +37,50 @@ export async function salvarParametros(
     console.error("[console] falha ao guardar parâmetros:", e);
     return { ok: false, erro: "não foi possível guardar. Verifique se o Postgres está no ar." };
   }
+}
+
+/** Guarda a declaração E enfileira a prévia sobre ela — o elo entre definir e rodar.
+ *  Uma declaração VAZIA é legítima: a prévia responde com os adotados (D-034). */
+export async function verPrevia(entradas: Record<string, string>, por: string): Promise<Resposta> {
+  const exame = conferir(entradas, por);
+  if ("ok" in exame) return exame;
+  const { valores } = exame;
+
+  let id: number;
+  try {
+    // Antes de gravar: o duplo-clique e a segunda aba são o caso NORMAL, e cada um
+    // deixaria uma declaração órfã (append-only) se a fila só recusasse depois. A
+    // guarda de verdade continua sendo o índice do banco; esta é a que evita o lixo.
+    const jaEmVoo = previaEmVoo(await listarTrabalhos(50));
+    if (jaEmVoo !== null) {
+      return {
+        ok: false,
+        erro: "já há uma prévia sendo calculada. Acompanhe a que está em curso.",
+        emVoo: jaEmVoo,
+      };
+    }
+    const declaracao = await guardarParametros(
+      paraToml(valores, `prévia pedida no console${por ? ` por ${por}` : ""}`),
+      por || null,
+    );
+    id = await criarTrabalho("previa", { parametros_declarados_id: declaracao }, por || null);
+    revalidatePath("/parametros");
+  } catch (e) {
+    if (e instanceof TrabalhoEmVoo) {
+      // Não é erro do dono: é o duplo-clique, ou uma prévia de outra aba. A tela aponta
+      // para a que já corre em vez de mostrar a razão técnica da unicidade.
+      const emVoo = await listarTrabalhos(50)
+        .then(previaEmVoo)
+        .catch(() => null);
+      return {
+        ok: false,
+        erro: "já há uma prévia sendo calculada. Acompanhe a que está em curso.",
+        emVoo: emVoo ?? undefined,
+      };
+    }
+    console.error("[console] falha ao pedir a prévia:", e);
+    return { ok: false, erro: "não foi possível enfileirar. Verifique se o Postgres está no ar." };
+  }
+  // Fora do try: `redirect` lança, e o catch genérico o engoliria.
+  redirect(`/trabalho/${id}`);
 }
