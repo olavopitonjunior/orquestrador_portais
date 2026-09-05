@@ -5,9 +5,10 @@ avaliação por categoria, sem lead em 180 dias — são descontadas da nota do
 ranking (Spec §6.3). Imóvel sem histórico de destaque não é penalizado por
 ausência de histórico.
 
-A intensidade das três e o decaimento da penalidade por janela são o
-parâmetro pendente nº 3 (D-004): permanecem nulos e entram aqui como
-argumentos OBRIGATÓRIOS, sem valor default — chamada sem eles falha.
+Os descontos das três e o perdão da penalidade por janela são o parâmetro nº 3,
+DEFINIDO pela D-030/D-034 (20 / 5 / 10 pontos de 100, perdão de 50 % por carga
+aprovada). Continuam entrando aqui como argumentos OBRIGATÓRIOS, sem default:
+o valor adotado mora em `config.adotados`, e este módulo não guarda cópia.
 
 Pendência declarada, não resolvida (condição do orquestrador para este PR):
 nenhum documento quantifica "o resultado esperado para o nível" (Spec §6.4);
@@ -88,11 +89,13 @@ class ImovelPenalizavel:
 
 @dataclass(frozen=True)
 class IntensidadesPenalidade:
-    """Parâmetro pendente nº 3 (D-004) — nenhum campo tem default.
+    """Os três descontos (parâmetro nº 3) — nenhum campo tem default, de propósito.
 
-    Os valores vivem fora do código (parametros_da_rodada do Registro) e
-    permanecem nulos até o dono da decisão os definir. Construir sem os três
-    campos falha com TypeError.
+    O nº 3 foi DEFINIDO pela D-030/D-034 (20 / 5 / 10 pontos de 100), e o valor
+    adotado mora em `config.adotados`: este módulo não guarda cópia, e a ausência
+    de default é o que força a injeção. Os valores efetivos da semana viajam para
+    `parametros_da_rodada` do Registro. Construir sem os três campos falha com
+    TypeError.
     """
 
     janela_sem_resultado: float
@@ -187,7 +190,8 @@ def descontos_por_penalidade(
     soma dele (nenhuma recomputação divergente possível). Só penalidades
     efetivamente aplicadas entram no dict; ausência = não aplicada.
 
-    `decaimento_janela` é a forma pendente do parâmetro nº 3: recebe os
+    `decaimento_janela` é a FORMA do perdão do parâmetro nº 3 (a magnitude, 50 %
+    por carga aprovada, é adotada pela D-030/D-034 e chega montada): recebe os
     ciclos desde a ÚLTIMA janela, quando ela não atingiu resultado (D-023 — não
     mais "a janela sem resultado mais recente": com histórico [falhou há 5,
     atingiu há 1] a leitura antiga daria 5, e a regra vigente não penaliza),

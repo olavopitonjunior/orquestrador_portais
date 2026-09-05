@@ -91,9 +91,9 @@ class ImovelCandidato:
     notas_por_categoria: Mapping[str, int] | None
     # REGRA de elegibilidade "gestor produtivo" (Spec §6.1): captou OU vendeu em
     # 30d. NÃO confundir com o fator de ranking abaixo — este binário decide a
-    # elegibilidade e não muda com o redesenho D-017.
+    # elegibilidade e não mudou com nenhum redesenho do ranking.
     gestor_captou_ou_vendeu_30d: bool
-    # FATOR de ranking F4 (D-017): intensidade CONTÍNUA da produtividade do
+    # Sinal de DESEMPATE (D-028; era o fator F4 da D-017): intensidade CONTÍNUA da
     # gestor em 30d = taxa semanal de captação (Captations_per_week_last_30d,
     # 0..15) + flag de venda recente (LastSell em 30d). A base NÃO expõe
     # contagem de vendas em 30d (Sells é de 365d), então a dimensão de venda
@@ -182,30 +182,63 @@ def regras_reprovadas(
     return frozenset(reprovadas)
 
 
-def elegivel(imovel: ImovelCandidato, data_referencia: date) -> bool:
-    """Elegível ao nível destaque: aprova nas nove regras."""
-    return not regras_reprovadas(imovel, data_referencia)
+# As três funções abaixo são AUXILIARES DE LEITURA sobre `regras_reprovadas`, e não
+# têm chamador de produção: a rodada usa `regras_reprovadas` direto, porque precisa
+# saber QUAIS regras reprovaram, não só se reprovou. Existem porque expressam a regra
+# na linguagem da Spec e são exercidas pelos testes. Recebem o mínimo do distrito
+# porque a D-033 o tornou declarável: sem o kwarg, elas leriam a regra com um valor
+# que a rodada pode não estar usando — uma segunda leitura da mesma regra.
 
 
-def candidato_super_destaque(imovel: ImovelCandidato, data_referencia: date) -> bool:
+def elegivel(
+    imovel: ImovelCandidato,
+    data_referencia: date,
+    *,
+    minimo_corretores_distrito: int = MINIMO_CORRETORES_ATIVOS_DISTRITO,
+) -> bool:
+    """Elegível ao nível destaque: aprova nas nove regras. Auxiliar de leitura."""
+    return not regras_reprovadas(
+        imovel, data_referencia, minimo_corretores_distrito=minimo_corretores_distrito
+    )
+
+
+def candidato_super_destaque(
+    imovel: ImovelCandidato,
+    data_referencia: date,
+    *,
+    minimo_corretores_distrito: int = MINIMO_CORRETORES_ATIVOS_DISTRITO,
+) -> bool:
     """Candidato ao super destaque: elegível E acima do piso de nível (D-002).
+    Auxiliar de leitura.
 
     Reprovar aqui não exclui do nível destaque. As posições de super destaque
     nunca recebem imóvel vindo de relaxamento (invariante 7).
     """
-    return elegivel(imovel, data_referencia) and imovel.preco >= PRECO_MINIMO_SUPER_DESTAQUE
+    return (
+        elegivel(imovel, data_referencia, minimo_corretores_distrito=minimo_corretores_distrito)
+        and imovel.preco >= PRECO_MINIMO_SUPER_DESTAQUE
+    )
 
 
 def elegivel_com_relaxamento(
-    imovel: ImovelCandidato, data_referencia: date, regras_cedidas: frozenset[Regra]
+    imovel: ImovelCandidato,
+    data_referencia: date,
+    regras_cedidas: frozenset[Regra],
+    *,
+    minimo_corretores_distrito: int = MINIMO_CORRETORES_ATIVOS_DISTRITO,
 ) -> bool:
     """Elegível ao destaque quando as regras cedidas são desconsideradas.
+    Auxiliar de leitura: o Decisor desce os degraus por `dominio.relaxamento`.
 
-    Usada pelo Decisor ao descer os degraus de ORDEM_RELAXAMENTO. As regras
-    fora da ordem de cedência (status, categoria, preço geral) nunca podem
-    constar de `regras_cedidas`.
+    As regras fora da ordem de cedência (status, categoria, preço geral) nunca
+    podem constar de `regras_cedidas`.
     """
     if not regras_cedidas <= frozenset(ORDEM_RELAXAMENTO):
         indevidas = sorted(r.value for r in regras_cedidas - frozenset(ORDEM_RELAXAMENTO))
         raise ValueError(f"regras não relaxáveis: {indevidas}")
-    return regras_reprovadas(imovel, data_referencia) <= regras_cedidas
+    return (
+        regras_reprovadas(
+            imovel, data_referencia, minimo_corretores_distrito=minimo_corretores_distrito
+        )
+        <= regras_cedidas
+    )

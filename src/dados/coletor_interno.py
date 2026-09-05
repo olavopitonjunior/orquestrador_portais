@@ -32,10 +32,11 @@ from dominio.penalidades import ImovelPenalizavel
 class DefinicaoAtivoDistrito(StrEnum):
     """Qual coluna de FT_Districts define "corretor ativo no distrito".
 
-    DECISÃO PENDENTE DO DONO: a regra de capacidade do distrito exige ≥2
-    corretores ativos, e a escolha muda o funil (medição 31/08 dos ativos):
-    total 94,8% ≥2 · produtivos 45,9% · logou-30d 76,8% · habilitado-leads.
-    Nenhum default é inventado como verdade — o chamador escolhe.
+    DECIDIDA pela D-015 (31/08/2026): "ativo" é quem CAPTOU OU VENDEU em 30 dias
+    — a leitura literal da Spec §6.1 —, o que é `PRODUTIVOS`. A escolha muda o
+    funil (medição do mesmo dia): total 94,8% ≥2 · produtivos 45,9% · logou-30d
+    76,8%. O valor decidido mora em `config.recorte`; este enum segue existindo
+    porque o chamador escolhe explicitamente, e nenhum default é inventado aqui.
     """
 
     TOTAL = "Brokers"
@@ -86,7 +87,7 @@ SELECT
   r.UpdatedAt                                   AS atualizado_em,
   (COALESCE(p.Captations_per_week_last_30d, 0) > 0
      OR p.LastSell >= NOW() - INTERVAL 30 DAY)  AS gestor_ativo_30d,
-  -- FATOR F4 (D-017): intensidade CONTÍNUA em 30d = taxa semanal de captação
+  -- Sinal de DESEMPATE (D-028; era o fator F4): intensidade CONTÍNUA em 30d
   -- (0..15) + flag de venda recente. A base não tem contagem de vendas em 30d
   -- (Sells é 365d), então venda entra só como flag — limitação declarada.
   (COALESCE(p.Captations_per_week_last_30d, 0)

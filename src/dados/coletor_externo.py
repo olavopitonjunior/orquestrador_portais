@@ -23,8 +23,9 @@ marcador de rotação de marketing do portal, não parte da chave — é o
 casar conta como `sem_amarracao`.
 
 URL vem sempre vazia da listagem do Canal Pro (lacuna documentada); preservada
-como None, não é recuperável depois. Os cliques ficam por tipo, NUNCA somados
-(Spec §5) — a composição em fator F3 é do consumidor, não desta leitura.
+como None, não é recuperável depois. Os cliques ficam POR TIPO nesta leitura
+(Spec §5): a soma entre tipos pertence à nota (§6.3, D-028) e é feita na costura,
+não aqui — tipos diferentes medem intenções diferentes, e quem some declara.
 """
 
 from __future__ import annotations
@@ -77,7 +78,7 @@ FUSO_DA_OPERACAO: tzinfo = ZoneInfo("America/Sao_Paulo")
 @dataclass(frozen=True)
 class DesempenhoAnuncio:
     """Sinais de portal de UM anúncio, amarrado ao imóvel interno. Crus (a nota é
-    o LQS sem reescala); a composição em F3 é do consumidor."""
+    o LQS sem reescala); a composição na nota é do consumidor (§6.3)."""
 
     imovel_id: int
     id_portal: str
@@ -237,8 +238,9 @@ def casados(coleta: ColetaExterna, imoveis_alvo: Collection[int]) -> int:
 
 def taxa_amarracao(coleta: ColetaExterna, imoveis_alvo: Collection[int]) -> float:
     """Fração da lista-alvo do Coletor Interno que a raspagem casou a um anúncio
-    (Spec §5). 0.0 se a lista-alvo é vazia. É o número que o limiar nº 7 (nulo)
-    compara para decidir se a performance externa entra no cálculo."""
+    (Spec §5). 0.0 se a lista-alvo é vazia. É o número que a cobertura mínima
+    (nº 7, adotada em 50 % pela D-034) compara para decidir se a nota do portal
+    entra na ordem."""
     alvo = set(imoveis_alvo)
     if not alvo:
         return 0.0
@@ -247,11 +249,12 @@ def taxa_amarracao(coleta: ColetaExterna, imoveis_alvo: Collection[int]) -> floa
 
 @dataclass(frozen=True)
 class ParametrosExterno:
-    """Parâmetros que decidem se a performance externa entra no cálculo. Os dois
-    limiares são NULOS (D-004): injetados como PROVISÓRIOS run-local, nunca em
-    src/config. `compor_desempenho` é a composição do sinal F3 a partir dos sinais
-    crus do anúncio — a FORMA está em aberto (parâmetro nº 2), então a composição
-    também é provisória e injetada (o default do runner usa visualizações)."""
+    """Parâmetros que decidem se a raspagem entra na ordem. Os dois limiares foram
+    DEFINIDOS pela D-034 (cobertura mínima 50 %, idade máxima 2 dias) e chegam aqui
+    injetados a partir do efetivo da rodada — o valor adotado mora em
+    `config.adotados`, e este módulo não guarda cópia. A composição dos sinais numa
+    nota não é mais deste contrato: desde a D-028 ela é da nota (§6.3), feita na
+    costura, e aqui só se entrega o anúncio cru por imóvel."""
 
     limiar_amarracao: float  # cobertura mínima, como fração (portal.cobertura_minima / 100)
     idade_maxima_dias: int  # portal.idade_maxima_dias
@@ -277,7 +280,7 @@ def avaliar_coleta(
     params: ParametrosExterno,
     data_referencia: date,
 ) -> ResultadoExterno:
-    """Decide se a coleta entra no cálculo e, se sim, compõe o sinal F3 por imóvel.
+    """Decide se a coleta entra no cálculo e, se sim, entrega os anúncios por imóvel.
     Determinístico (invariante 5): idade sai de `data_referencia` (input) menos o
     `coletado_em` do arquivo — nunca do relógio. Portas, na ordem da Spec §7.3, mais
     a porta 2, própria desta implementação (mais estrita que a Spec, não menos):
@@ -286,8 +289,9 @@ def avaliar_coleta(
     2. NENHUM imóvel da lista-alvo amarrou → não entra, seja qual for o limiar.
        Porta própria porque a de baixo não a cobre: com zero casados a taxa é 0.0,
        e `0.0 < 0.0` é falso — um limiar 0.0 (o que um piloto declararia) deixaria
-       passar uma raspagem que não amarrou nada, e a rodada sairia COMPLETA com F3
-       = 0 para todos, indistinguível de "todos empatados". O formato real do
+       passar uma raspagem que não amarrou nada, e a rodada sairia COMPLETA com o
+       sinal do portal zerado para todos, indistinguível de "todos empatados" — que
+       é uma leitura legítima e diferente. O formato real do
        `codigoImovel` é `{Id}{letra}` (primeira raspagem, 03/09/2026); se o portal
        o mudar, esta é a falha, e ela precisa sair DECLARADA;
     3. taxa de amarração < limiar (nº 7) → performance externa NÃO entra, sinaliza;
@@ -295,8 +299,8 @@ def avaliar_coleta(
        da Spec §7.3 — reusar a última coleta válida — é fatia futura; aqui só se
        declara a idade e degrada).
 
-    Passando as quatro, F3 = `compor_desempenho` por imóvel amarrado (o resto do
-    ranking normaliza min-max entre a população)."""
+    Passando as quatro, os anúncios amarrados seguem para a costura, que compõe a
+    nota (§6.3) e normaliza min-max entre a população."""
     alvo = set(imoveis_alvo)  # uma vez: a taxa e a porta 2 contam sobre o mesmo conjunto
     n_casados = casados(coleta, alvo)
     taxa = n_casados / len(alvo) if alvo else 0.0

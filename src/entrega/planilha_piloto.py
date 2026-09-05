@@ -6,9 +6,10 @@ fator, penalidade, perfil e degrau de relaxamento já são autoritativos, nunca
 recalculados aqui. Se algo fosse recalculado, a planilha justificaria um
 recálculo parecido, não a decisão real.
 
-Cinco abas (um CSV cada, mapeando 1:1 no Google Sheets do B4) mais `apuracao.csv`,
-o resultado total — uma linha por candidato, inclusive os excluídos, com as
-características do imóvel (`linhas_apuracao`):
+Sete arquivos (um CSV cada, mapeando 1:1 no Google Sheets do B4): as cinco abas
+abaixo, a de perfis (`linhas_perfis`, Spec §3.1) e `apuracao.csv`, o resultado
+total — uma linha por candidato, inclusive os excluídos, com as características
+do imóvel (`linhas_apuracao`):
   1. super_destaque   — as posições de super destaque, com a justificativa.
   2. destaque         — as posições de destaque (ranking + recuperados por
                         relaxamento, com o degrau que cedeu).
@@ -123,9 +124,10 @@ def _colunas_justificativa(
     historico: Mapping[int, tuple[JanelaCrua, ...]] | None,
     resultado_esperado: Mapping[str, int] | None,
 ) -> dict[str, object]:
-    """As colunas de justificativa comuns aos dois níveis (Spec §2.1/§3.2):
-    os QUATRO fatores (D-017), cada penalidade, o desconto total e o perfil que
-    puxou com sua evidência. Tudo lido do DetalheImovel — nada recalculado."""
+    """As colunas de justificativa comuns aos dois níveis (Spec §2.1/§3.2): a nota
+    do portal e os sinais que a compõem (D-028), os dois de banco que só desempatam,
+    cada desconto, o total e o perfil que puxou com sua evidência. Tudo lido do
+    DetalheImovel — nada recalculado."""
     colunas: dict[str, object] = {
         "nota_portal": det.nota_bruta,
         "nota_anuncio": det.fatores.nota_anuncio,
@@ -148,6 +150,10 @@ def _colunas_justificativa(
     colunas["perfil_num_vendas"] = (
         det.perfil_que_puxou.num_vendas if det.perfil_que_puxou is not None else ""
     )
+    # SEMPRE falsa desde a D-027, por construção: `perfil_que_puxou` só escolhe entre
+    # os perfis que CONTAM, e frágil não conta. A coluna é vestígio do mundo em que o
+    # perfil pesava e a fragilidade descontava. Sai numa fatia própria (issue #73):
+    # remover coluna é mudar o que a pessoa lê na sexta, não faxina de comentário.
     colunas["perfil_fragil"] = (
         det.perfil_que_puxou.fragil if det.perfil_que_puxou is not None else ""
     )
@@ -243,7 +249,7 @@ def linhas_relaxamento(
     A coluna `degrau_cedido` por imóvel, que já existia na aba de destaque, não
     substitui isto: falta nela o agregado por regra e as posições ainda vazias.
 
-    A última linha é o DÉFICIT — as posições que os cinco graus não cobriram. É
+    A última linha é o DÉFICIT — as posições que os seis graus não cobriram. É
     grandeza da rodada, não de uma cedência, e vem declarada mesmo quando é zero:
     ausência de linha seria indistinguível de "ninguém calculou".
     """

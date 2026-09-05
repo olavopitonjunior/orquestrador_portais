@@ -7,20 +7,20 @@ por combinação é `N ≥ 3` (parâmetro pendente nº 1, resolvido pelo dono em
 
 Este módulo faz APENAS a descoberta dos perfis — conta combinações de uma ou
 duas dimensões e devolve cada perfil com o número de vendas que o sustenta.
-A ponderação da semelhança de um imóvel candidato por esses perfis (o fator
-`semelhanca_perfil` normalizado do ranking) acontece A MONTANTE do ranking,
-na costura (parâmetro pendente nº 2, nulo) — não aqui (ver ranking.py).
+Desde a D-027 o perfil não é fator de nota: é REGRA. Quem decide se um perfil
+conta para o filtro é a costura (`piloto.semelhanca.perfis_que_contam`): conta o
+robusto que contém a dimensão exigida. Aqui só se DESCOBRE e se rotula.
 
-Perfil FRÁGIL (N abaixo da evidência mínima) NÃO é excluído: continua no
-resultado, marcado, com seu número de casos (Spec §6.2: "não recebe peso
-pleno"). O que "peso pleno" significa numericamente é da costura (B3); aqui
-só se rotula frágil/robusto e se carrega o N.
+Perfil FRÁGIL (N abaixo da evidência mínima) NÃO é excluído deste resultado:
+continua na saída, marcado, com seu número de casos — a planilha os mostra, e
+sem eles não dá para ver que a evidência era pouca. Mas ele não pesa menos no
+filtro: não pesa nada, porque o filtro é binário (D-027 sobrepõe o "não recebe
+peso pleno" da Spec §6.2).
 
-Além da descoberta, este módulo declara a ORDEM DE PRIORIDADE das dimensões no
-ranking (`PRIORIDADE_DIMENSOES`) e a forma do peso decrescente por dimensão
-(`pesos_por_prioridade`), ambos da D-017 — a ordem é regra adotada do dono, a
-magnitude do decaimento é parâmetro nulo injetado. A APLICAÇÃO desse peso ao
-match de um candidato é a montante do ranking (piloto.semelhanca), não aqui.
+Além da descoberta, este módulo declara a ORDEM DE PRIORIDADE das dimensões
+(`PRIORIDADE_DIMENSOES`), decisão do dono na D-017 que a D-027 preservou como
+critério de EXIBIÇÃO — hoje sem efeito nenhum no cálculo. Ver o comentário
+sobre a constante, que diz o que sobreviveu e o que a D-031 dissolveu.
 
 Invariantes 4 e 5: cálculo puro — sem I/O, sem relógio, sem aleatoriedade,
 sem chamada a modelo. Mesma entrada ⇒ mesmos perfis, em ordem canônica.
@@ -52,14 +52,20 @@ class Dimensao(StrEnum):
     VAGAS = "vagas"
 
 
-# Ordem de PRIORIDADE das dimensões no ranking (D-017, decisão do dono, palavras
-# dele: "preço, localização, metragem, quantidade de dormitórios e quantidade de
-# vagas de garagem, nessa ordem"). É a IMPORTÂNCIA de cada característica para o
-# valor esperado / probabilidade de lead — regra de decisão, mudar exige
-# CHANGELOG. NÃO confundir com a ordem canônica do enum acima (região primeiro),
-# que só serve à saída determinística (invariante 5): esta é importância, aquela
-# é ordenação. Os VALORES do peso decrescente (o decaimento) são parâmetro nulo,
-# injetados run-local — ver pesos_por_prioridade.
+# Ordem de PRIORIDADE das dimensões, nas palavras do dono (D-017): "preço,
+# localização, metragem, quantidade de dormitórios e quantidade de vagas de
+# garagem, nessa ordem". É a IMPORTÂNCIA de cada característica, e mudá-la exige
+# decisão registrada.
+#
+# HOJE ELA NÃO TEM EFEITO NENHUM NO CÁLCULO. A D-027 fez o perfil virar regra
+# binária e a D-031 dissolveu o decaimento por dimensão (o parâmetro nº 13) sem
+# lhe dar valor; a própria D-027 diz que a ordem "sobrevive só como critério de
+# exibição". O consumidor de exibição ainda não existe — ligá-lo é fatia própria,
+# registrada na issue #73. Fica aqui para não se perder a única memória em código
+# de uma decisão do dono.
+#
+# NÃO confundir com a ordem canônica do enum acima (região primeiro), que serve à
+# saída determinística (invariante 5): esta é importância, aquela é ordenação.
 PRIORIDADE_DIMENSOES: tuple[Dimensao, ...] = (
     Dimensao.FAIXA_PRECO,
     Dimensao.REGIAO,
@@ -127,7 +133,7 @@ class PerfilConversao:
 
     @property
     def fragil(self) -> bool:
-        """Abaixo da evidência mínima (D-014): não recebe peso pleno no ranking."""
+        """Abaixo da evidência mínima (D-014): não conta para o filtro (D-027)."""
         return self.num_vendas < EVIDENCIA_MINIMA
 
 
@@ -177,31 +183,3 @@ def perfis_de_conversao(vendas: Iterable[ImovelVendido]) -> tuple[PerfilConversa
         for (dims, vals), n in contagem.items()
     ]
     return tuple(sorted(perfis, key=_chave_ordenacao))
-
-
-def pesos_por_prioridade(decaimento: float) -> dict[Dimensao, float]:
-    """Peso DECRESCENTE por dimensão a partir da ordem adotada (D-017).
-
-    A ORDEM (preço > localização > metragem > dormitórios > vagas) é regra de
-    decisão do dono; a MAGNITUDE do decaimento é parâmetro NULO (provisório
-    run-local, injetado — nunca fixado aqui). O peso da dimensão na posição r
-    da prioridade é `decaimento ** r` (r=0 para preço, r=4 para vagas):
-
-    - decaimento = 1.0  → todas as dimensões pesam igual (SEM de-saturação);
-    - decaimento < 1.0  → acentua a dominância do preço/localização e reduz o
-      peso de dormitórios/vagas, corrigindo a saturação (D-017) em que um perfil
-      amplo de dimensão pouco importante dominava o sinal.
-
-    Estritamente decrescente para decaimento em (0, 1); num decaimento
-    patologicamente pequeno (ordem de 1e-80) os expoentes altos fazem underflow
-    para 0.0 e a monotonia estrita deixa de valer — canto fora de qualquer valor
-    plausível do parâmetro nulo, sem efeito prático.
-
-    Puro (invariantes 4/5): não lê nada de fora, não fixa valor. Este módulo
-    define A ORDEM e A FORMA do decaimento; QUANTO decai vem por injeção, e
-    COMO os pesos de um perfil de duas dimensões se combinam é da camada que
-    aplica (piloto.semelhanca), declarado lá.
-    """
-    if not 0.0 < decaimento <= 1.0:
-        raise ValueError(f"decaimento fora de (0, 1]: {decaimento}")
-    return {dim: decaimento**r for r, dim in enumerate(PRIORIDADE_DIMENSOES)}

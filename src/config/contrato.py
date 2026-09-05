@@ -18,9 +18,11 @@ resultado ainda seria um palpite sobre a intenção. Aqui os limites estão escr
 teste. Descrever aqui um campo que o carregador ignora, também.
 
 **O que este módulo NÃO faz:** não traz valor nenhum. Nem default, nem sugestão,
-nem exemplo numérico. Catorze dos quinze parâmetros são nulos e o CLAUDE.md proíbe
-preenchê-los — um "valor de exemplo" viajando até um campo de formulário é
-exatamente como um número inventado entra numa planilha aprovada.
+nem exemplo numérico para o que é nulo. Nove parâmetros seguem nulos e o CLAUDE.md
+proíbe preenchê-los — um "valor de exemplo" viajando até um campo de formulário é
+exatamente como um número inventado entra numa planilha aprovada. O `adotado` que cada
+campo carrega é outra coisa: vem de `config.adotados` (D-034), tem decisão registrada,
+e é o que a rodada usa quando a semana não declara nada.
 """
 
 from __future__ import annotations
@@ -41,10 +43,13 @@ Tipo = Literal["inteiro", "numero", "escolha"]
 class Campo:
     """Um campo do TOML, descrito para quem for renderizá-lo.
 
-    `minimo_aberto` existe porque a diferença importa: `decaimento` em (0, 1] recusa
-    zero, `desconto_fragil` em [0, 1] aceita. Um formulário que trate as duas como
-    "entre 0 e 1" deixa passar um valor que o carregador recusa — e o dono descobre
-    isso depois de submeter, não enquanto digita.
+    `minimo_aberto` distingue faixa aberta de fechada, e a diferença importa: um
+    formulário que trate "maior que zero" e "de zero" como a mesma coisa deixa passar
+    um valor que o carregador recusa, e o dono descobre depois de submeter em vez de
+    enquanto digita. Os dois campos que motivaram o mecanismo (`decaimento` e
+    `desconto_fragil`) foram dissolvidos pela D-027/D-031, então hoje TODO campo tem
+    faixa fechada e a flag é sempre falsa — mas o console a consome (`lib/toml.ts`,
+    `formulario.tsx`) e ela volta a valer no primeiro campo de faixa aberta.
     """
 
     caminho: str
@@ -266,13 +271,15 @@ def _pendencia(caminho: str) -> str | None:
 
     Lê `PENDENTE_DE` em vez de repetir o texto: é o mesmo mapa que compõe a mensagem
     `falta X — parâmetro pendente nº N`, então o formulário e o erro falam igual.
-    Nem todo campo tem pendência (`semelhanca.desconto_fragil` é provisório sem
-    número, `externo.desempenho.forma` idem) — daí o None.
+    Nem todo campo tem pendência: hoje só a régua de resultado por nível
+    (`resultado_esperado.*`, o nº 14) é pendente, e os catorze demais têm valor
+    adotado — daí o None na maioria dos campos.
 
-    Busca por PREFIXO porque `PENDENTE_DE` é indexado ora pela folha
-    (`intensidades.janela_sem_resultado`), ora pelo nó (`pesos.super_destaque`, que
-    cobre os quatro fatores abaixo dele). Sem o passeio, os oito pesos ficariam sem
-    rótulo — ou, pior, cada folha precisaria repetir à mão de qual nó ela herda.
+    Busca por PREFIXO porque `PENDENTE_DE` pode ser indexado ora pela folha, ora pelo
+    nó que cobre as folhas abaixo dele. Hoje só `resultado_esperado.*` é pendente e as
+    duas chaves são folhas, então o passeio não faz diferença — fica porque a forma de
+    indexar por nó já foi usada (nos pesos por nível da D-017, dissolvidos pela D-031) e
+    voltará a ser no dia em que um pendente cobrir uma subárvore.
     """
     partes = caminho.split(".")
     for corte in range(len(partes), 0, -1):
@@ -310,10 +317,10 @@ def _campo(caminho: str, tipo: Tipo, ajuda: str, grupo: str, **resto: Any) -> Ca
     """Fábrica única. Existe para que `pendencia` NÃO seja algo que se possa esquecer.
 
     A primeira versão deste módulo passava `pendencia=` à mão e só o fazia dentro do
-    laço dos pesos: as catorze entradas literais saíam com `null`, e o formulário
-    ficaria mudo sobre qual decisão pendente o dono está respondendo em dez dos vinte
-    e dois campos. A ida e volta não via, porque o `caminho` estava certo. Derivar
-    aqui torna o defeito irreproduzível.
+    laço dos pesos (que a D-031 dissolveu): as entradas literais saíam com `null`, e o
+    formulário ficaria mudo sobre qual decisão pendente o dono está respondendo em
+    metade dos campos de então. A ida e volta não via, porque o `caminho` estava certo.
+    Derivar aqui torna o defeito irreproduzível.
     """
     if grupo not in _IDS_DE_GRUPO:
         raise ValueError(f"campo `{caminho}` aponta para grupo inexistente `{grupo}`")
