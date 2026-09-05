@@ -7,11 +7,13 @@ import {
   resumosDoTrabalho,
   trabalhoDaRodada,
 } from "@/lib/operacao";
+import { cedenciaDaAba, montarBlocos } from "@/lib/blocos-da-rodada";
 import { ABAS, lerPlanilha, type Aba, type Tabela } from "@/lib/planilha";
 import { cotasDoRegistro } from "@/lib/cotas";
 import { lerRodada, limitacoesDe, parametrosDaRodada } from "@/lib/registro";
 import { dataHora, duracao, PilulaEstado } from "../../estado";
 import { IconeAlerta } from "../../icones";
+import { BlocosRealizados } from "../../trabalho/[id]/blocos";
 import { RelatorioDosAgentes } from "../../trabalho/[id]/relatorio";
 
 export const dynamic = "force-dynamic";
@@ -43,16 +45,20 @@ const SOBRE_A_ABA: Record<Aba, string> = {
 };
 
 const SOBRE_A_COLUNA: Record<string, string> = {
-  semelhanca_perfil: "F1 · semelhança com o perfil que vendeu (banco)",
-  leads: "F2 · leads já atraídos em 180 dias (banco)",
-  desempenho_proprio: "F3 · desempenho do anúncio no portal (raspagem)",
-  produtividade_gestor: "F4 · produtividade do gestor em 30 dias (banco)",
+  nota_portal: "a nota bruta: soma ponderada dos sinais do anúncio (ou o desempate de banco, se a raspagem não entrou)",
+  nota_anuncio: "nota do anúncio no portal, reescalada entre os elegíveis",
+  cliques: "cliques no anúncio, somados entre tipos, reescalados",
+  visualizacoes: "visualizações do anúncio, reescaladas (peso adotado zero)",
+  leads: "leads já atraídos em 180 dias (banco) — desempate",
+  produtividade_gestor: "produtividade do gestor em 30 dias (banco) — desempate",
+  casa_perfil: "se o imóvel se parece com o que vendeu (a nona regra)",
+  gestor_logou_na_janela: "se o gestor entrou no sistema na janela declarada (trava a cedência)",
   pen_janela_sem_resultado: "penalidade · janela anterior sem resultado",
   pen_sem_avaliacao_por_categoria: "penalidade · sem avaliação por categoria",
   pen_sem_lead_180d: "penalidade · sem lead em 180 dias",
   desconto_total: "soma das penalidades",
   ultima_janela: "a última janela paga deste imóvel, e como foi julgada",
-  perfil_que_puxou: "o perfil de conversão que mais contribuiu para o F1",
+  perfil_que_puxou: "o perfil de conversão de mais vendas que o imóvel casa",
   perfil_num_vendas: "vendas que sustentam esse perfil",
   perfil_fragil: "perfil com menos vendas que a evidência mínima",
   origem: "ranking, ou relaxamento (recuperado por cedência)",
@@ -157,6 +163,29 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const recorte = parametros?.recorte_pela_raspagem as { imoveis?: number } | null | undefined;
   const amostral = recorte != null;
   const limitacoes = limitacoesDe(rodada.motivoDegradacao);
+  const efetivo =
+    parametros && typeof parametros.efetivo === "object" && parametros.efetivo !== null
+      ? (parametros.efetivo as Record<string, unknown>)
+      : null;
+  const abaRelax = planilha?.abas.relaxamento;
+  const blocos =
+    rodada.tipo === "decisao"
+      ? montarBlocos({
+          resumos,
+          efetivo,
+          // Abortada não deixa decisão nenhuma: as contagens do Registro seriam zeros
+          // que parecem contagem. Nulo, e os blocos dizem "—".
+          contagens:
+            rodada.estado === "abortada"
+              ? null
+              : {
+                  superDestaque: rodada.superDestaque,
+                  destaque: rodada.destaque,
+                  vaziasDestaque: rodada.posicoesVaziasDestaque,
+                },
+          relaxamento: abaRelax && !abaRelax.vazia && !abaRelax.semConteudo ? cedenciaDaAba(abaRelax.colunas, abaRelax.linhas) : [],
+        })
+      : null;
 
   // "pelo ranking + por relaxamento": contado na aba `destaque` da planilha (coluna
   // `origem`), quando ela está em disco. O Registro só guarda a contagem por nível.
@@ -197,6 +226,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </p>
         </div>
         <div className="cabecalho-acoes">
+          {/* A apuração é o que se leva para aplicar a carga: fica no topo. */}
+          {planilha?.abas.apuracao && !planilha.abas.apuracao.semConteudo ? (
+            <a
+              className="botao"
+              href={`/rodada/${rodada.id}/planilha/apuracao.csv`}
+              download={`rodada-${rodada.id}-apuracao.csv`}
+            >
+              Baixar a apuração (CSV)
+            </a>
+          ) : null}
           {/* Só quando há pelo menos uma aba com conteúdo em disco: a rota devolveria 404. */}
           {planilha && ORDEM_DAS_ABAS.some((a) => planilha.abas[a] && !planilha.abas[a].semConteudo) ? (
             <a
@@ -244,12 +283,23 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       ) : null}
 
       <nav className="abas" aria-label="Seções">
-        <a className="aba" href="#resumo">Resumo</a>
+        {blocos ? (
+          <>
+            <a className="aba" href="#quem-entrou">Quem entrou</a>
+            <a className="aba" href="#em-que-ordem">Em que ordem</a>
+            <a className="aba" href="#quantos">Quantos</a>
+            <a className="aba" href="#resumo">Detalhes</a>
+          </>
+        ) : (
+          <a className="aba" href="#resumo">Resumo</a>
+        )}
         <a className="aba" href="#agentes">Agentes</a>
         <a className="aba" href="#planilha">Planilha</a>
         <a className="aba" href="#parametros">Parâmetros</a>
         <a className="aba" href="#log">Log</a>
       </nav>
+
+      {blocos ? <BlocosRealizados b={blocos} emCurso={false} /> : null}
 
       <div className="grade-2-inversa ancora" id="resumo">
         <section className="caixa">
@@ -261,7 +311,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <p className="nota" style={{ margin: 0 }}>
                 Rodada de acompanhamento não propõe posições: mede a carga aprovada contra o Registro.
               </p>
-            ) : (
+            ) : blocos ? null : (
               <div className="grade-3">
                 <div className="kpi">
                   <div className="lbl">Super destaque</div>
@@ -364,7 +414,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <section className="secao ancora" id="planilha">
       <div className="secao-cabecalho">
         <h2>A planilha</h2>
-        <span className="nota">F1 semelhança · F2 leads · F3 portal · F4 produtividade · três penalidades</span>
+        <span className="nota">nota do portal · leads e produtividade como desempate · três descontos · a regra cedida</span>
       </div>
       {rodada.tipo === "acompanhamento" ? (
         <p className="nota" style={{ margin: 0 }}>
@@ -408,13 +458,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
                   <span className="nota" style={{ maxWidth: 560 }}>{SOBRE_A_ABA.apuracao}</span>
                   {planilha.abas.apuracao.semConteudo ? null : (
-                    <a
-                      className="botao"
-                      href={`/rodada/${rodada.id}/planilha/apuracao.csv`}
-                      download={`rodada-${rodada.id}-apuracao.csv`}
-                    >
-                      Baixar a apuração (CSV)
-                    </a>
+                    <span className="nota">o botão de baixar está no topo da página</span>
                   )}
                 </div>
               </div>

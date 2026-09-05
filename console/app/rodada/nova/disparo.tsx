@@ -10,7 +10,7 @@ export function Disparo({
   chromeNoAr,
 }: {
   declaracaoVista: number | null;
-  coletaOk: boolean; // há um `out/` com status ok — a rodada pode ler o F3 de lá
+  coletaOk: boolean; // há um `out/` com status ok — a rodada pode ler a nota do portal de lá
   chromeNoAr: boolean; // a rodada completa começa raspando: precisa do Chrome logado
 }) {
   const [por, setPor] = useState("");

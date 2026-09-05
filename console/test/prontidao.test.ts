@@ -34,7 +34,7 @@ test("trabalhador parado → não roda, mesmo com tudo o mais ok", () => {
   assert.equal(veredito(condicoes(saude(), chrome(), null, 0, 15, data)).texto, "não roda");
 });
 
-test("coleta ausente → sairá degradada (F3 não entra)", () => {
+test("coleta ausente → sairá degradada (a nota do anúncio não ordena)", () => {
   const cs = condicoes(saude({ estado: "ausente", coletadoEm: null, linhas: null, idadeDias: null }), chrome(), true, 0, 15, data);
   assert.equal(por(cs, "Coleta do portal").nivel, "warn");
   assert.equal(veredito(cs).texto, "sairá degradada");

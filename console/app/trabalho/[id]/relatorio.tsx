@@ -9,8 +9,8 @@
 const SOBRE_O_AGENTE: Record<string, string> = {
   coletor_interno: "Lê o Newcore: candidatos, penalizáveis e dimensões. Sem estoque não há decisão.",
   analista_perfil: "Vendas assinadas em 180 dias → combinações de características que vendem, com quantas vendas sustentam cada uma.",
-  coletor_externo: "Lê a raspagem do portal e decide se o desempenho do anúncio (F3) entra: estado, amarração, idade.",
-  decisor: "Elegibilidade (8 regras), ranking (4 fatores), penalidades, alocação nas cotas e relaxamento — cálculo, sem modelo.",
+  coletor_externo: "Lê a raspagem do portal e decide se a nota do anúncio entra na ordem: estado, cobertura (amarração), idade.",
+  decisor: "Quem entra (nove regras, o perfil incluído), em que ordem (nota do portal menos descontos), quantos (cotas e cedência) — cálculo, sem modelo.",
   crivo: "Auditoria antes de gravar: cota, piso do super, relaxamento só em destaque. Viola → aborta.",
   redator: "Serializa a planilha; nesta geração não redige prosa.",
   finalizar: "Declara o estado da rodada a partir do que cada etapa reportou.",
