@@ -50,6 +50,8 @@ export type Campo = {
   exige: [string, string] | null;
   /** A unidade em que o dono lê o número: dias, pontos de 100, %, corretores, leads. */
   unidade: string;
+  /** O nome que o dono lê (o nome antes da sigla); o caminho do TOML é reserva. */
+  rotulo: string;
   /** O valor ADOTADO (D-034) usado quando o campo não é declarado; null para o que segue nulo. */
   adotado: number | string | null;
   /** Uma linha, no imperativo: o que muda se você aumentar. */

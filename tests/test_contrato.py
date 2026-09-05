@@ -537,3 +537,15 @@ def test_o_contrato_emite_os_grupos_na_ordem():
     saida = contrato()
     assert [g["id"] for g in saida["grupos"]] == [g.id for g in GRUPOS]
     assert all("grupo" in c for c in saida["campos"])
+
+
+def test_todo_campo_tem_rotulo_humano_e_nenhum_rotulo_sobra():
+    """A régua de escrita das telas: o nome antes da sigla. O rótulo não é o caminho
+    do TOML nem contém sublinhado; e `ROTULOS` não pode ter nome de campo que não
+    existe (um campo renomeado deixaria o rótulo órfão)."""
+    from config.contrato import ROTULOS
+
+    for campo in CAMPOS:
+        assert campo.rotulo.strip(), f"{campo.caminho} sem rótulo"
+        assert "_" not in campo.rotulo and campo.rotulo != campo.caminho, campo.caminho
+    assert set(ROTULOS) == {c.caminho for c in CAMPOS}
