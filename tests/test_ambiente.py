@@ -10,7 +10,9 @@ de máquina de desenvolvimento sobrepor o que o CI injeta no job.
 
 from __future__ import annotations
 
+import ast
 import os
+import pathlib
 import re
 from pathlib import Path
 
@@ -189,9 +191,89 @@ def test_nenhum_template_referencia_campo_de_cofre_inexistente():
         )
 
 
-@pytest.mark.parametrize("modulo", ["sexta", "segunda", "aprovar", "referencias"])
+# Pontos de entrada que legitimamente NÃO carregam o ambiente, com a razão. Toda
+# entrada aqui é uma dispensa consciente: se um módulo ganhar acesso a credencial,
+# tem de sair desta lista, e o teste abaixo volta a cobri-lo.
+SEM_CREDENCIAL = {
+    "contrato": "só serializa o contrato de parâmetros; não abre conexão nenhuma",
+}
+
+# Módulos de `executar` que NÃO são ponto de entrada, com a razão. Existe para a
+# conferência cruzada abaixo: sem ela, a contagem esperada seria número mágico, e a
+# varredura poderia perder um módulo real sem nada ficar vermelho.
+NAO_SAO_PONTO_DE_ENTRADA = {
+    "resumos": "biblioteca de leitura dos resumos; não tem CLI",
+}
+
+# Sinais de que um módulo toca credencial mesmo sem chamar `carregar_env`.
+_ACESSO_A_CREDENCIAL = re.compile(
+    r"os\.environ|os\.getenv|NEWCORE_MYSQL|POSTGRES_URL|CANALPRO|carregar_env"
+)
+
+
+def _com_main(fonte: str) -> bool:
+    """Tem `main` de nível de módulo? Por AST, não por texto.
+
+    A busca textual que esta função substituiu (`"\ndef main(" in fonte`) casava só a
+    forma exata, na coluna zero: `async def main`, `def main` indentado ou uma CLI
+    declarativa escapariam calados — e escapar calado é a falha que este arquivo
+    inteiro existe para impedir. O AST também elimina o falso positivo simétrico, um
+    `def main(` citado dentro de docstring.
+    """
+    try:
+        arvore = ast.parse(fonte)
+    except SyntaxError:  # pragma: no cover — o ruff pegaria antes
+        return False
+    return any(
+        isinstance(no, ast.FunctionDef | ast.AsyncFunctionDef) and no.name == "main"
+        for no in arvore.body
+    )
+
+
+def _modulos_de_executar() -> list[pathlib.Path]:
+    raiz = pathlib.Path(__file__).resolve().parents[1] / "src" / "executar"
+    return sorted(f for f in raiz.glob("*.py") if f.stem != "__init__")
+
+
+def _pontos_de_entrada() -> list[str]:
+    """Descobre os pontos de entrada em vez de listá-los à mão.
+
+    A versão anterior deste teste trazia quatro nomes fixos e a prévia nasceu fora
+    deles: ficou desde que nasceu sem carregar o `.env`, e o sintoma — "falha ao ler o
+    Newcore: RuntimeError" — parecia fonte fora do ar, não configuração. Uma lista
+    escrita à mão só cobre o que alguém lembrou de escrever.
+    """
+    return sorted(
+        f.stem for f in _modulos_de_executar() if _com_main(f.read_text(encoding="utf-8"))
+    )
+
+
+def test_a_descoberta_de_pontos_de_entrada_bate_com_os_arquivos():
+    """Conferência cruzada, não piso frouxo.
+
+    Um piso (`>= 5`) deixaria a varredura perder módulos reais sem nada acusar — e
+    perder um módulo é justamente deixá-lo fora da cobertura de `carregar_env`. Aqui os
+    dois lados têm de fechar: todo arquivo de `executar` ou é ponto de entrada, ou está
+    declarado em NAO_SAO_PONTO_DE_ENTRADA com a razão. Módulo novo obriga a escolher.
+    """
+    achados = set(_pontos_de_entrada())
+    arquivos = {f.stem for f in _modulos_de_executar()}
+    assert achados, "a varredura não achou ponto de entrada nenhum"
+    assert achados == arquivos - set(NAO_SAO_PONTO_DE_ENTRADA), (
+        "a varredura e os arquivos de src/executar divergem — "
+        f"sem main: {sorted(arquivos - achados - set(NAO_SAO_PONTO_DE_ENTRADA))}; "
+        f"declarados sem CLI mas com main: {sorted(achados & set(NAO_SAO_PONTO_DE_ENTRADA))}"
+    )
+    assert "previa" in achados and "sexta" in achados
+    desconhecidos = set(SEM_CREDENCIAL) - achados
+    assert not desconhecidos, (
+        f"SEM_CREDENCIAL dispensa módulo que não existe mais: {sorted(desconhecidos)}"
+    )
+
+
+@pytest.mark.parametrize("modulo", [m for m in _pontos_de_entrada() if m not in SEM_CREDENCIAL])
 def test_todo_ponto_de_entrada_carrega_o_ambiente(modulo: str, monkeypatch):
-    """Sem isto, a chamada some de um dos quatro sem nada quebrar — e o sintoma seria
+    """Sem isto, a chamada some de um deles sem nada quebrar — e o sintoma seria
     "variável ausente" numa máquina onde o `.env` existe, que é o diagnóstico errado."""
     import importlib
 
@@ -201,3 +283,21 @@ def test_todo_ponto_de_entrada_carrega_o_ambiente(modulo: str, monkeypatch):
     with pytest.raises(SystemExit):
         mod.main(["--help"])
     assert chamou, f"executar.{modulo}.main não carregou o ambiente"
+
+
+@pytest.mark.parametrize("modulo", sorted(SEM_CREDENCIAL))
+def test_dispensado_de_ambiente_realmente_nao_toca_credencial(modulo: str):
+    """A dispensa é afirmada, não pulada — o CI deste projeto recusa teste pulado, e
+    com razão: um skip é indistinguível de um teste que passou.
+
+    Olha o TEXTO-FONTE, não só o namespace. `not hasattr(mod, "carregar_env")` provaria
+    menos do que esta docstring promete: um módulo que lesse `os.environ[...]` direto,
+    ou que importasse o módulo em vez do nome, passaria afirmando o contrário do que
+    faz. Qualquer sinal de credencial obriga a tirar o módulo de SEM_CREDENCIAL — que é
+    exatamente quando o teste de cima volta a cobri-lo.
+    """
+    caminho = next(f for f in _modulos_de_executar() if f.stem == modulo)
+    achados = sorted(set(_ACESSO_A_CREDENCIAL.findall(caminho.read_text(encoding="utf-8"))))
+    assert not achados, (
+        f"{modulo} passou a tocar credencial ({achados}): remova-o de SEM_CREDENCIAL"
+    )
