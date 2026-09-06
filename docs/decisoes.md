@@ -924,3 +924,36 @@ Enquanto o dono não autorizar, o PRD segue como está e nada no código muda: o
 
 Nesta revisão o PRD **não** foi tocado, e a hierarquia continua PRD > Spec: onde os dois divergirem, o PRD prevalece **exceto** no que uma decisão registrada já resolveu, que é o caso dos três pontos acima. Reescrever o PRD é fatia própria, e depende da [P-23].
 
+
+---
+
+## D-035 — O PRD é revisto: a versão 6.0 incorpora as D-001 a D-034
+
+**Data**: 2026-09-05 · **Resolve**: a **[P-23]**, autorizada pelo dono, e com ela a **[P-18]**, que ela absorveu.
+
+O dono autorizou nestes termos: *"Em seguida autorizo a revisão do PRD. Todas as decisões aqui sobrepõem os documentos iniciais e devem ser atualizados."* O PRD passa à **versão 6.0**; a hierarquia PRD > Spec > Ferramentas > código não muda, mas deixa de apontar para o lado errado — até aqui o documento superior contradizia a Spec 1.1 e o código no miolo do critério.
+
+**A [P-18] é respondida, e não como pedia.** Ela nasceu pedindo autorização para trocar "nove regras" por "oito", leitura correta sob as D-002/D-003. A D-027 fez o número voltar a nove por outro caminho — oito gerais **mais o perfil de conversão** —, então executá-la como escrita tornaria o PRD errado de um jeito novo. O que o PRD 6.0 corrige é a **composição**, não o número: sai o piso de R$ 700.000 (condição de nível), sai o status impeditivo (saída imediata), entra o perfil. A tabela que tinha dez linhas passa a ter nove.
+
+**O que a revisão mudou**, por ordem de risco para quem aplica a carga:
+
+- A tabela de pesos por nível (60/25/15 e 80/10/10) **sai**: a nota é a soma ponderada de três sinais do anúncio em pontos de 100, igual para os dois níveis, e o que os separa é o piso de preço na alocação (D-028). Leads e produtividade viraram desempate.
+- O perfil de conversão deixa de ser fator e vira **regra** — robusto (N ≥ 3) e contendo a faixa de preço; frágil não conta (D-027, D-014).
+- A ordem de cedência ganha o perfil como primeiro degrau e a **trava do login** a partir do degrau de gestor (D-027, D-029).
+- Os descontos ganham unidade (pontos de 100), valores adotados e o perdão por **carga aprovada** (D-030, D-034, D-021).
+- O impacto da falha de raspagem sobe de "três métricas de refinamento" para a ordem inteira, na descrição do agente e na tabela de riscos (D-028).
+- O **Console do Operador** entra como camada de operação, que nenhuma versão anterior previa (D-011).
+- A tabela de parâmetros passa a separar fixos, declaráveis com adotado e **nulos**, e nomeia os dois que a D-031 dissolveu.
+- O MVP deixa de dizer "acompanhar diariamente", que contradizia a cadência afirmada no próprio documento.
+
+**O que a revisão deliberadamente NÃO fez**, e é o que a torna segura:
+
+- **Nenhum parâmetro nulo recebeu valor.** Os nove seguem nulos. Em dois pontos o PRD era a fonte de onde alguém tiraria um número inventado — o nº 14, por vizinhança com a linha de base histórica de 12%, e o nº 15 — e ambos ganharam parágrafo dizendo que a linha de base **não** é o limiar e que a leitura "pelo menos um lead" foi examinada e descartada (D-022).
+- **Nenhuma pergunta aberta foi resolvida.** Entraram como declaração de estado, com o identificador citado: [P-19] (o que "testar a hipótese de valor esperado" entrega), [P-20] (o que "fora do ciclo" significa em dois momentos por semana), [P-21] (a reserva sem fato no banco), [P-02] e [P-08] (as duas em que o código é que diverge) e [P-01]/[P-09] (os dois casos que os três estados da rodada não cobrem). As demais pendências da fila não são citadas no PRD porque nada no texto dele as toca — a fila continua sendo o índice.
+- **Os números de referência de 28/08/2026 não foram substituídos** pelas medições de 02 e 04/09. Elas entraram como ressalva de deriva declarada, com a razão: uma contagem única não distingue deriva estrutural de oscilação, e repetir a medição é fatia própria. Trocar 10.290 por 7.801 aqui seria adotar por conta própria uma referência que a fila do dono declara não incorporada.
+- **O PRD não foi alinhado ao código nos pontos em que o código é que diverge.** São dois, e ambos viraram seção própria de divergência declarada: a ordem Redator → Registro ([P-02]) e o pronto do Monitor no nível do gestor de distrito ([P-08]). Alinhar o documento superior ao código nesses pontos seria inverter a hierarquia para esconder dívida.
+- **Nenhum invariante mudou.** Dois exigiram frase explícita na nova redação para não enfraquecerem: que o super destaque nunca relaxa **inclusive para a regra do perfil**, e que nenhuma posição excedente é proposta por construção.
+
+**Cinco correções vieram da auditoria de invariantes**, e entraram antes do merge porque todas eram omissão no documento que ganha na hierarquia: a cláusula "o super destaque nunca relaxa **inclusive para a regra do perfil**" passou a existir no PRD e não só na Spec; o Console ganhou a frase dizendo que escreve em esquema próprio da **mesma base própria do sistema**, e as Restrições técnicas trocaram "base própria do Registro" por "base própria do sistema", porque o console é declarado separado do Registro e a redação antiga não sancionava a escrita dele; a dependência nova de acesso ao MySQL passou a dizer **somente leitura**; e o item de roteiro "escrita direta após aprovação" foi **aposentado** — ele previa aplicar a carga automaticamente, e o invariante 1 não admite fase futura. Também da revisão de regra: os 8.230 elegíveis de 04/09 são **anteriores** ao filtro de perfil, e o texto que dizia o contrário escondia o achado mais duro da medição — com o filtro aplicado sobrariam cerca de 6.900 imóveis para 6.970 posições, o que não gera vaga vazia porque o perfil é o primeiro degrau da cedência, mas significa que essa regra seria relaxada quase toda semana.
+
+**Uma marcação de critério de aceite caiu**: "a ordem de cedência é fotos, cadastro, atualização, gestor e distrito" estava marcada como cumprida e a ordem mudou. A marcação cai porque o critério mudou, não porque o comportamento regrediu — e o texto diz isso, para o próximo leitor não ler como regressão.
