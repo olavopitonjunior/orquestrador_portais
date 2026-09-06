@@ -878,7 +878,7 @@ Entram no contrato, todos em unidade que uma pessoa julga: `conversao.janela_dia
 | `corretor.minimo_no_distrito` | 2 corretores | D-015: de 3 para 2 elevou a cobertura de vendas de 62 % para 75 % |
 | `portal.peso_nota` | 70 pontos | único sinal com variância medida: 14 valores em 300 anúncios |
 | `portal.peso_cliques` | 30 pontos | sinal fraco mas real, e é intenção de compra, não curiosidade |
-| `portal.peso_visualizacoes` | 0 pontos | medido zero em 300 de 300; zero declarado, não omitido |
+| `portal.peso_visualizacoes` | 0 pontos | medido zero em 300 de 300 — **premissa caída em 06/09/2026, ver [P-25]**; o valor segue adotado |
 | `portal.cobertura_minima` | 50 % | abaixo da metade, a ordem seria decidida por menos da metade do estoque (nº 7) |
 | `portal.idade_maxima_dias` | 2 dias | a rodada raspa no mesmo dia; 2 tolera um retry sem aceitar dado da semana passada (nº 5) |
 | `portal.sem_anuncio` | fim da fila | é o que já acontecia, agora dito (D-028) |
@@ -1017,3 +1017,17 @@ O caso é operacionalmente banal: a coleta completa leva horas, o operador a int
 **Enquanto não houver resposta**, a guarda não existe e a lacuna fica declarada em comentário no `podeRetomar` (no commit da implementação, nesta mesma branch), apontando para esta pendência. O risco é real mas estreito: só afeta a coleta completa retomada, que nunca rodou em produção.
 
 **O que a resposta destrava:** uma condição de idade em `podeRetomar`, sobre o `lastUpdate` do checkpoint. Alternativa sem número, se o dono preferir: recusar retomada cujo `lastUpdate` não seja do mesmo dia operacional — regra, não parâmetro.
+
+### [P-25] Adendo (2026-09-06) — o zero das visualizações era da amostra, não do campo
+
+A **D-028** fixou a nota do portal sobre uma medição de 03/09/2026 — a primeira raspagem real, **300 anúncios** — e registrou: *"visualizações = 0 em 300 de 300"*. A **D-034** adotou `portal.peso_visualizacoes = 0` com essa procedência, e a frase "zero declarado, não omitido" foi copiada para a Spec §6.3, para `adotados.py`, para os textos de ajuda do console e para a fila do dono.
+
+**A primeira coleta COMPLETA a derrubou.** Em 06/09/2026, 55.162 anúncios: **13.175 com visualizações diferentes de zero — 23,9 %**, e **69 valores distintos de nota** contra os 14 daquela amostra. O campo nunca veio vazio; a amostra de 300 é que não o alcançava.
+
+**O que este adendo NÃO faz: desadotar o parâmetro.** `portal.peso_visualizacoes = 0` **segue vigente**, a rodada continua usando zero e a planilha continua rotulando "adotado (D-034)". Trocar o número do dono por um meu, sem decisão dele, seria o oposto da regra da casa. O que cai é a **justificativa**, e ela cai em todos os lugares onde estava copiada.
+
+**A pergunta que volta ao dono — [P-25]:** com um sinal presente em quase um quarto do estoque, o peso das visualizações continua zero? Os três pesos somam 100, então subir este baixa os outros dois, e o dos cliques é o único outro sinal que carrega intenção de compra. Não é medição: é escolha de o que a vitrine deve premiar.
+
+**Consequência de leitura para a [P-15].** Aquela pendência foi declarada "fechada por medição: visualizações 0 em 300 de 300". Ela continua fechada — a composição do sinal de portal foi decidida —, mas **não pela razão que estava escrita**. A nota da fila foi corrigida para não afirmar como fato encerrado exatamente o que esta medição derrubou.
+
+**Precedente e método.** É o segundo caso na mesma sessão de uma medição nova derrubando a base de uma decisão registrada; o primeiro foi a deriva do funil, na mesma manhã. As duas têm a mesma causa: **valor adotado sobre amostra de 300 quando o universo é 55.162**. Fica a pergunta, maior que este adendo: **quais outros adotados da D-034 têm procedência com "300" e nunca foram remedidos contra a coleta completa?** `src/config/adotados.py` é o lugar de olhar, e é fatia própria.

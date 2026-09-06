@@ -41,8 +41,9 @@ PARAMS_SERIAL = {
     "efetivo": {
         "portal.peso_nota": 70,
         "portal.peso_cliques": 30,
-        # Zero DECLARADO, não omitido: é o peso adotado das visualizações (medidas
-        # zero em 300 de 300), e é o que permite refazer a nota bruta lendo o Registro.
+        # Zero DECLARADO, não omitido: é o peso ADOTADO das visualizações (D-034), e é
+        # o que permite refazer a nota bruta lendo o Registro. A razão original ("zero
+        # em 300 de 300") caiu em 06/09 — ver [P-25]; o valor é que segue vigente.
         "portal.peso_visualizacoes": 0,
         "desconto.perdao_por_semana": 50,
     },

@@ -74,8 +74,10 @@ def test_peso_booleano_e_erro_mesmo_somando_100():
 
 @pytest.mark.parametrize("pesos", [(70, 30, 0), (100, 0, 0), (0, 0, 100), (0, 100, 0)])
 def test_peso_zero_e_legitimo(pesos):
-    """Visualizações mediram zero em 300/300 anúncios (03/09/2026): o peso zero é
-    declarado, não omitido — e uma rodada só de nota também é expressável."""
+    """Visualizações mediram zero em 300/300 anúncios em 03/09/2026, e daí veio o peso
+    zero. A premissa CAIU em 06/09 (13.175 de 55.162 têm visualizações, 23,9 % —
+    [P-25]); o peso adotado segue zero até decisão do dono, e o que este teste afirma
+    é o que continua valendo: zero é expressável, e uma rodada só de nota também."""
     n, c, v = pesos
     p = PesosPortal(nota_anuncio=n, cliques=c, visualizacoes=v)
     assert (p.nota_anuncio, p.cliques, p.visualizacoes) == pesos
