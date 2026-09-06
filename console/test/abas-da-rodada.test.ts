@@ -14,6 +14,11 @@ import { test } from "node:test";
 import { ABAS_COM_AGREGADO, LIMITES, LINHAS_NA_TELA, ORDEM_DAS_ABAS } from "../lib/abas-da-rodada";
 import { lerPlanilha } from "../lib/planilha";
 
+// Por que só `destaque` tem caso discriminante abaixo: a aba `relaxamento` é agregada
+// do mesmo jeito e por isso está na mesma lista, mas ela não pode passar de ~7 linhas —
+// `cedenciaDaAba` só aceita regra em `ORDEM_RELAXAMENTO`, que tem seis. Um teste com 300+
+// linhas ali exercitaria entrada que o domínio não produz. Ela é protegida pela REGRA
+// (agrega ⇒ sem limite), não pelo tamanho de hoje, e é isso que o primeiro teste trava.
 test("nenhuma aba de que a página AGREGA pode ter limite", () => {
   for (const aba of ABAS_COM_AGREGADO) {
     assert.equal(

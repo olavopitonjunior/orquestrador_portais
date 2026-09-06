@@ -45,12 +45,13 @@ export type Tabela = {
 
 /** Quantas linhas de DADOS materializar por aba. Aba não citada: todas.
  *
- *  A ARMADILHA que este tipo cria, e que quem declarar um limite precisa checar antes:
- *  limite só é seguro em aba de que a página **exibe** linhas. Se a página **agrega**
- *  sobre elas — conta, soma, filtra —, o limite corrompe o agregado EM SILÊNCIO, e o
- *  pior caso é o que já aconteceu: os relaxados ocupam as ÚLTIMAS posições do destaque
- *  (a partir da 6.379 de 6.495 em 2026-09-06), então ficam fora de qualquer prefixo e a
- *  contagem daria zero. Antes de limitar uma aba, enumere quem lê `Tabela.linhas` dela.
+ *  REGRA, em uma linha: limite só é seguro em aba de que o chamador **exibe** linhas; se
+ *  ele **agrega** sobre elas, o limite corrompe o agregado em silêncio. Quem declara um
+ *  limite precisa enumerar quem lê `Tabela.linhas` daquela aba antes.
+ *
+ *  A declaração da página da rodada — com as exceções, o consumidor que obriga cada uma e
+ *  o caso real que já quebrou — vive em `abas-da-rodada.ts`, que é onde o teste a trava.
+ *  Aqui fica só a regra, para não haver duas cópias do mesmo texto divergindo.
  *
  *  `lerPlanilha` EXIGE o argumento, e não o deixa opcional de propósito: o defeito que a
  *  assinatura existe para impedir foi um chamador não declarar nada e levar 48.812 linhas
