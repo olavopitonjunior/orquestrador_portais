@@ -455,3 +455,42 @@ def test_canario_nao_conta_as_linhas_da_coleta_completa(tmp_path: Path) -> None:
     _escrever_csv(tmp_path, [_anuncio("s1", "900A")], portal="canalpro.canario")
     _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
     assert ler_coleta(tmp_path).total_linhas == 1
+
+
+def test_status_por_modo_sobrevive_a_corrida_do_outro_modo(tmp_path: Path) -> None:
+    """`status.json` é a última corrida, e a última apagava o registro da outra.
+
+    Um canário de segundos rodado depois de uma coleta completa de horas tornava o
+    CSV do full inalcançável, com o `finishedAt` novo passando na porta de idade.
+    """
+    _escrever_csv(tmp_path, [_anuncio("f", "1A")], portal="canalpro")
+    _escrever_csv(tmp_path, [_anuncio("c", "2B")], portal="canalpro.canario")
+    (tmp_path / "status.full.json").write_text(
+        '{"result": "ok", "mode": "full", "finishedAt": "2026-09-05T08:00:00Z", "rows": 55000}',
+        encoding="utf-8",
+    )
+    # o canário rodou depois e sobrescreveu o status "última corrida"
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+
+    do_full = ler_coleta(tmp_path, modo="full")
+    assert do_full.estado == "ok"
+    assert 1 in do_full.por_imovel, "o full tem de continuar alcançável"
+
+    do_canario = ler_coleta(tmp_path, modo="canary")
+    assert 2 in do_canario.por_imovel
+
+
+def test_modo_pedido_sem_status_proprio_aceita_o_ultimo_se_o_mode_casar(tmp_path: Path) -> None:
+    """Compatibilidade com a coleta anterior à correção, que só tinha um arquivo."""
+    _escrever_csv(tmp_path, [_anuncio("c", "2B")], portal="canalpro.canario")
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+    assert ler_coleta(tmp_path, modo="canary").estado == "ok"
+
+
+def test_modo_pedido_sem_status_que_case_e_ausente(tmp_path: Path) -> None:
+    """Pedir o full quando só houve canário não pode devolver o canário."""
+    _escrever_csv(tmp_path, [_anuncio("c", "2B")], portal="canalpro.canario")
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+    coleta = ler_coleta(tmp_path, modo="full")
+    assert coleta.estado == "ausente"
+    assert coleta.por_imovel == {}

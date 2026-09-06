@@ -123,7 +123,7 @@ test('a geração guardada é a de uma corrida CONCLUÍDA, com o conteúdo dela'
     const alvo = join(dir, 'falso.csv');
     await writeFile(alvo, '"idPortal","nota"\r\n"completo","9"\r\n', 'utf8');
     await writeFile(
-      join(dir, 'status.json'),
+      join(dir, 'status.full.json'),
       JSON.stringify({ result: 'ok', mode: 'full', finishedAt: 'x', rows: 1 }),
       'utf8'
     );
@@ -142,7 +142,7 @@ test('um CSV parcial NÃO atropela a geração guardada', async () => {
     await writeFile(join(dir, 'falso.anterior.csv'), '"idPortal","nota"\r\n"bom","9"\r\n', 'utf8');
     await writeFile(join(dir, 'falso.csv'), '"idPortal","nota"\r\n"parcial","1"\r\n', 'utf8');
     await writeFile(
-      join(dir, 'status.json'),
+      join(dir, 'status.full.json'),
       JSON.stringify({ result: 'error', mode: 'full', finishedAt: 'x' }),
       'utf8'
     );
@@ -343,5 +343,89 @@ test('a flag SOBREVIVE a um 401: o alarme não cai antes de a sessão responder'
     } as Portal;
     await executarComTratamento(expirado, 'canary', deps(dir));
     assert.ok(existsSync(join(dir, NEEDS_WARM_FLAG)), 'o operador precisa continuar sabendo que tem de re-logar');
+  });
+});
+
+// ---- Os três achados da segunda revisão ----
+
+test('o status por MODO sobrevive a uma corrida do outro modo', async () => {
+  // `status.json` é "a última corrida", e a última apagava o registro da outra: um
+  // canário de segundos depois de um full de horas tornava o CSV do full
+  // inalcançável para a rodada, com o `finishedAt` do canário passando na porta de
+  // idade. É a sequência que o console prescreve, porque o canário libera o full.
+  await comDiretorio(async (dir) => {
+    const { portal } = portalFalso({ total: 5, porPagina: 5 });
+    await executarComTratamento(portal, 'full', deps(dir));
+    await executarComTratamento(portal, 'canary', deps(dir));
+    const doFull = JSON.parse(await readFile(join(dir, 'status.full.json'), 'utf8'));
+    const doCanario = JSON.parse(await readFile(join(dir, 'status.canary.json'), 'utf8'));
+    assert.equal(doFull.mode, 'full', 'o registro do full não pode ser sobrescrito pelo canário');
+    assert.equal(doFull.rows, 5);
+    assert.equal(doCanario.mode, 'canary');
+    assert.equal((await status(dir)).mode, 'canary', 'status.json segue sendo a última corrida');
+  });
+});
+
+test('a geração do full é preservada mesmo com um canário no meio', async () => {
+  // O patch do backup era derrotado exatamente no caso para o qual existe: o
+  // canário entre dois fulls sobrescrevia o status e a condição recusava preservar.
+  await comDiretorio(async (dir) => {
+    const { portal } = portalFalso({ total: 3, porPagina: 3 });
+    await executarComTratamento(portal, 'full', deps(dir));
+    await executarComTratamento(portal, 'canary', deps(dir));
+    await executarComTratamento(portal, 'full', deps(dir));
+    assert.ok(existsSync(join(dir, 'falso.anterior.csv')), 'horas de raspagem não podem sumir por causa de uma sonda');
+  });
+});
+
+test('a RETOMADA também declara `running` enquanto apende', async () => {
+  await comDiretorio(async (dir) => {
+    await writeFile(
+      join(dir, 'progress.json'),
+      JSON.stringify({
+        startedAt: 'x', completedShards: [], seenCount: 0, rowsWritten: 1, lastUpdate: 'x',
+        lastPage: 1, contrato: CONTRATO_CHECKPOINT, portal: 'falso', modo: 'full',
+      }),
+      'utf8'
+    );
+    await writeFile(join(dir, 'falso.csv'), '"idPortal","nota"\r\n"p1-0","1"\r\n', 'utf8');
+    await writeFile(
+      join(dir, 'status.json'),
+      JSON.stringify({ result: 'ok', mode: 'full', finishedAt: 'x', rows: 999 }),
+      'utf8'
+    );
+    const vistos: string[] = [];
+    const { portal } = portalFalso({ total: 3, porPagina: 1 });
+    const espiao = {
+      ...portal,
+      collectPage: async (p: Parameters<NonNullable<Portal['collectPage']>>[0], sess: unknown, pg: number) => {
+        vistos.push(JSON.parse(await readFile(join(dir, 'status.json'), 'utf8')).result);
+        return portal.collectPage!(p, sess, pg);
+      },
+    } as Portal;
+    await executarCorrida(espiao, 'full', deps(dir));
+    assert.ok(vistos.includes('running'), `durante a retomada o status dizia: ${vistos.join(', ')}`);
+  });
+});
+
+test('retomar sobre um CSV que não existe rebaixa para corrida nova', async () => {
+  // O checkpoint pode ser coerente consigo mesmo e mentir sobre o disco — e apagar
+  // o CSV à mão era o que o próprio console ensinava. Sem esta guarda, a coleta sai
+  // parcial declarada `ok`, com `rows` prometendo o que não está no arquivo.
+  await comDiretorio(async (dir) => {
+    await writeFile(
+      join(dir, 'progress.json'),
+      JSON.stringify({
+        startedAt: 'x', completedShards: [], seenCount: 0, rowsWritten: 40, lastUpdate: 'x',
+        lastPage: 4, contrato: CONTRATO_CHECKPOINT, portal: 'falso', modo: 'full',
+      }),
+      'utf8'
+    );
+    const { portal, pedidas } = portalFalso({ total: 6, porPagina: 1 });
+    const desfecho = await executarCorrida(portal, 'full', deps(dir));
+    assert.deepEqual(pedidas, [1, 2, 3, 4, 5, 6], 'tem de recomeçar do início');
+    assert.equal(desfecho.rows, 6, 'rows não pode herdar os 40 prometidos pelo checkpoint');
+    const l = await linhas(join(dir, 'falso.csv'));
+    assert.equal(l.length, 7, 'cabeçalho + 6 — o arquivo tem de conter o que o status promete');
   });
 });

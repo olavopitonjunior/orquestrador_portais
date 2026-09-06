@@ -249,7 +249,7 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Ocorrido**: nenhum `unlink` no `src/` do raspador. Uma vez criada, `ler_coleta` devolvia `blocked` para sempre — ela faz OR entre a flag e o status —, independentemente de quantas coletas bem-sucedidas viessem depois, até alguém apagar o arquivo à mão. O console instruía o operador a re-logar por um problema que não era de login.
 - **Afetou carga publicada?**: não — a flag não chegou a disparar em rodada real.
 - **Estado da rodada no momento**: fora de rodada.
-- **Situação**: **resolvido em 2026-09-06.** A flag é removida logo após `captureSessionId`, que só retorna com cabeçalhos de auth capturados de uma XHR real — é a prova de que a sessão vive. Depois, e não no fim da corrida: um full que autentica e morre na página 900 provou o login, e mandar re-logar seria diagnóstico errado. Se a corrida autenticar e for bloqueada adiante, o tratamento recria a flag.
+- **Situação**: **resolvido em 2026-09-06.** A flag é removida quando a **primeira requisição autenticada responde** — não ao capturar a sessão. A primeira versão da correção fazia isso e a revisão a reprovou: capturar cabeçalhos prova que a SPA disparou uma XHR, **não** que o portal aceita o token, e um 401 logo depois apagaria o alarme certo. Depois disso, e não no fim da corrida: um full que autentica e morre na página 900 provou o login, e mandar re-logar seria diagnóstico errado. Se a corrida autenticar e for bloqueada adiante, o tratamento recria a flag.
 
 ## 401 do portal não vira `blocked` — sai como erro genérico, sem flag
 

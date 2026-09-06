@@ -101,18 +101,33 @@ export function podeRetomar(
   return { retoma: true, porque: 'mesmo portal, mesmo modo, contrato atual, progresso coerente' };
 }
 
+/** Nome do status POR MODO. Existe porque `status.json` sozinho é "a última
+ *  corrida", e a última corrida apaga o registro da outra: um canário de segundos
+ *  rodado depois de uma coleta completa de horas sobrescrevia o status, e a partir
+ *  daí o CSV do full ficava inalcançável para a rodada — com o `finishedAt` do
+ *  canário passando na porta de idade. A sequência não é hipotética: é a que o
+ *  console prescreve, porque o canário é o portão que libera o full. */
+export function nomeDoStatus(modo: Modo): string {
+  return `status.${modo}.json`;
+}
+
 async function escreverStatus(
   outDir: string,
   agora: () => Date,
+  modo: Modo,
   result: 'ok' | 'blocked' | 'error' | 'running',
   extra: Record<string, unknown>
 ): Promise<void> {
   await mkdir(outDir, { recursive: true });
-  await writeFile(
-    join(outDir, 'status.json'),
-    JSON.stringify({ result, finishedAt: agora().toISOString(), ...extra }, null, 2),
-    'utf8'
+  const corpo = JSON.stringify(
+    { result, finishedAt: agora().toISOString(), mode: modo, ...extra },
+    null,
+    2
   );
+  // `status.json` continua sendo "a última corrida", que é o que o card do console
+  // mostra; `status.<modo>.json` é o registro que ninguém sobrescreve por acidente.
+  await writeFile(join(outDir, 'status.json'), corpo, 'utf8');
+  await writeFile(join(outDir, nomeDoStatus(modo)), corpo, 'utf8');
 }
 
 async function levantarNeedsWarm(outDir: string, agora: () => Date): Promise<void> {
@@ -134,11 +149,13 @@ async function guardarGeracaoAnterior(caminho: string, outDir: string): Promise<
   if (!existsSync(caminho)) return;
   let concluida = false;
   try {
-    const st = JSON.parse(await readFile(join(outDir, 'status.json'), 'utf8')) as {
+    // Lê o status DO FULL, não o da última corrida: um canário entre dois fulls
+    // sobrescrevia `status.json` e fazia esta condição recusar preservar a última
+    // geração boa — derrotando esta função exatamente no caso para o qual ela existe.
+    const st = JSON.parse(await readFile(join(outDir, nomeDoStatus('full')), 'utf8')) as {
       result?: string;
-      mode?: string;
     };
-    concluida = st.result === 'ok' && st.mode === 'full';
+    concluida = st.result === 'ok';
   } catch {
     concluida = false; // sem status legível, não afirmamos nada sobre o arquivo
   }
@@ -193,7 +210,7 @@ export async function executarCorrida(
       await csv.init({ truncar: true });
       await csv.appendRows(anuncios.map((a) => portal.rowToCells(a)));
       log(`Canário concluído: ${anuncios.length} anúncios gravados.`);
-      await escreverStatus(outDir, agora, 'ok', { mode: modo, portal: portal.id, rows: anuncios.length });
+      await escreverStatus(outDir, agora, modo, 'ok', { portal: portal.id, rows: anuncios.length });
       return { result: 'ok', rows: anuncios.length, exitCode: 0 };
     }
 
@@ -229,6 +246,18 @@ export async function executarCorrida(
       // (`totalPages` caiu abaixo de `lastPage`) e o `clearCheckpoint` falhou por
       // outro motivo que não a ausência do arquivo. Sem ela o laço não itera e a
       // corrida se declara `ok` com os números da anterior e um `finishedAt` novo.
+      // O checkpoint pode ser coerente consigo mesmo e mentir sobre o disco. Apagar
+      // o CSV à mão era o que o próprio console ensinava até esta fatia ("apague o
+      // arquivo antes de disparar o canário") — e apagar o CSV não apaga o
+      // `progress.json`. Retomar sobre um arquivo que não existe produz coleta
+      // parcial declarada `ok`, com `rows` prometendo o que não está lá.
+      if (retomando && !existsSync(caminhoCsv)) {
+        log(`Checkpoint diz retomar, mas ${nomeDoCsv(portal.id, modo)} não existe: rebaixando para corrida nova.`);
+        retomando = false;
+        cp.lastPage = 0;
+        cp.rowsWritten = 0;
+        cp.startedAt = agora().toISOString();
+      }
       if (retomando && start > totalPages) {
         log(
           `Checkpoint aponta a página ${cp.lastPage} e a listagem tem ${totalPages}: ` +
@@ -240,19 +269,18 @@ export async function executarCorrida(
         // O `startedAt` é da corrida ANTERIOR; mantê-lo faria o arquivo mentir sobre
         // quando esta começou — e é o campo que uma guarda de idade leria.
         cp.startedAt = agora().toISOString();
-        start = 1;
       }
-      if (!retomando) {
-        // Guardar ANTES de declarar `running`: a decisão de guardar lê o status
-        // vigente, que é o da corrida anterior — sobrescrevê-lo primeiro apagaria
-        // a única evidência de que aquele CSV veio de uma corrida concluída.
-        await guardarGeracaoAnterior(caminhoCsv, outDir);
-        // O `status.json` só era escrito no fim, e um full leva horas: quem lesse
-        // `out/` no meio veria o CSV recém-truncado com o status da corrida ANTERIOR
-        // ao lado — parcial carimbado de `ok`, com um `finishedAt` que a porta de
-        // idade aceita. Declarar `running` faz o leitor degradar.
-        await escreverStatus(outDir, agora, 'running', { mode: modo, portal: portal.id });
-      }
+      // Um ponto só de verdade para o `start`: qualquer um dos dois rebaixamentos
+      // acima faz a corrida recomeçar da primeira página.
+      if (!retomando) start = 1;
+      // Guardar ANTES de declarar `running`: a decisão de guardar lê o status do
+      // full anterior — sobrescrevê-lo primeiro apagaria a única evidência de que
+      // aquele CSV veio de uma corrida concluída.
+      if (!retomando) await guardarGeracaoAnterior(caminhoCsv, outDir);
+      // `running` vale nos DOIS casos: uma retomada também está em curso, e enquanto
+      // ela apende horas de linhas o status vigente continuaria dizendo `ok` com o
+      // `rows` da corrida anterior — o defeito de origem por uma porta nova.
+      await escreverStatus(outDir, agora, modo, 'running', { portal: portal.id });
       await csv.init({ truncar: !retomando });
       log(`Paginação linear: ${total} anúncios, ${totalPages} páginas; retomando da página ${start}.`);
       for (let pg = start; pg <= totalPages; pg++) {
@@ -277,7 +305,7 @@ export async function executarCorrida(
       // ANTES do status: morrer entre os dois perde a retomada, o que é seguro;
       // o inverso deixa um checkpoint completo, que é o defeito.
       await clearCheckpoint(outDir);
-      await escreverStatus(outDir, agora, 'ok', { mode: modo, portal: portal.id, rows: cp.rowsWritten });
+      await escreverStatus(outDir, agora, modo, 'ok', { portal: portal.id, rows: cp.rowsWritten });
       return { result: 'ok', rows: cp.rowsWritten, exitCode: 0 };
     }
 
@@ -292,6 +320,14 @@ export async function executarCorrida(
     // Rebaixa se o checkpoint já cobre tudo OU se guarda rótulo que não existe mais:
     // os facets mudam entre corridas, e um rótulo órfão significa que o mapa de
     // shards mudou — retomar sobre ele recoletaria tudo preservando o CSV anterior.
+    if (retomando && !existsSync(caminhoCsv)) {
+      log(`Checkpoint diz retomar, mas ${nomeDoCsv(portal.id, modo)} não existe: rebaixando para corrida nova.`);
+      retomando = false;
+      cp.completedShards = [];
+      cp.rowsWritten = 0;
+      cp.startedAt = agora().toISOString();
+      done.clear();
+    }
     const orfaos = [...done].filter((r) => !shards.some((s) => s.label === r));
     const cobreTudo = shards.length > 0 && shards.every((s) => done.has(s.label));
     if (retomando && (cobreTudo || orfaos.length > 0)) {
@@ -306,10 +342,8 @@ export async function executarCorrida(
       cp.startedAt = agora().toISOString();
       done.clear();
     }
-    if (!retomando) {
-      await guardarGeracaoAnterior(caminhoCsv, outDir);
-      await escreverStatus(outDir, agora, 'running', { mode: modo, portal: portal.id });
-    }
+    if (!retomando) await guardarGeracaoAnterior(caminhoCsv, outDir);
+    await escreverStatus(outDir, agora, modo, 'running', { portal: portal.id });
     await csv.init({ truncar: !retomando });
     for (const shard of shards) {
       if (done.has(shard.label)) continue;
@@ -322,7 +356,7 @@ export async function executarCorrida(
       log(`Shard [${shard.label}]: ${anuncios.length} anúncios (total ${cp.rowsWritten}).`);
     }
     await clearCheckpoint(outDir);
-    await escreverStatus(outDir, agora, 'ok', { mode: modo, portal: portal.id, rows: cp.rowsWritten });
+    await escreverStatus(outDir, agora, modo, 'ok', { portal: portal.id, rows: cp.rowsWritten });
     return { result: 'ok', rows: cp.rowsWritten, exitCode: 0 };
   } finally {
     // NUNCA browser.close(): é o Chrome do operador.
@@ -351,12 +385,12 @@ export async function executarComTratamento(
     // no portal de novo.
     if (e instanceof BlockedError || e instanceof AuthExpiredError) {
       await levantarNeedsWarm(outDir, agora);
-      await escreverStatus(outDir, agora, 'blocked', { mode: modo, portal: portal.id, message: e.message });
+      await escreverStatus(outDir, agora, modo, 'blocked', { portal: portal.id, message: e.message });
       log(`SESSÃO CAÍDA: ${e.message} — flag ${NEEDS_WARM_FLAG} criada; re-logue no portal.`);
       return { result: 'blocked', rows: 0, exitCode: 2 };
     }
     const msg = e instanceof Error ? e.message : String(e);
-    await escreverStatus(outDir, agora, 'error', { mode: modo, portal: portal.id, message: msg });
+    await escreverStatus(outDir, agora, modo, 'error', { portal: portal.id, message: msg });
     log(`ERRO: ${msg}`);
     return { result: 'error', rows: 0, exitCode: 1 };
   }

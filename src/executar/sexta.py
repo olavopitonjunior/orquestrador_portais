@@ -105,6 +105,24 @@ class RecorteVazio(RuntimeError):
     Sai com o código de "estoque vazio" (4) — é insumo ausente, não incidente."""
 
 
+class ColetaNaoConcluiu(RuntimeError):
+    """A raspagem existe mas não está `ok` — bloqueada, com erro, ou ainda em curso.
+
+    Exceção SEPARADA de `RecorteVazio` de propósito. Sob um código só, um incidente
+    (sessão caiu; o operador precisa re-logar) chegaria ao monitoramento com a cara
+    de "não havia imóvel para decidir", `grave: false`, e ninguém iria olhar. Sai
+    por falha de fonte (3), que é o que ela é."""
+
+    #: o que o operador faz, por estado — a ação certa é diferente em cada um
+    ACOES = {
+        "blocked": "a sessão do portal caiu: re-logue no Canal Pro e rode o canário de novo",
+        "running": "uma coleta completa está em curso: espere ela fechar",
+        "error": "a última coleta terminou em erro: veja o log do raspador",
+        "corrompido": "a saída do raspador está ilegível: rode a coleta de novo",
+        "ausente": "não há coleta em disco: rode o canário",
+    }
+
+
 def _recorte_da_raspagem(externo: Path) -> tuple[frozenset[int], ColetaExterna]:
     """Os imóveis que a raspagem AMARROU — o universo da rodada amostral — e a
     leitura de onde saíram, para o nó do Coletor Externo não parsear o CSV de novo.
@@ -124,16 +142,18 @@ def _recorte_da_raspagem(externo: Path) -> tuple[frozenset[int], ColetaExterna]:
     Vazio é erro próprio: o motivo mais provável é o formato do `codigoImovel`, que a
     porta de amarração vazia já aponta — aqui ele aparece antes de a rodada começar.
     """
-    coleta = ler_coleta(externo)
+    # Pede o CANÁRIO por nome: é ele que define a amostra, e sem isso uma coleta
+    # completa posterior (ou anterior) decidiria qual arquivo a amostral enxerga.
+    coleta = ler_coleta(externo, modo="canary")
     if coleta.estado != "ok":
         # A porta que faltava. `avaliar_coleta` recusa o SINAL de portal quando a
         # coleta não está ok, mas o RECORTE não passava por ela: uma coleta que
         # falhou deixava em `out/` o CSV de outra corrida, e a amostral decidia
         # sobre esse universo velho carimbado com o instante de hoje.
-        raise RecorteVazio(
-            f"recorte pela raspagem RECUSADO: estado {coleta.estado!r} em {externo} — "
-            "a rodada amostral decide sobre o que a raspagem trouxe AGORA, e uma "
-            "coleta que não concluiu não define amostra. Rode o canário de novo."
+        acao = ColetaNaoConcluiu.ACOES.get(coleta.estado, "confira a saída do raspador")
+        raise ColetaNaoConcluiu(
+            f"recorte pela raspagem RECUSADO: a coleta está {coleta.estado!r} em {externo} — "
+            f"a rodada amostral decide sobre o que a raspagem trouxe AGORA. {acao.capitalize()}."
         )
     ids = frozenset(coleta.por_imovel)
     if not ids:
@@ -205,7 +225,14 @@ def _fontes(
         coletar_externo=(
             (lambda: coleta)
             if coleta is not None
-            else ((lambda: ler_coleta(externo)) if externo else None)
+            # Amostral (há recorte) lê o CANÁRIO que definiu a amostra; a rodada
+            # real lê a coleta COMPLETA. Sem declarar, valeria a última corrida,
+            # e uma sonda de segundos decidiria qual arquivo a rodada enxerga.
+            else (
+                (lambda: ler_coleta(externo, modo="canary" if recorte is not None else "full"))
+                if externo
+                else None
+            )
         ),
         # A leitura que a Spec §5 atribui ao Decisor. Conexão por chamada, como as
         # demais leituras do Registro no runner: a rodada é curta e a alternativa
@@ -960,6 +987,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         log.debug("causa completa", exc_info=True)
         _escrever_resultado(args.resultado, codigo=1, falha=type(e).__name__)
         return 1
+    except ColetaNaoConcluiu as e:
+        # Falha de FONTE (3), não "estoque vazio" (4): uma sessão caída é incidente,
+        # e sob o código 4 chegaria ao monitoramento sem gravidade, com a frase de
+        # "não havia imóvel para decidir" — e ninguém iria olhar.
+        log.error("%s", e)
+        _escrever_resultado(args.resultado, codigo=3, falha=type(e).__name__)
+        return 3
     except RecorteVazio as e:
         # Mesmo código de "estoque vazio": é insumo ausente, não incidente. A mensagem
         # é segura para fora — só contagens, estado e o caminho local da raspagem.
