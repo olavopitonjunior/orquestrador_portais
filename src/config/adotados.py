@@ -38,8 +38,12 @@ ADOTADOS: Mapping[str, int | float | str] = MappingProxyType(
         "portal.peso_nota": 70,
         # Sinal fraco mas real, e é intenção de compra, não curiosidade.
         "portal.peso_cliques": 30,
-        # Medido ZERO em 300 de 300 anúncios (03/09/2026): peso zero declarado, não
-        # omitido — volta a pesar no dia em que o raspador achar o campo.
+        # PREMISSA CAÍDA, valor mantido. O zero foi adotado por uma medição de
+        # 03/09/2026 sobre 300 anúncios, todos sem visualizações. A primeira coleta
+        # COMPLETA (06/09/2026, 55.162 anúncios) achou 13.175 com visualizações —
+        # 23,9 %. O campo não vinha vazio: a amostra é que era pequena. O valor
+        # continua sendo o adotado da D-034 até o dono decidir ([P-25]); mudá-lo
+        # aqui sem decisão seria trocar o número dele por um meu.
         "portal.peso_visualizacoes": 0,
         # Abaixo da metade, a ordem da vitrine seria decidida por menos da metade do
         # estoque. Em PERCENTUAL, não fração.

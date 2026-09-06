@@ -263,7 +263,7 @@ Um imóvel entra por semelhança com um perfil vencedor mesmo sem desempenho pr�
 |---|---|---|
 | Nota do anúncio no portal | 70 | único sinal com variância medida: 14 valores distintos em 300 anúncios (03/09/2026) |
 | Cliques, somados entre tipos | 30 | sinal fraco mas real, e é intenção de compra, não curiosidade |
-| Visualizações | 0 | medido zero em 300 de 300 anúncios. Zero **declarado**, não omitido: volta a pesar quando o campo trouxer sinal |
+| Visualizações | 0 | medido zero em 300 de 300 anúncios em 03/09/2026 — **premissa caída em 06/09**: a primeira coleta completa achou 13.175 dos 55.162 com visualizações, 23,9 %. O zero segue adotado (D-034) até decisão do dono ([P-25]); o que caiu foi a razão, não o valor |
 
 Cada sinal é reescalado para uma escala comparável antes de somar. A **forma** dessa normalização é o parâmetro nº 2, que segue **nulo**: a forma em uso (min-max) é **provisória**, sai rotulada como tal na planilha e não foi adotada (D-016). O reescalonamento acontece entre os elegíveis no ranking primário e entre os reprovados no relaxamento — as duas ordenações são internas a cada grupo e nunca se comparam.
 

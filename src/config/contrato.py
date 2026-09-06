@@ -194,9 +194,11 @@ GRUPOS: tuple[Grupo, ...] = (
             "Estas não excluem ninguém: ordenam quem passou (D-028). A nota vai de 0 a 100 e "
             "é a soma ponderada de três sinais do anúncio no Canal Pro — nota do anúncio, "
             "cliques (somados entre tipos) e visualizações — cada um reescalado entre os "
-            "elegíveis. Medido em 03/09/2026: visualizações vieram zero em 300 de 300 anúncios "
-            "e só a nota tem variância; por isso o peso adotado das visualizações é zero, "
-            "declarado. A raspagem só entra se cobrir a fração mínima dos candidatos e for "
+            "elegíveis. O peso adotado das visualizações é zero, por uma medição de 03/09/2026 "
+            "sobre 300 anúncios que deu zero em todos — premissa que a coleta completa de "
+            "06/09/2026 derrubou: 13.175 dos 55.162 têm visualizações. O zero segue vigente até "
+            "decisão sua ([P-25]). A raspagem só entra se cobrir a fração mínima dos candidatos "
+            "e for "
             "recente; senão a ordem cai para o desempate de banco e a rodada declara isso."
         ),
         pendentes_sem_campo=(2,),
@@ -407,12 +409,17 @@ CAMPOS: tuple[Campo, ...] = (
         grupo="em_que_ordem_portal",
         tipo="inteiro",
         ajuda=(
-            "Quanto as visualizações pesam. Medido zero em 300 de 300 anúncios em 03/09/2026: "
-            "o peso adotado é zero, declarado — não omitido. Volta a valer quando o raspador "
-            "achar o campo."
+            "Quanto as visualizações pesam. O peso adotado é ZERO (D-034), e a premissa que o "
+            "sustentava CAIU: aquele zero foi medido em 300 anúncios; a primeira coleta completa, "
+            "de 55.162, achou 13.175 com visualizações — 23,9 %. O campo não vem vazio; a amostra "
+            "é que era pequena. O valor segue vigente até você decidir ([P-25])."
         ),
         unidade="pontos de 100",
-        se_aumentar="Hoje, nada: o campo vem zerado do portal, e o peso cairia num sinal vazio.",
+        se_aumentar=(
+            "Passa a pesar um sinal presente em cerca de um quarto do estoque (23,9 % dos 55.162 "
+            "anúncios da coleta de 06/09/2026). Como os três pesos somam 100, subir este baixa os "
+            "outros dois — e o dos cliques é o único outro sinal com intenção de compra."
+        ),
         minimo=0,
         maximo=100,
     ),

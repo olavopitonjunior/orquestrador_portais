@@ -12,7 +12,9 @@ nota do anúncio (LQS), cliques (somados entre tipos — divergência registrada
 contrato anterior do coletor, que nunca os somava) e visualizações. Os pesos são
 PONTOS DE 100 e somam 100, então a nota bruta vive em [0, 100]; os descontos das
 penalidades (Spec §6.4) são também pontos de 100 e são subtraídos. O peso zero é
-legítimo e declarado: visualizações mediram 0 em 300/300 anúncios (03/09/2026).
+legítimo e declarado — é o adotado para visualizações (D-034). A razão original
+("0 em 300/300 anúncios", 03/09/2026) caiu: a coleta completa de 06/09 achou 23,9 %
+com visualizações. O valor segue vigente até decisão do dono ([P-25]).
 
 Os dois níveis usam a MESMA nota (a alocação separa super destaque pelo piso de
 preço, não por nota diferente). Os fatores de banco (leads, produtividade do
@@ -34,7 +36,9 @@ class PesosPortal:
     """Os três pesos do classificador, em PONTOS DE 100 (somam exatamente 100).
 
     Os VALORES são parâmetro da rodada (provisórios, rotulados; adotados só por
-    decisão registrada). Zero é permitido e é o caso medido para visualizações.
+    decisão registrada). Zero é permitido, e é o valor ADOTADO para visualizações
+    (D-034) — não mais "o caso medido": a coleta completa de 06/09/2026 achou 23,9 %
+    dos anúncios com visualizações, e a premissa que sustentava o zero caiu ([P-25]).
     """
 
     nota_anuncio: int

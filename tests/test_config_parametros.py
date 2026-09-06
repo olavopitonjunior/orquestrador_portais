@@ -374,8 +374,13 @@ def test_peso_booleano_e_recusado(tmp_path, caminho):
 
 
 def test_peso_zero_e_legitimo(tmp_path):
-    """Visualizações mediram zero em 300/300 anúncios: o peso zero é declarado, não
-    omitido, e uma rodada só de nota também é expressável."""
+    """Zero é peso expressável — e continua sendo depois de a premissa cair.
+
+    O zero das visualizações veio de 300/300 anúncios em 03/09/2026; a coleta
+    completa de 06/09 achou 23,9 % com visualizações ([P-25]). O peso adotado segue
+    zero até decisão do dono, e o que este teste afirma independe disso: zero é
+    declarável, e uma rodada só de nota também é expressável.
+    """
     dados = _com("portal.peso_nota", 100, _com("portal.peso_cliques", 0))
     p = carregar(_arquivo(tmp_path, dados))
     assert p.decisao.pesos_portal == PesosPortal(nota_anuncio=100, cliques=0, visualizacoes=0)

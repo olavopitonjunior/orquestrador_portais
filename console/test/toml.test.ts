@@ -87,7 +87,7 @@ test("inteiro com casa decimal é RECUSADO", () => {
 
 test("o limite FECHADO aceita o próprio limite, dos dois lados", () => {
   // Pontos de 100 e por cento são faixas fechadas [0, 100]: zero é um valor legítimo
-  // (visualizações pesam 0 por medição) e 100 também (perdão total).
+  // (0 é o peso adotado hoje para visualizações, D-034) e 100 também (perdão total).
   const v = preenchimentoValido();
   v.set("portal.cobertura_minima", "0");
   v.set("desconto.perdao_por_semana", "100");

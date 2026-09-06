@@ -401,7 +401,7 @@ Primeira raspagem real, canário de 300 anúncios pelo trabalhador do console:
 |---|---|---|
 | `codigoImovel` (o `externalId` da API `listings` do painel) | Canal Pro | Formato `{Id}{letra}`: seis dígitos + uma letra maiúscula (ex.: `431347A`). **300 de 300** com o prefixo em `newcore.realties.Id`, todos `Ativo` no espelho. A letra varia (21 letras em 300; A=57, Z=42, S=21…) — não é tipo de transação. |
 | `realties.NewIdMarketingRotation` | Newcore (`newcore.realties`, varchar) | **Igual ao `codigoImovel` em 300 de 300.** É o id sob o qual a Newcore republica o anúncio (rotação de marketing; `MarketingRotatedAt` não nulo nos 300). A chave da amarração é o **prefixo numérico** (`realties.Id`); a letra é descartada por `dados/coletor_externo._imovel_id_de`. |
-| `visualizacoes` (API `listings`) | Canal Pro | **0 em 300 de 300.** A forma `visualizacoes` do F3 não tem sinal nesta API; `nota` (LQS) tem 14 valores distintos. Registrado em `bug.md`; a forma é parâmetro declarado (`externo.desempenho.forma`). |
+| `visualizacoes` (API `listings`) | Canal Pro | **TEM sinal — a generalização anterior caiu.** Em 03/09/2026, 0 em 300 de 300, e daí se concluiu que o campo não tinha sinal nesta API. A primeira coleta COMPLETA (06/09/2026, 55.162 anúncios) achou **13.175 com visualizações — 23,9 %**, e a `nota` (LQS) passou de 14 para **69** valores distintos. O zero era da amostra de 300, não do campo. O peso adotado das visualizações segue **0** (D-034) até decisão do dono ([P-25]); o que caiu foi a razão. |
 
 ## Login do corretor e alcance do filtro de perfil — medição 04/09/2026 (D-027, D-029)
 
