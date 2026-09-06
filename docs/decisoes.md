@@ -876,8 +876,8 @@ Entram no contrato, todos em unidade que uma pessoa julga: `conversao.janela_dia
 | `conversao.janela_dias` | 180 dias | a janela medida, com 184 vendas; em 30 dias seriam ~25, evidência de menos |
 | `corretor.login_janela_dias` | 30 dias | mesma janela da irmã produtiva, para a trava ficar coerente (D-029) |
 | `corretor.minimo_no_distrito` | 2 corretores | D-015: de 3 para 2 elevou a cobertura de vendas de 62 % para 75 % |
-| `portal.peso_nota` | 70 pontos | único sinal com variância medida: 14 valores em 300 anúncios |
-| `portal.peso_cliques` | 30 pontos | sinal fraco mas real, e é intenção de compra, não curiosidade |
+| `portal.peso_nota` | 70 pontos | único sinal com variância medida: 14 valores em 300 anúncios — **remedido em 06/09: 69 em 55.162, conclusão reforçada; ver o segundo adendo da [P-25]** |
+| `portal.peso_cliques` | 30 pontos | sinal fraco mas real, e é intenção de compra, não curiosidade — **"fraco" ficou muito mais fraco na coleta completa; ver o segundo adendo da [P-25]** |
 | `portal.peso_visualizacoes` | 0 pontos | medido zero em 300 de 300 — **premissa caída em 06/09/2026, ver [P-25]**; o valor segue adotado |
 | `portal.cobertura_minima` | 50 % | abaixo da metade, a ordem seria decidida por menos da metade do estoque (nº 7) |
 | `portal.idade_maxima_dias` | 2 dias | a rodada raspa no mesmo dia; 2 tolera um retry sem aceitar dado da semana passada (nº 5) |
@@ -1030,4 +1030,30 @@ A **D-028** fixou a nota do portal sobre uma medição de 03/09/2026 — a prime
 
 **Consequência de leitura para a [P-15].** Aquela pendência foi declarada "fechada por medição: visualizações 0 em 300 de 300". Ela continua fechada — a composição do sinal de portal foi decidida —, mas **não pela razão que estava escrita**. A nota da fila foi corrigida para não afirmar como fato encerrado exatamente o que esta medição derrubou.
 
-**Precedente e método.** É o segundo caso na mesma sessão de uma medição nova derrubando a base de uma decisão registrada; o primeiro foi a deriva do funil, na mesma manhã. As duas têm a mesma causa: **valor adotado sobre amostra de 300 quando o universo é 55.162**. Fica a pergunta, maior que este adendo: **quais outros adotados da D-034 têm procedência com "300" e nunca foram remedidos contra a coleta completa?** `src/config/adotados.py` é o lugar de olhar, e é fatia própria.
+**Precedente e método.** É o segundo caso na mesma sessão de uma medição nova derrubando a base de uma decisão registrada; o primeiro foi a deriva do funil, na mesma manhã. As duas têm a mesma causa: **valor adotado sobre amostra de 300 quando o universo é 55.162**.
+
+### [P-25] Segundo adendo (2026-09-06) — a auditoria dos outros adotados, e a alocação que parece invertida
+
+A pergunta que o primeiro adendo deixou — *quais outros adotados da D-034 têm procedência com "300"?* — foi respondida medindo os três sinais do portal na coleta completa e na rodada 30417. **O achado é maior que o do primeiro adendo, e é da mesma decisão.**
+
+| Sinal | Peso adotado | Presente em (55.162 anúncios) | Não-zero entre os 6.970 escolhidos | Valores distintos | **Pares que distingue** |
+|---|---:|---:|---:|---:|---:|
+| Nota do anúncio | **70** | 100 % | 6.751 (96,9 %) | 26 | **57,8 %** |
+| **Cliques** | **30** | **1,69 %** (933) | **124 (1,8 %)** | 9 | **3,5 %** |
+| **Visualizações** | **0** | 23,9 % (13.175) | 1.550 (22,2 %) | 74 | **38,6 %** |
+
+A última coluna é a que mede o que interessa a um ranking: a fração dos pares de imóveis que aquele sinal consegue **ordenar** em vez de empatar. Presença é proxy; esta é a grandeza. Ela dá o mesmo veredito, com margem maior — o valor de topo dos cliques empata 6.846 dos 6.970.
+
+**A nota sai reforçada.** A D-034 a justificou como "único sinal com variância medida (14 valores distintos em 300 anúncios)"; a coleta completa achou **69** valores e preenchimento de 100 %. O número envelheceu, a conclusão ficou mais forte. Nada a decidir aqui.
+
+**Os cliques são o problema.** A justificativa foi *"sinal fraco mas real, e é intenção de compra, não curiosidade"*. A primeira metade ficou muito mais fraca do que a frase sugeria: **algum clique aparece em 1,69 % dos anúncios**, e **dois dos cinco tipos — proposta e agendamento — são zero em 55.162 de 55.162**. Na rodada real, 30 pontos de 100 foram alocados a um sinal que separou **124** imóveis, enquanto o sinal que separou **1.550** pesou zero.
+
+**A segunda metade da justificativa continua de pé, e é o que impede esta ser uma correção óbvia.** Um clique é intenção de compra; uma visualização é curiosidade. Por unidade, o clique vale mais. A pergunta que fica ao dono não é "o número está errado" — é **quanto peso um sinal raro e forte merece contra um sinal comum e fraco**, e ela não tem resposta medida: é critério.
+
+**Por que isto NÃO abre pendência nova.** Os três pesos somam 100. Decidir o das visualizações é decidir de onde saem os pontos, e a única outra fonte é o dos cliques. É uma alocação só, e por isso entra na **[P-25]**, que passa a ser sobre os três pesos, não sobre um.
+
+**Dois números de desconto também foram remedidos**, e nenhum muda valor:
+- *"aplica-se a 84 % dos elegíveis"* (sem lead em 180 dias) — medido na rodada 30417: **78,3 % entre os elegíveis**, que é a base comparável (77,0 % entre os escolhidos, que incluem os 116 recuperados por cedência; 76,3 % entre todos os candidatos). O 84 % vinha da leitura de 28/08 e nunca fora rastreável a um artefato; agora é.
+- *"cerca de 44 % do estoque elegível não tem avaliação por categoria"* — medido: **56,3 % entre os elegíveis**. **Não é premissa caída**, e é o mais próximo que esta auditoria chega de uma confirmação: a tabela de riscos do PRD dava como *Alta* a probabilidade de a penalidade "recair sobre metade dos candidatos", e recaiu. **Mas a medição não prova a causa.** Entre os 48.812 candidatos a taxa é **35,3 %**, *abaixo* dos 44 % de 28/08 — então quem produz os 56 % é a filtragem do funil, não necessariamente o acúmulo de estoque novo, e a definição de "elegível" mudou no período (a D-027 acrescentou a nona regra). Separar deriva de composição exigiria a medição de 28/08 sobre a base ampla, que não temos. O desconto de 5 pontos, baixo de propósito para não punir estoque novo por defeito da base, segue justificado.
+
+**O que esta auditoria NÃO fez:** mexer em valor nenhum. `peso_nota = 70`, `peso_cliques = 30`, `peso_visualizacoes = 0` e os três descontos seguem exatamente como a D-034 os adotou.

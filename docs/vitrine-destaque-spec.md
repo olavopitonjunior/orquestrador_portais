@@ -263,8 +263,8 @@ O portal classifica (D-028). A **nota bruta** de cada imóvel é a soma ponderad
 
 | Sinal | Peso adotado | Razão |
 |---|---|---|
-| Nota do anúncio | 70 | único sinal com variância medida (14 valores em 300 anúncios, 03/09/2026) |
-| Cliques, somados entre tipos (contato, telefone, WhatsApp, proposta, agendamento) | 30 | sinal fraco mas real, e é intenção de compra |
+| Nota do anúncio | 70 | único sinal com variância medida — 14 valores em 300 anúncios (03/09/2026), **69 em 55.162 na coleta completa (06/09)**, preenchimento de 100 %. Conclusão reforçada |
+| Cliques, somados entre tipos (contato, telefone, WhatsApp, proposta, agendamento) | 30 | sinal fraco mas real, e é intenção de compra — **mais fraco do que a frase sugeria**: 1,69 % dos anúncios têm algum clique, e proposta e agendamento são zero em 55.162 de 55.162 ([P-25]) |
 | Visualizações | 0 | medido zero em 300 de 300 (03/09/2026) — **premissa caída**: a coleta completa de 06/09 achou 13.175 dos 55.162 com visualizações, 23,9 %. O peso zero segue adotado até decisão do dono ([P-25]) |
 
 A nota final é a nota bruta menos os descontos (§6.4). **Os dois níveis usam a mesma nota**: o que os separa é o piso de preço na alocação (§6.5), não uma nota diferente.

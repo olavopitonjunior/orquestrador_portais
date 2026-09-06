@@ -34,9 +34,21 @@ ADOTADOS: Mapping[str, int | float | str] = MappingProxyType(
         # D-015: passar de 3 para 2 elevou a cobertura de vendas de 62% para 75%.
         "corretor.minimo_no_distrito": 2,
         # --- em que ordem: o portal ---------------------------------------------
-        # Único sinal com variância medida (14 valores distintos em 300 anúncios).
+        # Único sinal com variância medida. Os 14 valores distintos citados pela D-034
+        # eram da amostra de 300; a coleta completa (06/09/2026) achou 69 em 55.162, e
+        # a nota vem preenchida em 100 % dos anúncios. A conclusão que sustenta este
+        # peso ficou MAIS forte, não mais fraca — só o número envelheceu.
         "portal.peso_nota": 70,
-        # Sinal fraco mas real, e é intenção de compra, não curiosidade.
+        # "Sinal fraco mas real, e é intenção de compra, não curiosidade" (D-034). A
+        # primeira metade da frase ficou MUITO mais fraca do que ela sugeria: na coleta
+        # completa, algum clique aparece em 933 de 55.162 anúncios (1,69 %), e dois dos
+        # cinco tipos — proposta e agendamento — são zero em 55.162 de 55.162. Na rodada
+        # 30417, entre os 6.970 escolhidos, os cliques separaram 124 imóveis (1,8 %) com
+        # 9 valores distintos, contra 1.550 (22,2 %) e 74 valores das visualizações, que
+        # pesam ZERO. A segunda metade — intenção de compra — continua de pé e é
+        # qualitativa: um clique vale mais por unidade que uma visualização.
+        # A escolha entre as duas é do dono, e está na [P-25] junto com o peso das
+        # visualizações: os três somam 100, então é uma alocação só.
         "portal.peso_cliques": 30,
         # PREMISSA CAÍDA, valor mantido. O zero foi adotado por uma medição de
         # 03/09/2026 sobre 300 anúncios, todos sem visualizações. A primeira coleta
