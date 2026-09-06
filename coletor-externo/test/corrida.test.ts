@@ -429,3 +429,21 @@ test('retomar sobre um CSV que não existe rebaixa para corrida nova', async () 
     assert.equal(l.length, 7, 'cabeçalho + 6 — o arquivo tem de conter o que o status promete');
   });
 });
+
+test('numa out/ anterior à correção, o primeiro full ainda guarda a geração', async () => {
+  // Compatibilidade que o lado Python previu e este não: sem `status.full.json`,
+  // aceita `status.json` se o `mode` dele casar. Sem isto, a primeira coleta
+  // completa depois do deploy truncaria o CSV anterior sem guardar cópia.
+  await comDiretorio(async (dir) => {
+    await writeFile(join(dir, 'falso.csv'), '"idPortal","nota"\r\n"de-antes","9"\r\n', 'utf8');
+    await writeFile(
+      join(dir, 'status.json'),
+      JSON.stringify({ result: 'ok', mode: 'full', finishedAt: 'x', rows: 1 }),
+      'utf8'
+    );
+    const { portal } = portalFalso({ total: 2, porPagina: 10 });
+    await executarCorrida(portal, 'full', deps(dir));
+    const guardado = await linhas(join(dir, 'falso.anterior.csv'));
+    assert.ok(guardado.some((x) => x.includes('de-antes')), 'a geração anterior ao deploy tem de sobreviver');
+  });
+});

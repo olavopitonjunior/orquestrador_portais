@@ -145,6 +145,25 @@ async function levantarNeedsWarm(outDir: string, agora: () => Date): Promise<voi
  *  rebaixada guardaria um CSV PARCIAL por cima do último full bom, e o nome
  *  prometeria o que o arquivo não é. Só guarda quando o `status.json` vigente diz
  *  que a corrida que produziu aquele arquivo concluiu. */
+/** O status da última coleta COMPLETA, com o mesmo fallback que o lado Python tem.
+ *
+ *  Numa `out/` povoada antes desta correção não existe `status.full.json`, e sem o
+ *  fallback a primeira coleta completa depois do deploy trataria o CSV anterior como
+ *  não-concluído e o truncaria sem guardar geração — perdendo horas de raspagem
+ *  exatamente na transição. O Python previu isso (`ler_status(modo=...)`); este lado
+ *  não previa, e a assimetria é a assinatura do defeito que esta fatia persegue:
+ *  o contrato mudou e um consumidor não acompanhou. */
+async function lerStatusDoFull(outDir: string): Promise<{ result?: string } | null> {
+  const porModo = join(outDir, nomeDoStatus('full'));
+  if (existsSync(porModo)) {
+    return JSON.parse(await readFile(porModo, 'utf8')) as { result?: string };
+  }
+  const ultimo = join(outDir, 'status.json');
+  if (!existsSync(ultimo)) return null;
+  const st = JSON.parse(await readFile(ultimo, 'utf8')) as { result?: string; mode?: string };
+  return st.mode === 'full' ? st : null;
+}
+
 async function guardarGeracaoAnterior(caminho: string, outDir: string): Promise<void> {
   if (!existsSync(caminho)) return;
   let concluida = false;
@@ -152,10 +171,7 @@ async function guardarGeracaoAnterior(caminho: string, outDir: string): Promise<
     // Lê o status DO FULL, não o da última corrida: um canário entre dois fulls
     // sobrescrevia `status.json` e fazia esta condição recusar preservar a última
     // geração boa — derrotando esta função exatamente no caso para o qual ela existe.
-    const st = JSON.parse(await readFile(join(outDir, nomeDoStatus('full')), 'utf8')) as {
-      result?: string;
-    };
-    concluida = st.result === 'ok';
+    concluida = (await lerStatusDoFull(outDir))?.result === 'ok';
   } catch {
     concluida = false; // sem status legível, não afirmamos nada sobre o arquivo
   }
