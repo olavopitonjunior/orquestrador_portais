@@ -15,9 +15,11 @@ A Newcore mantém contrato vigente com o Grupo OLX no plano Exclusivo, que cobre
 
 Este produto substitui essa escolha por uma cadeia de decisão orquestrada e executada sem intervenção. Sete agentes sob um orquestrador coletam dados internos do Newcore, raspam a performance externa no Canal Pro no dia da atualização do estoque, identificam os padrões de imóvel que convertem, aplicam critérios eliminatórios objetivos, ordenam os elegíveis e entregam semanalmente uma planilha justificada. A ordenação é uma só, e o que separa os dois níveis é o piso de preço aplicado na alocação (D-028); os objetivos distintos por nível sobrevivem como intenção do critério, não como duas contas. A carga é substituída manualmente a partir dela. Na segunda-feira seguinte, um ciclo de acompanhamento que lê apenas o banco produz o relatório da carga: os leads sem atendimento e sem contato originados de imóveis em posição paga, e o desempenho de cada posição.
 
-O produto resolve dois problemas de sinal oposto. Nas 475 posições de super destaque há disputa real — 4.852 candidatos e dez por vaga na medição de 28/08/2026 — e o ranking persegue valor esperado. Nas 6.495 posições de destaque a concorrência é baixa, com folga total de 48% na mesma medição, e o objetivo passa a ser não deixar benefício contratado sem uso.
+O produto resolve dois problemas de sinal oposto. Nas 475 posições de super destaque há disputa real — **2.389 candidatos acima do piso, cinco por vaga** (06/09/2026) — e o ranking persegue valor esperado. Nas 6.495 posições de destaque não há disputa, e o objetivo é não deixar benefício contratado sem uso.
 
-**Ressalva de medição, aberta.** Os números acima são de 28/08/2026. Medições posteriores devolveram um universo menor — 7.801 elegíveis em 02/09 e 8.230 em 04/09/2026 —, o que estreita a **folga geral** (universo elegível contra as 6.970 posições) de 48% para cerca de 12% e reduz a disputa do super destaque. Os 8.230 são **anteriores ao filtro de perfil** da D-027; aplicá-lo passa 83,8% deles — cerca de **6.900 imóveis para 6.970 posições**, ou seja, o universo elegível ficaria **abaixo** do total contratado, e por margem fina (bastaria passar 84,7% para o sinal se inverter). Isso **não** significa posições vazias: como o perfil é o primeiro degrau da cedência (Estágio 5), a cota do destaque enche relaxando justamente essa regra — o que a medição de fato diz é que ela seria relaxada quase toda semana. É o achado mais duro dessas medições, e mais uma razão para repeti-las antes de incorporar. **A deriva foi medida e incorporada em 06/09/2026**, e o resultado está em `docs/mapa-de-dados.md`, seção "O funil pelo pipeline": a contagem foi repetida noutro dia, o patamar do pipeline é 7.801–8.230 e a causa está medida — os distritos com dois ou mais corretores produtivos caíram de 61 para 46, e não houve mudança de régua que explicasse o vão. **Os números publicados acima seguem os de 28/08 e ainda não foram revistos**: revisá-los mexe na premissa que funda o objetivo de ranking do super destaque ("disputa real, mais de dez candidatos por posição", hoje 7,5), e isso é critério do dono, não medição — a pendência está rastreada em `docs/perguntas-abertas.md`.
+**A folga do destaque acabou, e isso muda o papel do relaxamento.** A versão anterior deste documento registrava folga de 48%: sobravam imóveis aprovados para as posições contratadas. Medido em 06/09/2026, **faltam 116**. O relaxamento foi desenhado como plano B para uma semana ruim e passa a ser o mecanismo ordinário de encher a cota **do destaque** — cedendo, primeiro, o próprio filtro de perfil. O super destaque nunca relaxa. **O dono decidiu manter esse desenho** (D-036), diante da alternativa de deixar vazia a posição que nenhum imóvel aprovado preencha. A planilha declara cada cedência, imóvel por imóvel, com a regra que cedeu.
+
+**Como estes números foram obtidos.** Medidos em 06/09/2026 pelo próprio pipeline da rodada, não por consulta exploratória — a série completa, os cortes regra a regra e a causa da queda estão em `docs/mapa-de-dados.md`, seção "O funil pelo pipeline". A leitura de fundação, de 28/08/2026, dava 10.290 elegíveis, 4.852 candidatos ao super destaque e folga de 48%; ela precede o coletor interno e **não é comparável diretamente** — e, principalmente, a base andou. O patamar do pipeline foi de 7.801 (02/09) a 8.230 (04/09) e 8.197 (06/09) na contagem sem o filtro de perfil, que é a comparável com aqueles 10.290: degrau, não oscilação diária. A causa está medida e é comercial, não técnica — os distritos com dois ou mais corretores produtivos caíram de **61 para 46**, e com três ou mais de 39 para 18, na mesma coluna e com o mesmo predicado. Os parágrafos históricos abaixo preservam a medição de fundação, sempre datada.
 
 O sistema não consulta a carga vigente e não confirma se a planilha foi aplicada. A planilha aprovada é o registro assumido do que está em vitrine.
 
@@ -29,7 +31,7 @@ O sistema não consulta a carga vigente e não confirma se a planilha foi aplica
 
 **Evidência.** Nas 59.653 janelas registradas, a média é de 0,21 lead por janela e 88% terminaram sem nenhum lead. A duração média observada é de 33 dias, contra os sete dias de ciclo de carga, o que indica que a vitrine não gira.
 
-**Natureza econômica do desperdício.** O valor do contrato cobre o pacote completo de anúncios, que a base precisa de qualquer forma. Os destaques são benefício embutido, não item de custo separado. Portanto uma posição de destaque mal ocupada não gasta dinheiro adicional, e uma posição vazia não gera custo direto: ambas representam benefício contratado que deixou de ser extraído. Isso reduz o custo de preencher uma posição de destaque com um imóvel apenas razoável, já que a folga de 48% garante que nenhum imóvel melhor perde vaga por causa disso. No super destaque a lógica não vale, porque lá a posição é genuinamente escassa.
+**Natureza econômica do desperdício.** O valor do contrato cobre o pacote completo de anúncios, que a base precisa de qualquer forma. Os destaques são benefício embutido, não item de custo separado. Portanto uma posição de destaque mal ocupada não gasta dinheiro adicional, e uma posição vazia não gera custo direto: ambas representam benefício contratado que deixou de ser extraído. Isso reduz o custo de preencher uma posição de destaque com um imóvel apenas razoável, já que não há fila: com 0,98 candidato por vaga no destaque (06/09/2026), nenhum imóvel melhor perde posição por causa disso — e o mesmo vale, com mais força, quando faltam candidatos. No super destaque a lógica não vale, porque lá a posição é genuinamente escassa.
 
 ---
 
@@ -179,24 +181,36 @@ Permanecem as regras derivadas do diagnóstico de funil, que qualificam o motivo
 
 Poucas visualizações com nota interna alta não é motivo de exclusão. É o caso que o destaque resolve.
 
-### Funil de elegibilidade medido em 28/08/2026
+### Funil de elegibilidade medido em 06/09/2026
 
-Medição única, desta data. Ver a ressalva de deriva no sumário executivo: contagens de 02 e 04/09/2026 devolveram um universo menor e **não foram incorporadas**.
+Pelo pipeline da rodada, com as **nove** regras. Cada linha é o que sobra depois da regra.
 
-| Etapa acumulada | Imóveis |
-|---|---|
-| Ativos | 48.964 |
-| Nas cinco categorias | 41.478 |
-| Preço igual ou acima de R$ 300.000 | 35.560 |
-| Após os cinco cortes restantes | 10.290 |
+| Etapa acumulada | Imóveis | Corta |
+|---|---:|---:|
+| Recorte ativo lido | 48.812 | — |
+| Publicação ativa | 48.806 | 6 |
+| Nas cinco categorias | 41.312 | 7.494 |
+| Preço igual ou acima de R$ 300.000 | 35.451 | 5.861 |
+| Dez ou mais fotos | 34.389 | 1.062 |
+| Cadastro completo | 26.877 | 7.512 |
+| Atualizado nos últimos 90 dias | 19.271 | 7.606 |
+| **Casa um perfil de conversão** | 15.287 | 3.984 |
+| Gestor produtivo | 11.218 | 4.069 |
+| Capacidade do distrito | **6.854** | 4.364 |
+
+Para comparar com o histórico, o mesmo funil **sem** a regra de perfil termina em 8.197 — é essa a grandeza que se compara aos 10.290 de 28/08/2026.
+
+As três primeiras etapas variaram 0,3 a 0,4% em nove dias: o estoque está estável. A queda está nas duas regras de corretor, e a causa está medida no mapa de dados.
 
 **Situação por nível:**
 
 | Nível | Posições | Candidatos | Concorrência |
 |---|---|---|---|
-| Super Destaque | 475 | 4.852 acima de R$ 700.000 | 10,2 por vaga |
-| Destaque | 6.495 | 9.815 restantes | 1,5 por vaga |
-| Total | 6.970 | 10.290 | Folga de 48% |
+| Super Destaque | 475 | 2.389 acima de R$ 700.000 | 5,0 por vaga |
+| Destaque | 6.495 | 6.379 restantes | 0,98 por vaga |
+| Total | 6.970 | 6.854 | **Déficit de 116** |
+
+Medição de 06/09/2026, com as nove regras. **A comparação com 28/08 exige cuidado**: aqueles 4.852 candidatos ao super e 10,2 por vaga são anteriores ao filtro de perfil, e o comparável de hoje é **3.732 / 7,9 por vaga**; os 2.389 / 5,0 da tabela têm uma regra a mais. Do mesmo modo, os 10.290 do total comparam-se com 8.197, não com 6.854. A série completa está no mapa de dados. **Um único instante já foi medido abaixo da cota**; duas leituras não estabelecem frequência, e a de 05/09 dava 39 imóveis de sobra.
 
 ### Custo de cada regra
 
@@ -304,7 +318,7 @@ O relaxamento é executado pelo Decisor e obriga relatório próprio na planilha
 
 **"Fora do ciclo" está em aberto, e esta revisão não o resolve.** Este documento diz, em outro ponto, que existem dois momentos por semana e nenhuma execução diária — as duas afirmações são do **mesmo** documento, e por isso a hierarquia não as arbitra. As leituras possíveis (criar um terceiro momento, ler "imediatamente" como "na próxima sexta", ou tratar fora do sistema) produzem sistemas diferentes, e a segunda **foi medida e caiu**: o status é binário e 24,69% dos imóveis com venda assinada nos últimos 180 dias seguem ativos. Fica registrado como [P-20]. O que já está fixado: "sair imediatamente" só pode significar **emitir a substituição**, porque o sistema não publica nada (D-024).
 
-Observação de desenho: com folga **geral** de 48% em 28/08/2026 e apenas 1,5 candidato por vaga no destaque, a rotação real ali é baixa por construção. A rotação efetiva acontece no super destaque.
+Observação de desenho: sem folga no destaque — 0,98 candidato por vaga em 06/09/2026 —, a rotação real ali é baixa por construção, e o que decide quem sai passa a ser a cedência, não o ranking. A rotação efetiva acontece no super destaque, onde há cinco candidatos por vaga.
 
 ---
 

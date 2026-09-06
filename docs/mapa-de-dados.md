@@ -152,6 +152,8 @@ Sobre os **48.812** do recorte ativo lido:
 | gestor produtivo | 5.068 | 14.203 |
 | capacidade do distrito | 6.006 | **8.197** |
 
+Repartição por nível na mesma leitura, com as **nove** regras: **2.389** candidatos acima do piso de R$ 700.000 (5,0 por vaga nas 475 posições) e, depois de o super destaque encher, **6.379** restantes para as 6.495 posições de destaque — 0,98 por vaga, **déficit de 116**. A alocação joga no destaque *todos* os restantes, inclusive os 1.914 que estão acima do piso e não couberam no super; a conta **não** é 6.854 − 2.389.
+
 Entrada do perfil na mesma leitura: **186 vendas assinadas em 180 dias**, nenhuma descartada por falta de âncora (06/09/2026 08:35, `dados.vendas.coletar_vendas(180)`). A contagem canônica da D-013 é **177**, medida em 31/08 — a grandeza deriva com a base como qualquer outra, e é por isso que a skill a confere com tolerância de ±10%.
 
 Com a nona regra na posição da Spec (entre atualização e gestor), o perfil corta **3.984** e o resultado final é **6.854**. **Não subtraia 3.984 de 8.197**: os cortes a jusante se recompõem sobre um conjunto menor — gestor passa a cortar 4.069 e distrito 4.364, contra 5.068 e 6.006 sem o perfil.
@@ -421,7 +423,7 @@ O Coletor Interno lê `LastLogin` com janela `{login_janela_dias}` (adotado 30, 
 
 ### Alcance do filtro de perfil
 
-184 vendas assinadas em 180 dias → 187 perfis robustos (N ≥ 3, D-014). Sobre os 8.230 elegíveis do dia (deriva em relação aos 10.290 do PRD — ver o aviso em `docs/perguntas-abertas.md`; fatia própria):
+184 vendas assinadas em 180 dias → 187 perfis robustos (N ≥ 3, D-014). Sobre os 8.230 elegíveis do dia (deriva em relação aos 10.290 que o PRD publicava então — incorporada em 06/09/2026, ver "O funil pelo pipeline" acima):
 
 | Exigência do filtro | Elegíveis que passam | Candidatos ao super destaque (≥ R$ 700 mil, 3.715) |
 |---|---|---|
