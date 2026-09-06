@@ -1,10 +1,18 @@
 """Leitura da saída do Coletor Externo (raspador TS) — contrato de arquivo (Spec §5, D-010).
 
 O raspador (`coletor-externo/`, TypeScript/CDP) grava em `out/`:
-- `<portal>.csv` (ex.: `canalpro.csv`): uma linha por anúncio, 16 colunas, TODAS
-  entre aspas duplas, CRLF; um valor nulo vira célula vazia `""`.
-- `status.json`: `{result: "ok"|"blocked"|"error", finishedAt: ISO, portal, rows?, message?}`.
-- `NEEDS_WARM.flag`: se existe, a sessão caiu (Cloudflare) e precisa re-login.
+- `<portal>.csv` (ex.: `canalpro.csv`): a COLETA COMPLETA. Uma linha por anúncio,
+  16 colunas, TODAS entre aspas duplas, CRLF; um valor nulo vira célula vazia `""`.
+- `<portal>.canario.csv`: a mesma forma, escrita pelo CANÁRIO — arquivo próprio,
+  recomeçado a cada corrida. Enquanto os dois modos compartilhavam um arquivo, as
+  corridas se empilhavam e o dedupe daqui, que fica com a PRIMEIRA ocorrência,
+  entregava a linha mais antiga.
+- `<portal>.anterior.csv`: uma geração guardada da coleta completa. NÃO é lida aqui.
+- `status.json`: `{result: "ok"|"blocked"|"error"|"running", mode: "canary"|"full",
+  finishedAt: ISO, portal, rows?, message?}`. É o `mode` que diz qual CSV a corrida
+  produziu; `running` aparece enquanto uma coleta completa está em curso.
+- `NEEDS_WARM.flag`: se existe, a sessão caiu (Cloudflare ou 401) e precisa re-login.
+  O raspador a remove quando uma requisição autenticada responde.
 
 A raspagem fica FORA do caminho da decisão (invariantes 4/5): esta leitura é
 FONTE, datada pelo `finishedAt` próprio; o determinismo do produto se preserva
@@ -197,6 +205,33 @@ def _por_imovel(anuncios: list[DesempenhoAnuncio]) -> dict[int, DesempenhoAnunci
     return escolha
 
 
+def _csv_do_modo(out_dir: Path, portal: str, status: Mapping[str, object] | None) -> Path:
+    """Qual CSV esta coleta produziu, pelo MODO que ela declarou.
+
+    O canário e a coleta completa escrevem arquivos separados desde a correção do
+    contrato de arquivo: o canário é a sonda que o console lê para liberar o full,
+    a completa é o estoque. Enquanto compartilhavam `{portal}.csv`, uma sonda de
+    mil linhas ficava indistinguível da cauda de uma coleta de 55 mil, e o
+    deduplicador daqui — que fica com a PRIMEIRA ocorrência de cada `idPortal` —
+    entregava sistematicamente a linha mais antiga do arquivo.
+
+    Compatibilidade: `status.json` sem `mode` é de antes da correção, e nele o
+    único arquivo possível é `{portal}.csv`.
+
+    NÃO há fallback quando o modo é declarado e o arquivo dele não existe. Um
+    canário que morre antes de gravar deixa em `out/` o CSV de uma coleta completa
+    de dias atrás; cair nele daria à rodada amostral um universo velho carimbado
+    com o `finishedAt` de hoje. Sem o arquivo do modo, `ler_coleta` devolve "error"
+    com `por_imovel` vazio — degradar é o certo, e é barato de refazer.
+    """
+    completo = out_dir / f"{portal}.csv"
+    bruto = status.get("mode") if status is not None else None
+    # Normalizado: uma deriva de caixa no produtor ("CANARY") selecionaria o arquivo
+    # do full em silêncio, que é a contaminação de volta por uma porta nova.
+    modo = str(bruto).strip().lower() if bruto is not None else ""
+    return out_dir / f"{portal}.canario.csv" if modo == "canary" else completo
+
+
 def ler_coleta(out_dir: Path, portal: str = "canalpro") -> ColetaExterna:
     """Lê a saída completa do raspador em `out_dir`. Estado:
     - "blocked" se há `NEEDS_WARM.flag` ou o status diz blocked (sessão caiu);
@@ -207,7 +242,7 @@ def ler_coleta(out_dir: Path, portal: str = "canalpro") -> ColetaExterna:
     bloqueado = (out_dir / NEEDS_WARM_FLAG).exists() or (
         status is not None and status.get("result") == "blocked"
     )
-    csv_path = out_dir / f"{portal}.csv"
+    csv_path = _csv_do_modo(out_dir, portal, status)
     if status is None and not csv_path.is_file():
         return ColetaExterna("ausente", None, {}, 0, 0)
 

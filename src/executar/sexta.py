@@ -125,6 +125,16 @@ def _recorte_da_raspagem(externo: Path) -> tuple[frozenset[int], ColetaExterna]:
     porta de amarração vazia já aponta — aqui ele aparece antes de a rodada começar.
     """
     coleta = ler_coleta(externo)
+    if coleta.estado != "ok":
+        # A porta que faltava. `avaliar_coleta` recusa o SINAL de portal quando a
+        # coleta não está ok, mas o RECORTE não passava por ela: uma coleta que
+        # falhou deixava em `out/` o CSV de outra corrida, e a amostral decidia
+        # sobre esse universo velho carimbado com o instante de hoje.
+        raise RecorteVazio(
+            f"recorte pela raspagem RECUSADO: estado {coleta.estado!r} em {externo} — "
+            "a rodada amostral decide sobre o que a raspagem trouxe AGORA, e uma "
+            "coleta que não concluiu não define amostra. Rode o canário de novo."
+        )
     ids = frozenset(coleta.por_imovel)
     if not ids:
         raise RecorteVazio(

@@ -1,16 +1,10 @@
 // Entrypoint do coletor: canário (portão) e full (com checkpoints).
-// Orquestra o núcleo genérico sobre um Portal escolhido. Dois modelos de
-// coleta: paginação linear com checkpoint por página (quando o adapter expõe
-// collectPage, ex.: Canal Pro) ou shards por facets (buildShards). O primeiro
-// item do canário é validar o transporte in-page do portal (ver o recipe).
+// Aqui só ficam o registro de portais, o parse de argv e o código de saída — a
+// orquestração da corrida vive em `core/corrida.ts`, que é testável sem navegador
+// (este arquivo chama `void main()` na última linha: importá-lo dispara a coleta).
 
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { config, NEEDS_WARM_FLAG } from './core/config';
-import { CsvWriter, loadCheckpoint, saveCheckpoint } from './core/csv-writer';
-import { buildShards } from './core/sharding';
-import { BlockedError } from './core/block-detector';
-import { Checkpoint, Shard } from './core/types';
+import { config } from './core/config';
+import { executarComTratamento, Modo } from './core/corrida';
 import { connectRealChrome, gotoPanel } from './cdp/browser';
 import { Portal } from './portal';
 import { canalPro } from './portals/canalpro';
@@ -21,134 +15,23 @@ function log(msg: string): void {
   process.stdout.write(`[coletor] ${new Date().toISOString()} ${msg}\n`);
 }
 
-async function writeStatus(result: string, extra: Record<string, unknown>): Promise<void> {
-  await mkdir(config.outDir, { recursive: true });
-  await writeFile(
-    join(config.outDir, 'status.json'),
-    JSON.stringify({ result, finishedAt: new Date().toISOString(), ...extra }, null, 2),
-    'utf8'
-  );
-}
-
-async function raiseNeedsWarm(): Promise<void> {
-  await mkdir(config.outDir, { recursive: true });
-  await writeFile(join(config.outDir, NEEDS_WARM_FLAG), new Date().toISOString(), 'utf8');
-}
-
-async function run(portal: Portal, mode: 'canary' | 'full'): Promise<void> {
-  const { browser, page } = await connectRealChrome(portal);
-  try {
-    await gotoPanel(page, portal, log);
-    const sessionId = await portal.captureSessionId(page);
-    log(`Sessão capturada no portal "${portal.id}".`);
-
-    const csv = new CsvWriter(join(config.outDir, `${portal.id}.csv`), portal.csvColumns);
-    await csv.init();
-
-    if (mode === 'canary') {
-      // Portão progressivo: coleta ATÉ o maior degrau uma única vez (limite),
-      // e reporta os cortes intermediários. Qualquer bloqueio aborta cedo (o
-      // collectShort lança BlockedError). Sem baixar o shard inteiro e sem
-      // regravar linhas a cada degrau.
-      const steps = config.canarySteps.length ? config.canarySteps : [1];
-      const maior = Math.max(...steps);
-      const anuncios = await portal.collectShard(page, sessionId, [], maior);
-      for (const step of steps) {
-        log(`Canário ${step}: ${Math.min(step, anuncios.length)} de ${anuncios.length} coletados sem bloqueio.`);
-      }
-      await csv.appendRows(anuncios.map((a) => portal.rowToCells(a)));
-      log(`Canário concluído: ${anuncios.length} anúncios gravados.`);
-      await writeStatus('ok', { mode, portal: portal.id, rows: anuncios.length });
-      return;
-    }
-
-    const cp: Checkpoint = (await loadCheckpoint()) || {
-      startedAt: new Date().toISOString(),
-      completedShards: [],
-      seenCount: 0,
-      rowsWritten: 0,
-      lastUpdate: new Date().toISOString(),
-    };
-
-    if (portal.collectPage) {
-      // Paginação linear com checkpoint POR PÁGINA: se a coleta morrer no meio,
-      // a retomada continua de lastPage+1 em vez de re-bater o portal do início
-      // (condição anti-bot). Um "shard" único não daria essa granularidade.
-      const size = portal.pageSize ?? 30;
-      const total = (await portal.probeList(page, sessionId, [])).numberOfPostings;
-      const totalPages = Math.max(1, Math.ceil(total / size));
-      const start = (cp.lastPage ?? 0) + 1;
-      log(`Paginação linear: ${total} anúncios, ${totalPages} páginas; retomando da página ${start}.`);
-      for (let pg = start; pg <= totalPages; pg++) {
-        const anuncios = await portal.collectPage(page, sessionId, pg);
-        // Guard de sub-coleta: uma página NÃO-final com menos que pageSize
-        // significa que o servidor limitou o page size — o totalPages calculado
-        // ficou grande demais e a coleta terminaria incompleta marcada "ok".
-        // Aborta ruidosamente em vez de sub-coletar em silêncio.
-        if (pg < totalPages && anuncios.length > 0 && anuncios.length < size) {
-          throw new Error(
-            `Sub-coleta: página ${pg}/${totalPages} veio com ${anuncios.length} < pageSize ${size} — ` +
-              `o servidor limitou o page size. Reduza pageSize no adapter.`
-          );
-        }
-        await csv.appendRows(anuncios.map((a) => portal.rowToCells(a)));
-        cp.lastPage = pg;
-        cp.rowsWritten += anuncios.length;
-        cp.lastUpdate = new Date().toISOString();
-        await saveCheckpoint(cp);
-        log(`Página ${pg}/${totalPages}: ${anuncios.length} anúncios (total ${cp.rowsWritten}).`);
-      }
-      await writeStatus('ok', { mode, portal: portal.id, rows: cp.rowsWritten });
-      return;
-    }
-
-    // Modelo de shards por facets (portais sem paginação linear).
-    const shards: Shard[] = await buildShards(
-      (tokens) => portal.probeList(page, sessionId, tokens),
-      portal.shardDimensions,
-      log
-    );
-    const done = new Set(cp.completedShards);
-    for (const shard of shards) {
-      if (done.has(shard.label)) continue;
-      const anuncios = await portal.collectShard(page, sessionId, shard.tokens);
-      await csv.appendRows(anuncios.map((a) => portal.rowToCells(a)));
-      cp.completedShards.push(shard.label);
-      cp.rowsWritten += anuncios.length;
-      cp.lastUpdate = new Date().toISOString();
-      await saveCheckpoint(cp);
-      log(`Shard [${shard.label}]: ${anuncios.length} anúncios (total ${cp.rowsWritten}).`);
-    }
-    await writeStatus('ok', { mode, portal: portal.id, rows: cp.rowsWritten });
-  } finally {
-    // NUNCA browser.close(): é o Chrome do operador.
-    await browser.disconnect();
-  }
-}
-
 async function main(): Promise<void> {
-  const mode = process.argv.includes('--full') ? 'full' : 'canary';
+  const mode: Modo = process.argv.includes('--full') ? 'full' : 'canary';
   const portalId = (process.argv.find((a) => a.startsWith('--portal='))?.split('=')[1] || 'canalpro').trim();
   const portal = PORTALS[portalId];
   if (!portal) {
     throw new Error(`Portal desconhecido: "${portalId}". Disponíveis: ${Object.keys(PORTALS).join(', ')}.`);
   }
   log(`Iniciando coletor: portal=${portal.id} modo=${mode}.`);
-  try {
-    await run(portal, mode);
-    log('Concluído.');
-  } catch (e) {
-    if (e instanceof BlockedError) {
-      await raiseNeedsWarm();
-      await writeStatus('blocked', { portal: portalId, message: e.message });
-      log(`BLOQUEADO: ${e.message} — flag ${NEEDS_WARM_FLAG} criada; re-logue no portal.`);
-      process.exitCode = 2;
-      return;
-    }
-    await writeStatus('error', { portal: portalId, message: e instanceof Error ? e.message : String(e) });
-    log(`ERRO: ${e instanceof Error ? e.message : String(e)}`);
-    process.exitCode = 1;
-  }
+  const { exitCode } = await executarComTratamento(portal, mode, {
+    conectar: connectRealChrome,
+    irAoPainel: gotoPanel,
+    log,
+    agora: () => new Date(),
+    outDir: config.outDir,
+    degrausDoCanario: config.canarySteps,
+  });
+  if (exitCode !== 0) process.exitCode = exitCode;
 }
 
 void main();

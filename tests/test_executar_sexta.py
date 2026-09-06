@@ -572,9 +572,14 @@ def _coleta_em(out: Path, codigos: list[str]) -> None:
 
     linhas = [",".join('"' + c + '"' for c in COLUNAS)]
     linhas += [linha({"idPortal": str(9000 + i), "codigoImovel": c}) for i, c in enumerate(codigos)]
-    (out / "canalpro.csv").write_text("\r\n".join(linhas) + "\r\n", encoding="utf-8")
+    # O CANÁRIO, com o `mode` declarado — é este o caminho de produção da rodada
+    # amostral, e ele estava sem cobertura: a fixture antiga escrevia `canalpro.csv`
+    # e um status SEM `mode`, então toda a suíte passava pelo ramo de
+    # compatibilidade de `_csv_do_modo`, nunca pelo ramo real.
+    (out / "canalpro.canario.csv").write_text("\r\n".join(linhas) + "\r\n", encoding="utf-8")
     (out / "status.json").write_text(
-        '{"result": "ok", "finishedAt": "2026-09-04T08:00:00Z", "portal": "canalpro"}',
+        '{"result": "ok", "mode": "canary", "finishedAt": "2026-09-04T08:00:00Z",'
+        ' "portal": "canalpro"}',
         encoding="utf-8",
     )
 

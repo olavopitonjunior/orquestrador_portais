@@ -78,7 +78,7 @@ function csv(linhas: string[][]): string {
 
 test("amarração: conta numéricos, vazios e não numéricos, com exemplos", async () => {
   comOut({
-    "canalpro.csv": csv([
+    "canalpro.canario.csv": csv([
       ["idPortal", "codigoImovel", "nota"],
       ["1", "431347A", "8000"], // o formato real: {Id}{letra}
       ["2", "IMOVEL-0001", "8000"],
@@ -100,7 +100,7 @@ test("amarração: conta numéricos, vazios e não numéricos, com exemplos", as
 test("amarração: sem CSV → null; CSV só com cabeçalho → zeros", async () => {
   comOut({});
   assert.equal(await amarracaoDoCsv(), null);
-  comOut({ "canalpro.csv": csv([["idPortal", "codigoImovel"]]) });
+  comOut({ "canalpro.canario.csv": csv([["idPortal", "codigoImovel"]]) });
   assert.deepEqual(await amarracaoDoCsv(), {
     linhas: 0, noFormato: 0, vazios: 0, foraDoFormato: 0, exemplos: [],
   });
@@ -108,7 +108,7 @@ test("amarração: sem CSV → null; CSV só com cabeçalho → zeros", async ()
 
 test("amarração: aspas escapadas e vírgula dentro da célula não deslocam a coluna", async () => {
   comOut({
-    "canalpro.csv": csv([
+    "canalpro.canario.csv": csv([
       ["idPortal", "notaNome", "codigoImovel"],
       ["1", 'x "y", z', "42"],
     ]),
@@ -120,9 +120,16 @@ test("amarração: aspas escapadas e vírgula dentro da célula não deslocam a 
 });
 
 test("amarração: sem a coluna codigoImovel, tudo conta como não numérico", async () => {
-  comOut({ "canalpro.csv": csv([["idPortal"], ["1"], ["2"]]) });
+  comOut({ "canalpro.canario.csv": csv([["idPortal"], ["1"], ["2"]]) });
   const a = await amarracaoDoCsv();
   assert.ok(a);
   assert.equal(a.linhas, 2);
   assert.equal(a.foraDoFormato, 2);
+});
+
+test("amarracaoDoCsv NÃO cai para o arquivo da coleta completa", async () => {
+  // A sonda mede o último canário. Se ela lesse `canalpro.csv`, mediria o estoque
+  // e chamaria de sonda — a contaminação por outro nome.
+  comOut({ "canalpro.csv": csv([["idPortal", "codigoImovel"], ["1", "431347A"]]) });
+  assert.equal(await amarracaoDoCsv(), null);
 });

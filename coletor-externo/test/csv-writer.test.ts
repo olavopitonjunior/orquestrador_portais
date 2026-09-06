@@ -17,7 +17,12 @@ test('cellsToLine junta células escapadas com vírgula', () => {
   assert.equal(cellsToLine(['a', 'b,c', 'd"e']), '"a","b,c","d""e"');
 });
 
-test('CsvWriter escreve cabeçalho uma vez e anexa linhas (retomada não duplica header)', async () => {
+// Os dois testes abaixo são um PAR, e é o par que expressa a correção. O append-only
+// nunca foi errado — errado era não haver escolha: `init()` inferia do disco, então
+// duas corridas independentes empilhavam no mesmo arquivo. Agora a retomada continua
+// preservando (é o que a paginação por `lastPage` exige) e a corrida nova descarta.
+
+test('init de RETOMADA (truncar ausente) preserva o conteúdo e não duplica o cabeçalho', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'coletor-csv-'));
   const file = join(dir, 'out.csv');
   try {
@@ -33,6 +38,39 @@ test('CsvWriter escreve cabeçalho uma vez e anexa linhas (retomada não duplica
     const content = await readFile(file, 'utf8');
     const lines = content.trimEnd().split('\r\n');
     assert.deepEqual(lines, ['"id","nota"', '"a1","10"', '"a2","20"']);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('init de CORRIDA NOVA (truncar) descarta o conteúdo e reescreve o cabeçalho', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'coletor-csv-'));
+  const file = join(dir, 'out.csv');
+  try {
+    const w1 = new CsvWriter(file, ['id', 'nota']);
+    await w1.init();
+    await w1.appendRows([['a1', 10]]);
+
+    const w2 = new CsvWriter(file, ['id', 'nota']);
+    await w2.init({ truncar: true });
+    await w2.appendRows([['a2', 20]]);
+
+    const content = await readFile(file, 'utf8');
+    const lines = content.trimEnd().split('\r\n');
+    assert.deepEqual(lines, ['"id","nota"', '"a2","20"'], 'a linha da corrida anterior não pode sobreviver');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('truncar num arquivo inexistente é idêntico a criar', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'coletor-csv-'));
+  try {
+    const a = join(dir, 'a.csv');
+    const b = join(dir, 'b.csv');
+    await new CsvWriter(a, ['id']).init();
+    await new CsvWriter(b, ['id']).init({ truncar: true });
+    assert.equal(await readFile(a, 'utf8'), await readFile(b, 'utf8'));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

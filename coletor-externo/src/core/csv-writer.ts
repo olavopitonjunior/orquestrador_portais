@@ -2,10 +2,9 @@
 // O núcleo escreve células escapadas e linhas; o mapeamento anúncio→célula é do
 // adapter do portal (Portal.csvColumns + Portal.rowToCells).
 
-import { appendFile, writeFile, mkdir, readFile } from 'fs/promises';
+import { appendFile, writeFile, mkdir, readFile, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
-import { config } from './config';
 import { Checkpoint } from './types';
 
 /** Escapa uma célula para CSV: aspas duplas com escape `""`. */
@@ -29,10 +28,18 @@ export class CsvWriter {
     this.headerLine = cellsToLine(columns);
   }
 
-  /** Cria o arquivo com cabeçalho só se ele ainda não existe — retomada não duplica header. */
-  async init(): Promise<void> {
+  /** Prepara o arquivo para receber linhas.
+   *
+   *  `truncar` é a INTENÇÃO DO CHAMADOR, não uma inferência sobre o disco — e é a
+   *  correção do defeito que fazia duas corridas empilharem no mesmo CSV. Sem ele,
+   *  o cabeçalho só era escrito quando o arquivo não existia, e todo `appendRows`
+   *  seguinte anexava ao que estivesse lá, de qualquer corrida anterior.
+   *
+   *  - `truncar: true`  → corrida NOVA: descarta o que havia e reescreve o cabeçalho.
+   *  - ausente ou false → RETOMADA: preserva o conteúdo e não duplica o cabeçalho. */
+  async init(opts?: { truncar?: boolean }): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
-    if (!existsSync(this.filePath)) {
+    if (opts?.truncar || !existsSync(this.filePath)) {
       await writeFile(this.filePath, this.headerLine + '\r\n', 'utf8');
     }
   }
@@ -51,12 +58,12 @@ export class CsvWriter {
 
 // ---- Checkpoint ----
 
-export function checkpointPath(): string {
-  return join(config.outDir, 'progress.json');
+export function checkpointPath(outDir: string): string {
+  return join(outDir, 'progress.json');
 }
 
-export async function loadCheckpoint(): Promise<Checkpoint | null> {
-  const p = checkpointPath();
+export async function loadCheckpoint(outDir: string): Promise<Checkpoint | null> {
+  const p = checkpointPath(outDir);
   if (!existsSync(p)) return null;
   try {
     return JSON.parse(await readFile(p, 'utf8')) as Checkpoint;
@@ -65,7 +72,19 @@ export async function loadCheckpoint(): Promise<Checkpoint | null> {
   }
 }
 
-export async function saveCheckpoint(cp: Checkpoint): Promise<void> {
-  await mkdir(config.outDir, { recursive: true });
-  await writeFile(checkpointPath(), JSON.stringify(cp, null, 2), 'utf8');
+export async function saveCheckpoint(cp: Checkpoint, outDir: string): Promise<void> {
+  await mkdir(outDir, { recursive: true });
+  await writeFile(checkpointPath(outDir), JSON.stringify(cp, null, 2), 'utf8');
+}
+
+/** Apaga o checkpoint. Chamado ao CONCLUIR a coleta, antes de declarar `ok`.
+ *
+ *  `outDir` é obrigatório de propósito: com default, uma chamada sem argumento num
+ *  teste apagaria o `progress.json` real do operador.
+ *
+ *  Sem isto o checkpoint sobrevive com `lastPage = totalPages`, e a corrida
+ *  seguinte não itera nenhuma página e mesmo assim escreve `result: "ok"` com um
+ *  `finishedAt` novo — dado velho entrando como fresco na porta de idade. */
+export async function clearCheckpoint(outDir: string): Promise<void> {
+  await rm(checkpointPath(outDir), { force: true });
 }
