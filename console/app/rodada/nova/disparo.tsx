@@ -7,10 +7,15 @@ import { dispararSexta, type ModoDisparo, type RespostaDisparo } from "./acoes";
 export function Disparo({
   declaracaoVista,
   coletaOk,
+  coletaEmCurso,
   chromeNoAr,
 }: {
   declaracaoVista: number | null;
   coletaOk: boolean; // há um `out/` com status ok — a rodada pode ler a nota do portal de lá
+  // Coleta completa EM ANDAMENTO. Sem distinguir isto de "não há coleta", a tela
+  // mandava rodar um canário durante a coleta — o pior conselho possível no momento
+  // em que a resposta é esperar, e um canário ali trocaria a sonda por dado parcial.
+  coletaEmCurso: boolean;
   chromeNoAr: boolean; // a rodada completa começa raspando: precisa do Chrome logado
 }) {
   const [por, setPor] = useState("");
@@ -92,8 +97,13 @@ export function Disparo({
                   "ordena a lista (se a raspagem cobrir o mínimo e for recente). Desmarcado, a " +
                   "ordem cai para o desempate de banco e a rodada sai DEGRADADA, com a limitação " +
                   "declarada."
-                : "Não há coleta 'ok' no disco: sem raspagem, a ordem cai para o desempate de banco " +
-                  "e a rodada sai DEGRADADA, com a limitação declarada. Rode um canário em Coleta."}
+                : coletaEmCurso
+                  ? "Uma coleta completa está em curso e o CSV está sendo reescrito. Espere ela " +
+                    "fechar: marcado agora, a rodada leria dado pela metade; desmarcado, a ordem " +
+                    "cai para o desempate de banco e a rodada sai DEGRADADA."
+                  : "Não há coleta 'ok' no disco: sem raspagem, a ordem cai para o desempate de " +
+                    "banco e a rodada sai DEGRADADA, com a limitação declarada. Rode um canário " +
+                    "em Coleta."}
             </span>
           </label>
         )}
