@@ -979,3 +979,41 @@ No super destaque a premissa dobrou mas não quebrou: cinco por vaga ainda é di
 **O que muda no código: nada.** A ordem de cedência, a trava do login e o invariante 7 seguem como estão; o super destaque continua sem relaxar. O que muda são os documentos, que passam a publicar os números medidos: PRD (sumário, funil, situação por nível, observação da rotação, natureza econômica), `CLAUDE.md`, a Spec, o **`docs/mapa-de-dados.md`** — onde a repartição por nível (2.389 e 6.379) é publicada pela primeira vez, para o PRD citar a fonte em vez de carregar número sozinho — e a skill `verificar-contra-spec`.
 
 **O que a decisão NÃO faz.** Não mexe nas cotas — são contratuais (invariante 6). Não preenche parâmetro nulo nenhum. E não explica *por que* a atividade de corretor caiu: é pergunta de negócio, a resposta não muda regra, e o sistema não tem como respondê-la.
+
+---
+
+## D-037 — Nada de modelo no raspador agora; o que se corrige é o contrato de arquivo
+
+**Data**: 2026-09-06 · **Resolve**: a pergunta do dono sobre acrescentar IA ao Coletor Externo, e a divergência que o `CLAUDE.md` publicava desde a D-010.
+
+**A pergunta, como ele a fez:** *"Vamos corrigir o raspador. Está usando selenyum? Podemo incrementar com I.A? Porque os agentes ainda não estão prontos?"*
+
+**O levantamento desfez três premissas**, e vale registrar porque o `CLAUDE.md` era a fonte delas — inclusive para mim, que a partir dele afirmei ao dono que o desenho já previa a IA:
+
+1. **Não é Selenium**, e não é por acaso: a D-010 o descartou em 31/08 "por propriedade da técnica, não por causa de incidente" — o Turnstile detecta chromedriver. O transporte é CDP em Chrome real.
+2. **Não existe página para um modelo interpretar.** O raspador não dirige navegador nem lê DOM: instala um gancho no `fetch`, captura os cabeçalhos de auth da SPA e faz POSTs GraphQL de dentro da página autenticada. O "caminho determinístico por seletores" que a Ferramentas §2 descreve **nunca existiu nesta implementação**; o determinístico é um contrato de API.
+3. **O caminho de modelo não está "não pronto" — foi removido por decisão.** A D-010 diz literalmente: *"a intenção é que o Coletor Externo v0 não tenha caminho com modelo, reduzindo a três para dois os pontos do sistema que chamam modelo"*. E, na prática, são **zero**: não há SDK de modelo no repositório, o Analista de Perfil é contagem determinística e o Redator é template.
+
+**Sobre "os agentes ainda não estão prontos":** cinco dos sete estão implementados. O que falta não é agente — é a fiação do Orquestrador, que depende dos parâmetros nulos nº 4 (repetição), nº 8 (horários) e nº 10 (tácita), mais três atos do dono: [P-11] (Drive e e-mail), [P-12] (a sessão do portal) e [P-14] (o provedor de modelo).
+
+**A decisão, literalmente:** apresentadas três opções — diagnóstico assistido sem modelo em produção, caminho de erro em runtime com modelo, ou nada agora —, o dono escolheu **"Nada agora — só consertar o raspador"**. Escolheu também tratar os três defeitos do contrato de arquivo na mesma fatia.
+
+**Consequência que esta decisão autoriza:** o `CLAUDE.md` deixa de anunciar os "dois caminhos" e os "três agentes usam modelo". Manter esse texto seria o documento normativo prometendo capacidade que não existe e que o dono acabou de declinar construir.
+
+**O que a decisão NÃO faz.** Não fecha [P-14] — o provedor segue pendente para o Analista de Perfil e o resumo do Redator, que são os dois pontos onde um modelo ainda cabe por desenho. Não revoga a obrigação que a D-010 deixou pré-escrita: se um caminho com modelo vier a ser reintroduzido no coletor, nenhum payload do painel vai a modelo sem remoção de identidades antes do envio (invariante 3). E não avalia o mérito da IA em outros pontos do sistema — a pergunta foi sobre o raspador.
+
+**Três divergências encontradas no levantamento, apontadas e não resolvidas** (regra do `CLAUDE.md`): a Ferramentas §2 se contradiz internamente sobre o Analista de Perfil usar modelo (a tabela diz que sim, o parágrafo seguinte o lista entre os que ficam sem); a [P-12] chama o adapter do Canal Pro de "stub" quando ele está implementado e em uso desde 03/09; e o critério de escolha do provedor ([P-14]) é "qualidade em navegação por visão" — critério de uma tarefa que a D-010 eliminou, e que os dois usos remanescentes não exercem.
+
+### A pendência que a correção do raspador criou — [P-24]
+
+**[P-24] Vai ao dono: por quantos dias um checkpoint de coleta interrompida ainda pode ser retomado?**
+
+A correção do contrato de arquivo (D-037) fechou "checkpoint esgotado": um `progress.json` que já cobre toda a listagem rebaixa a corrida para nova em vez de deixá-la declarar `ok` sem coletar. **Não fechou "checkpoint velho".** Um checkpoint legítimo — contrato certo, portal certo, com progresso — de duas semanas atrás retoma sem reclamar, e o `canalpro.csv` termina com duas gerações coladas sob um `finishedAt` de hoje, que a porta de idade da rodada (nº 5, 2 dias) aceita como fresco.
+
+O caso é operacionalmente banal: a coleta completa leva horas, o operador a interrompe e volta a ela dias depois.
+
+**Por que não decidi sozinho:** o limite é um número, e a regra da casa proíbe preencher pendente com valor inventado. Reaproveitar o nº 5 (2 dias, D-034) é tentador e **seria uma escolha, não uma dedução** — aquele parâmetro é a idade máxima da COLETA, não do CHECKPOINT, e as duas grandezas respondem a perguntas diferentes: uma diz por quanto tempo um dado de portal ainda descreve o mercado; a outra, por quanto tempo uma coleta interrompida ainda vale a pena continuar em vez de recomeçar.
+
+**Enquanto não houver resposta**, a guarda não existe e a lacuna está declarada em comentário no `podeRetomar`, apontando para esta pendência. O risco é real mas estreito: só afeta a coleta completa retomada, que nunca rodou em produção.
+
+**O que a resposta destrava:** uma condição de idade em `podeRetomar`, sobre o `lastUpdate` do checkpoint. Alternativa sem número, se o dono preferir: recusar retomada cujo `lastUpdate` não seja do mesmo dia operacional — regra, não parâmetro.
