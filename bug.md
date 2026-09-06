@@ -259,3 +259,22 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Ocorrido**: `AuthExpiredError` existe e é levantada em `classificarResposta`, mas o tratamento só converte `BlockedError` em `blocked` + flag. Um 401 sai como `error`, sem flag, e o console mostra "a coleta falhou" em vez de "refaça o login".
 - **Afetou carga publicada?**: não.
 - **Situação**: **resolvido em 2026-09-06**, na mesma fatia. Eu havia decidido deixá-lo para outra, por mexer no significado de `exit 1` contra `exit 2`; a revisão de código mostrou que ele deixou de ser independente: com a flag passando a ser removida a cada corrida, um 401 que não a reergue apaga o alarme e devolve um diagnóstico errado ao operador. `AuthExpiredError` passou a ser tratado como `BlockedError` — o conserto dos dois é o mesmo, re-logar —, levantando a flag e saindo com código 2.
+
+## O `status.json` era um arquivo só para os dois modos — o canário tornava a coleta completa inalcançável
+
+**Data**: 2026-09-06 · **Severidade**: alta (a rodada de sexta perde o fator de portal da semana, com o console dizendo `ok`) · **Onde**: `coletor-externo/src/core/corrida.ts` (a escrita do status) e `src/dados/coletor_externo.py::ler_coleta` (a escolha do CSV pelo `mode`)
+
+- **Esperado**: a rodada lê a coleta que lhe interessa — a completa numa sexta real, o canário numa amostral.
+- **Ocorrido**: `status.json` era "a última corrida", e a última apagava o registro da outra. Como o leitor escolhe o CSV pelo `mode` declarado, **um canário de segundos rodado depois de uma coleta completa de horas tornava o full inalcançável**, com o `finishedAt` da sonda passando na porta de idade. Não é sequência hipotética: é a que o console prescreve, porque o canário é o portão que libera o full. Efeito colateral: `guardarGeracaoAnterior` lia o mesmo status, via `mode: canary` e recusava preservar a última geração boa — derrotando a função exatamente no caso para o qual ela existe.
+- **Como apareceu**: o defeito era inofensivo antes da correção do contrato de arquivo. Só virou defeito **porque** aquela correção fez o leitor depender do campo `mode`. É a assinatura da fatia inteira: cada correção moveu a fronteira de um contrato de estado compartilhado, e o defeito seguinte nasceu na fronteira nova.
+- **Afetou carga publicada?**: não — nenhuma coleta completa real chegou a rodar.
+- **Situação**: **resolvido em 2026-09-06.** `escreverStatus` grava também `status.<modo>.json`; `status.json` segue sendo a última corrida, que é o que o card do console mostra. `ler_coleta` aceita o modo pedido, a amostral pede o canário que definiu a amostra e a rodada real pede a completa. Uma `out/` anterior à correção é migrada na primeira corrida, **antes de qualquer escrita** — sem isso o fallback de leitura morreria justamente na sequência canário-antes-do-full que o console prescreve.
+
+## A retomada não declarava que estava em curso, e não conferia se o arquivo existia
+
+**Data**: 2026-09-06 · **Severidade**: alta (coleta parcial declarada `ok`, com `rows` prometendo o que não está no arquivo) · **Onde**: `coletor-externo/src/core/corrida.ts` — o bloco de retomada
+
+- **Esperado**: enquanto uma coleta apende linhas, quem ler `out/` sabe que ela está em curso; e retomar continua um arquivo que existe.
+- **Ocorrido**: dois defeitos. **(1)** `escreverStatus('running')` estava dentro do `if (!retomando)`: numa retomada, o status vigente seguia dizendo `ok` com o `rows` da corrida anterior durante as horas em que linhas eram apendadas embaixo. **(2)** `podeRetomar` conferia coerência do checkpoint consigo mesmo e **zero sobre o disco**: com o checkpoint vivo e o CSV apagado à mão — que era o que o próprio console ensinava até esta fatia ("apague o arquivo antes de disparar o canário") —, a coleta saía parcial e declarada `ok`, com o `rows` do checkpoint prometendo o que não estava lá.
+- **Afetou carga publicada?**: não.
+- **Situação**: **resolvido em 2026-09-06.** `running` é declarado nos dois casos, porque uma retomada também está em curso; e retomar passa a exigir que o CSV do modo exista no disco, rebaixando para corrida nova com log alto quando não existe. Mesmo guard nos dois caminhos, linear e shards, cada um com teste.

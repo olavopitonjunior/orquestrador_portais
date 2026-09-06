@@ -145,6 +145,33 @@ async function levantarNeedsWarm(outDir: string, agora: () => Date): Promise<voi
  *  rebaixada guardaria um CSV PARCIAL por cima do último full bom, e o nome
  *  prometeria o que o arquivo não é. Só guarda quando o `status.json` vigente diz
  *  que a corrida que produziu aquele arquivo concluiu. */
+/** Propaga um `status.json` legado para o arquivo por modo, uma única vez.
+ *
+ *  O fallback de leitura sozinho não basta, e a razão é a própria sequência que o
+ *  console prescreve: o canário é o portão que libera o full, então o primeiro ato
+ *  depois do deploy é rodar o canário — que sobrescreve `status.json` para
+ *  `mode: canary` e apaga a única evidência de que o `canalpro.csv` no disco veio de
+ *  uma coleta completa concluída. A partir daí o full seguinte truncaria horas de
+ *  raspagem sem guardar cópia, e a rodada degradaria em vez de usar dado bom.
+ *
+ *  Por isso a evidência é copiada ANTES de qualquer escrita desta corrida, e só
+ *  quando o arquivo por modo ainda não existe. Idempotente e autolimitada: da
+ *  segunda corrida em diante não faz nada. */
+async function migrarStatusLegado(outDir: string): Promise<void> {
+  const ultimo = join(outDir, 'status.json');
+  if (!existsSync(ultimo)) return;
+  try {
+    const st = JSON.parse(await readFile(ultimo, 'utf8')) as { mode?: string };
+    const modo = st.mode;
+    if (modo !== 'canary' && modo !== 'full') return; // status anterior ao campo `mode`
+    const destino = join(outDir, nomeDoStatus(modo));
+    if (existsSync(destino)) return;
+    await writeFile(destino, await readFile(ultimo, 'utf8'), 'utf8');
+  } catch {
+    // status ilegível: não há evidência a propagar, e não é aqui que se reclama
+  }
+}
+
 /** O status da última coleta COMPLETA, com o mesmo fallback que o lado Python tem.
  *
  *  Numa `out/` povoada antes desta correção não existe `status.full.json`, e sem o
@@ -185,6 +212,9 @@ export async function executarCorrida(
   deps: DepsCorrida
 ): Promise<Desfecho> {
   const { conectar, irAoPainel, log, agora, outDir, degrausDoCanario } = deps;
+  // Antes de qualquer escrita: se a `out/` é anterior à separação por modo, salva a
+  // evidência do que havia lá — senão esta corrida a apaga.
+  await migrarStatusLegado(outDir);
   const { browser, page } = await conectar(portal);
   try {
     await irAoPainel(page, portal, log);

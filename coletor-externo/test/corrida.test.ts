@@ -447,3 +447,42 @@ test('numa out/ anterior à correção, o primeiro full ainda guarda a geração
     assert.ok(guardado.some((x) => x.includes('de-antes')), 'a geração anterior ao deploy tem de sobreviver');
   });
 });
+
+test('a evidência do full legado sobrevive a um canário rodado antes dele', async () => {
+  // O fallback de leitura sozinho não bastava: o console manda rodar o canário
+  // antes do full, e é o canário que sobrescreve `status.json`. Sem propagar a
+  // evidência na primeira corrida, o full seguinte trunca horas de raspagem sem
+  // guardar cópia — na máquina do gestor, cuja out/ já viu canário e full.
+  await comDiretorio(async (dir) => {
+    await writeFile(join(dir, 'falso.csv'), '"idPortal","nota"\r\n"de-antes","9"\r\n', 'utf8');
+    await writeFile(
+      join(dir, 'status.json'),
+      JSON.stringify({ result: 'ok', mode: 'full', finishedAt: 'x', rows: 1 }),
+      'utf8'
+    );
+    const { portal } = portalFalso({ total: 2, porPagina: 10 });
+    await executarCorrida(portal, 'canary', deps(dir)); // o portão, que apaga status.json
+    await executarCorrida(portal, 'full', deps(dir));
+    const guardado = await linhas(join(dir, 'falso.anterior.csv'));
+    assert.ok(guardado.some((x) => x.includes('de-antes')), 'a geração anterior ao deploy tem de sobreviver ao canário');
+  });
+});
+
+test('o guard de CSV ausente vale também no caminho de SHARDS', async () => {
+  await comDiretorio(async (dir) => {
+    await writeFile(
+      join(dir, 'progress.json'),
+      JSON.stringify({
+        startedAt: 'x', completedShards: ['a'], seenCount: 0, rowsWritten: 40, lastUpdate: 'x',
+        contrato: CONTRATO_CHECKPOINT, portal: 'falso', modo: 'full',
+      }),
+      'utf8'
+    );
+    const { portal } = portalFalso({ total: 3, porPagina: 3 });
+    const porShards = { ...portal, collectPage: undefined } as Portal;
+    const desfecho = await executarCorrida(porShards, 'full', deps(dir));
+    assert.equal(desfecho.rows, 3, 'rows não pode herdar os 40 prometidos pelo checkpoint');
+    const l = await linhas(join(dir, 'falso.csv'));
+    assert.equal(l.length, 4, 'cabeçalho + 3 — o arquivo tem de conter o que o status promete');
+  });
+});
