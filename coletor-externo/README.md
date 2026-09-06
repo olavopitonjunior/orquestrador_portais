@@ -20,8 +20,30 @@ a primeira raspagem real aconteceu em 03/09/2026 (canário de 10 e de 300 anúnc
   autenticada).
 - `src/portal.ts` — a interface `Portal`: a fronteira entre o núcleo e o que é
   específico de cada portal (endpoints, header de sessão, shapes, colunas).
-- `src/portals/canalpro.ts` — adapter Canal Pro (stub).
-- `src/run.ts` — entrypoint: `canary` (portão) e `full` (com checkpoints).
+- `src/portals/canalpro.ts` — adapter Canal Pro: implementação real, em uso desde
+  03/09/2026 (GraphQL contra a API do painel, paginação de 100).
+- `src/core/corrida.ts` — a CORRIDA: modo, retomada, que arquivo escrever e o que
+  apagar. Vive fora do entrypoint porque `run.ts` chama `void main()` — importá-lo
+  num teste dispararia uma coleta. Recebe a conexão por injeção, então a corrida
+  inteira é testável sem navegador.
+- `src/run.ts` — entrypoint: registro de portais, parse de argv, código de saída.
+
+## Contrato de arquivo: o que uma corrida deixa em `out/`
+
+| Arquivo | Quem escreve | Quando |
+|---|---|---|
+| `canalpro.canario.csv` | canário | **truncado a cada corrida** — é a sonda do estado atual |
+| `canalpro.csv` | coleta completa | truncado numa corrida nova; preservado numa retomada |
+| `canalpro.anterior.csv` | coleta completa | uma geração guardada antes de truncar (ninguém lê) |
+| `status.json` | ambos | sempre, com `mode` inclusive nos caminhos de falha |
+| `progress.json` | coleta completa | por página; **apagado ao concluir** |
+| `NEEDS_WARM.flag` | ambos | criada no bloqueio; **removida assim que a corrida autentica** |
+
+Uma corrida é **nova** por padrão. Só é **retomada** quando o checkpoint no disco é
+do mesmo portal, do mesmo modo, do contrato atual e tem progresso — qualquer outra
+coisa recomeça, e o log diz qual condição falhou. A intenção é declarada, não
+inferida da presença acidental de arquivos: era a inferência que fazia duas corridas
+empilharem no mesmo CSV e uma coleta que não coletou nada se declarar `ok`.
 
 ## Por que CDP no Chrome real, e não Selenium
 

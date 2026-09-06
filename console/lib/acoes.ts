@@ -55,6 +55,18 @@ export function montarAcoes(
       href: "/coleta",
       rotulo: "Abrir a coleta",
     });
+  } else if (saude.estado === "em_curso") {
+    acoes.push({
+      id: "coleta-em-curso",
+      severidade: "aviso",
+      titulo: "A coleta completa está rodando",
+      descricao:
+        "O raspador declarou uma coleta completa em andamento. O CSV está sendo " +
+        "reescrito: uma rodada disparada agora leria dado pela metade, então espere " +
+        "ela fechar antes da sexta.",
+      href: "/coleta",
+      rotulo: "Abrir a coleta",
+    });
   } else if (saude.estado === "corrompido") {
     acoes.push({
       id: "coleta-corrompida",

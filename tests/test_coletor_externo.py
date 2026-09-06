@@ -398,3 +398,99 @@ def test_avaliar_coleta_blocked_nao_entra(tmp_path):
     r = avaliar_coleta(coleta, [101], PARAMS_EXT, HOJE)
     assert r.entra is False
     assert "blocked" in r.motivo
+
+
+# --- O CSV escolhido pelo MODO declarado ------------------------------------
+#
+# O canário e a coleta completa passaram a escrever arquivos separados. Enquanto
+# compartilhavam `canalpro.csv`, duas corridas empilhavam no mesmo arquivo e o
+# dedupe daqui — que fica com a PRIMEIRA ocorrência — entregava a linha mais
+# antiga. Estes testes travam a escolha, incluindo o caso contaminado.
+
+
+def test_modo_canario_le_o_arquivo_do_canario(tmp_path: Path) -> None:
+    """Com os DOIS arquivos presentes e conteúdos diferentes, vale o do canário."""
+    _escrever_csv(tmp_path, [_anuncio("velho", "1A", nota=1)], portal="canalpro")
+    _escrever_csv(tmp_path, [_anuncio("novo", "2B", nota=9)], portal="canalpro.canario")
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+    coleta = ler_coleta(tmp_path)
+    assert coleta.estado == "ok"
+    assert coleta.total_linhas == 1
+    assert 2 in coleta.por_imovel, "leu o arquivo do full em vez do canário"
+
+
+def test_modo_full_le_o_arquivo_completo(tmp_path: Path) -> None:
+    _escrever_csv(tmp_path, [_anuncio("a", "1A")], portal="canalpro")
+    _escrever_csv(tmp_path, [_anuncio("b", "2B")], portal="canalpro.canario")
+    _status(tmp_path, result="ok", mode="full", finishedAt="2026-09-06T12:00:00.000Z")
+    assert 1 in ler_coleta(tmp_path).por_imovel
+
+
+def test_status_sem_modo_cai_no_arquivo_completo(tmp_path: Path) -> None:
+    """Compatibilidade: status de antes da correção só podia ter um arquivo."""
+    _escrever_csv(tmp_path, [_anuncio("a", "1A")], portal="canalpro")
+    _status(tmp_path, result="ok", finishedAt="2026-09-06T12:00:00.000Z")
+    assert ler_coleta(tmp_path).estado == "ok"
+    assert 1 in ler_coleta(tmp_path).por_imovel
+
+
+def test_modo_canario_sem_o_arquivo_do_canario_NAO_cai_no_completo(tmp_path: Path) -> None:
+    """Degradar é melhor que ler o arquivo errado — e aqui o errado é o do full.
+
+    Um canário que morre antes de gravar deixa em `out/` o CSV de uma coleta
+    completa de dias atrás. Cair nele daria à rodada amostral um universo velho
+    carimbado com o `finishedAt` de hoje, e `_recorte_da_raspagem` não tinha porta
+    que barrasse isso.
+    """
+    _escrever_csv(tmp_path, [_anuncio("a", "1A")], portal="canalpro")
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+    coleta = ler_coleta(tmp_path)
+    assert coleta.estado == "error", "status ok sem o CSV do modo declarado é coleta incompleta"
+    assert coleta.por_imovel == {}, "não pode entregar os imóveis do arquivo do full"
+
+
+def test_canario_nao_conta_as_linhas_da_coleta_completa(tmp_path: Path) -> None:
+    """O defeito medido em 06/09: a sonda do canário media o acúmulo do full."""
+    _escrever_csv(tmp_path, [_anuncio(str(i), f"{i}A") for i in range(1, 51)], portal="canalpro")
+    _escrever_csv(tmp_path, [_anuncio("s1", "900A")], portal="canalpro.canario")
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+    assert ler_coleta(tmp_path).total_linhas == 1
+
+
+def test_status_por_modo_sobrevive_a_corrida_do_outro_modo(tmp_path: Path) -> None:
+    """`status.json` é a última corrida, e a última apagava o registro da outra.
+
+    Um canário de segundos rodado depois de uma coleta completa de horas tornava o
+    CSV do full inalcançável, com o `finishedAt` novo passando na porta de idade.
+    """
+    _escrever_csv(tmp_path, [_anuncio("f", "1A")], portal="canalpro")
+    _escrever_csv(tmp_path, [_anuncio("c", "2B")], portal="canalpro.canario")
+    (tmp_path / "status.full.json").write_text(
+        '{"result": "ok", "mode": "full", "finishedAt": "2026-09-05T08:00:00Z", "rows": 55000}',
+        encoding="utf-8",
+    )
+    # o canário rodou depois e sobrescreveu o status "última corrida"
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+
+    do_full = ler_coleta(tmp_path, modo="full")
+    assert do_full.estado == "ok"
+    assert 1 in do_full.por_imovel, "o full tem de continuar alcançável"
+
+    do_canario = ler_coleta(tmp_path, modo="canary")
+    assert 2 in do_canario.por_imovel
+
+
+def test_modo_pedido_sem_status_proprio_aceita_o_ultimo_se_o_mode_casar(tmp_path: Path) -> None:
+    """Compatibilidade com a coleta anterior à correção, que só tinha um arquivo."""
+    _escrever_csv(tmp_path, [_anuncio("c", "2B")], portal="canalpro.canario")
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+    assert ler_coleta(tmp_path, modo="canary").estado == "ok"
+
+
+def test_modo_pedido_sem_status_que_case_e_ausente(tmp_path: Path) -> None:
+    """Pedir o full quando só houve canário não pode devolver o canário."""
+    _escrever_csv(tmp_path, [_anuncio("c", "2B")], portal="canalpro.canario")
+    _status(tmp_path, result="ok", mode="canary", finishedAt="2026-09-06T12:00:00.000Z")
+    coleta = ler_coleta(tmp_path, modo="full")
+    assert coleta.estado == "ausente"
+    assert coleta.por_imovel == {}

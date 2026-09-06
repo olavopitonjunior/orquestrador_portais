@@ -167,9 +167,9 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Ocorrido**: descreve `out/canalpro.csv` inteiro — uma coleta completa antiga de 55 mil linhas mais N canários repetidos. Um formato antigo numérico pode mascarar um novo não-numérico (o portão da coleta completa abriria indevidamente), e três canários de 100 viram "300 linhas". Achado do `revisor-de-codigo` na fatia A3.
 - **Afetou carga publicada?**: não — a medição é diagnóstico do console; a rodada lê o CSV com dedupe por `idPortal` e aplica as portas de amarração e idade por conta própria.
 - **Estado da rodada no momento**: fora de rodada.
-- **Situação**: **mitigado, não resolvido.** A tela declara que o número é do arquivo acumulado e instrui a apagar o CSV antes de uma sonda limpa (com o aviso de que isso apaga também uma coleta completa anterior). A tela não afirma mais "o canário mostrou".
-
-**O que resolve:** o raspador escrever o canário em arquivo próprio (`canalpro.canario.csv`, truncado a cada corrida) e o `status.json` dizer de qual modo é. Mudança no `coletor-externo`, com o leitor Python (`dados/coletor_externo.py::ler_coleta`) e a medição do console apontando para o arquivo certo. Fatia própria.
+- **Situação**: **RESOLVIDO em 2026-09-06.** O canário passou a escrever `canalpro.canario.csv`, truncado a cada corrida; a coleta completa tem arquivo próprio; o `status.json` declara o `mode` em todos os caminhos, inclusive nos de falha; `ler_coleta` e `amarracaoDoCsv` escolhem o arquivo pelo modo declarado. **A intenção — corrida nova ou retomada — deixou de ser inferida do disco e passou a ser declarada** (`coletor-externo/src/core/corrida.ts`), e `CsvWriter.init({truncar})` recebe a decisão do chamador em vez de adivinhá-la.
+- **O que o defeito custou antes de ser corrigido**, medido em 06/09/2026 ao preparar a rodada amostral: o CSV tinha **1.910 registros para 1.300 `idPortal` distintos** — a coleta do dia empilhada sobre a de 04/09, com 300 duplicados — enquanto o `status.json` declarava 1.000. Agrava que `_linhas_do_csv` dedupa ficando com a **primeira** ocorrência: num arquivo contaminado, **o dado velho vence o novo**. A limpeza foi manual; a rodada 27976 só saiu íntegra porque alguém olhou.
+- **Prova**: dois canários seguidos, com o Chrome real, deixam 1.000 registros e zero duplicados, batendo com `status.rows`. Testes em `coletor-externo/test/corrida.test.ts` e `tests/test_coletor_externo.py`, provados por mutação.
 
 ## "Numérico" tem duas definições — `str.isdigit()` na rodada é mais frouxo que `/^\d+$/` no console
 
@@ -229,3 +229,52 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Afetou carga publicada?**: não. A prévia não publica, não ordena, não escreve no Registro e nunca chegou a produzir saída.
 - **Estado da rodada no momento**: fora de rodada (a prévia é trabalho próprio na fila).
 - **Situação**: **resolvido em 2026-09-05.** `carregar_env()` entra em `previa.main`; a lista de pontos de entrada deixa de ser escrita à mão (`_pontos_de_entrada()` varre `src/executar/*.py` atrás de `def main(`), e a dispensa de `contrato` é afirmada por teste em vez de pulada, porque o CI recusa skip. Provado nos dois sentidos: sem a correção a guarda falha em `[previa]`; com ela, a prévia sai 0 contra o Newcore ao vivo (48.827 candidatos, 186 vendas, 7.009 elegíveis para 6.970 posições). **Fica aberta a metade não corrigida**: `previa.py` descarta `str(e)` e guarda só o nome do tipo — a próxima falha será igualmente opaca. Enriquecer a mensagem é fatia própria, porque `falha` é contrato asserido em `tests/test_previa.py` (o console lê o campo) e exige decidir antes se exceção de driver pode arrastar string de conexão para o log. É o mesmo pendente já registrado para a sexta, na entrada dos 120 s.
+
+## `--full` sobre um checkpoint esgotado declarava sucesso sem coletar nada
+
+**Data**: 2026-09-06 · **Severidade**: **alta** (dado velho entra como fresco numa carga aplicável, sem sintoma) · **Onde**: Coletor Externo — o laço de paginação de `coletor-externo/src/run.ts` e a ausência de remoção de `out/progress.json`
+
+- **Esperado**: uma coleta completa que roda de novo, depois de uma anterior ter terminado, recomeça e traz dado do dia.
+- **Ocorrido**: o checkpoint sobrevivia com `lastPage = totalPages`, então `start = totalPages + 1`, o laço **não iterava nenhuma página**, e o código escrevia `status.json` com `result: "ok"`, `rows` da corrida anterior e um **`finishedAt` novo**. A porta de idade do lado Python (máximo 2 dias, D-034) aceitava como fresco. Não havia nenhum `unlink` em todo o `src/` do raspador: o checkpoint era imortal por omissão.
+- **Por que é o pior dos três**: não tem sintoma. O CSV existe, o status diz `ok`, a idade passa — e a rodada de sexta ordena a vitrine com o desempenho de portal de dias atrás.
+- **Afetou carga publicada?**: não — nenhuma coleta completa real chegou a rodar duas vezes; o defeito foi achado por leitura, não por incidente.
+- **Estado da rodada no momento**: fora de rodada.
+- **Situação**: **resolvido em 2026-09-06.** `clearCheckpoint()` roda **antes** de declarar `ok` (morrer entre os dois perde a retomada, que é seguro; o inverso reproduz o defeito). O checkpoint ganhou `contrato`, `portal` e `modo`: só retoma sobre a mesma coisa, e um checkpoint sem `contrato` é da versão antiga e vira corrida nova, com log alto. Há ainda uma rede de segurança: se mesmo assim o checkpoint vier esgotado, a corrida se rebaixa para nova em vez de não iterar. Fecha de graça um defeito latente — `progress.json` não tem o portal no nome, então um segundo adapter retomaria o progresso do primeiro.
+
+## `NEEDS_WARM.flag` nunca era removida, e o console prometia que sumia sozinha
+
+**Data**: 2026-09-06 · **Severidade**: média (uma vez disparada, trava todas as rodadas seguintes) · **Onde**: Coletor Externo — `raiseNeedsWarm` criava a flag e nada a apagava; `console/lib/acoes.ts:23` afirmava o contrário
+
+- **Esperado**: a flag sinaliza "a sessão caiu, re-logue"; some quando a próxima coleta autentica, como o console diz ao operador.
+- **Ocorrido**: nenhum `unlink` no `src/` do raspador. Uma vez criada, `ler_coleta` devolvia `blocked` para sempre — ela faz OR entre a flag e o status —, independentemente de quantas coletas bem-sucedidas viessem depois, até alguém apagar o arquivo à mão. O console instruía o operador a re-logar por um problema que não era de login.
+- **Afetou carga publicada?**: não — a flag não chegou a disparar em rodada real.
+- **Estado da rodada no momento**: fora de rodada.
+- **Situação**: **resolvido em 2026-09-06.** A flag é removida quando a **primeira requisição autenticada responde** — não ao capturar a sessão. A primeira versão da correção fazia isso e a revisão a reprovou: capturar cabeçalhos prova que a SPA disparou uma XHR, **não** que o portal aceita o token, e um 401 logo depois apagaria o alarme certo. Depois disso, e não no fim da corrida: um full que autentica e morre na página 900 provou o login, e mandar re-logar seria diagnóstico errado. Se a corrida autenticar e for bloqueada adiante, o tratamento recria a flag.
+
+## 401 do portal não vira `blocked` — sai como erro genérico, sem flag
+
+**Data**: 2026-09-06 · **Severidade**: baixa (diagnóstico enganoso; não corrompe dado) · **Onde**: `coletor-externo/src/core/corrida.ts`, o tratamento que só testa `BlockedError`
+
+- **Esperado**: sessão expirada leva o operador a re-logar, que é o conserto.
+- **Ocorrido**: `AuthExpiredError` existe e é levantada em `classificarResposta`, mas o tratamento só converte `BlockedError` em `blocked` + flag. Um 401 sai como `error`, sem flag, e o console mostra "a coleta falhou" em vez de "refaça o login".
+- **Afetou carga publicada?**: não.
+- **Situação**: **resolvido em 2026-09-06**, na mesma fatia. Eu havia decidido deixá-lo para outra, por mexer no significado de `exit 1` contra `exit 2`; a revisão de código mostrou que ele deixou de ser independente: com a flag passando a ser removida a cada corrida, um 401 que não a reergue apaga o alarme e devolve um diagnóstico errado ao operador. `AuthExpiredError` passou a ser tratado como `BlockedError` — o conserto dos dois é o mesmo, re-logar —, levantando a flag e saindo com código 2.
+
+## O `status.json` era um arquivo só para os dois modos — o canário tornava a coleta completa inalcançável
+
+**Data**: 2026-09-06 · **Severidade**: alta (a rodada de sexta perde o fator de portal da semana, com o console dizendo `ok`) · **Onde**: `coletor-externo/src/core/corrida.ts` (a escrita do status) e `src/dados/coletor_externo.py::ler_coleta` (a escolha do CSV pelo `mode`)
+
+- **Esperado**: a rodada lê a coleta que lhe interessa — a completa numa sexta real, o canário numa amostral.
+- **Ocorrido**: `status.json` era "a última corrida", e a última apagava o registro da outra. Como o leitor escolhe o CSV pelo `mode` declarado, **um canário de segundos rodado depois de uma coleta completa de horas tornava o full inalcançável**, com o `finishedAt` da sonda passando na porta de idade. Não é sequência hipotética: é a que o console prescreve, porque o canário é o portão que libera o full. Efeito colateral: `guardarGeracaoAnterior` lia o mesmo status, via `mode: canary` e recusava preservar a última geração boa — derrotando a função exatamente no caso para o qual ela existe.
+- **Como apareceu**: o defeito era inofensivo antes da correção do contrato de arquivo. Só virou defeito **porque** aquela correção fez o leitor depender do campo `mode`. É a assinatura da fatia inteira: cada correção moveu a fronteira de um contrato de estado compartilhado, e o defeito seguinte nasceu na fronteira nova.
+- **Afetou carga publicada?**: não — nenhuma coleta completa real chegou a rodar.
+- **Situação**: **resolvido em 2026-09-06.** `escreverStatus` grava também `status.<modo>.json`; `status.json` segue sendo a última corrida, que é o que o card do console mostra. `ler_coleta` aceita o modo pedido, a amostral pede o canário que definiu a amostra e a rodada real pede a completa. Uma `out/` anterior à correção é migrada na primeira corrida, **antes de qualquer escrita** — sem isso o fallback de leitura morreria justamente na sequência canário-antes-do-full que o console prescreve.
+
+## A retomada não declarava que estava em curso, e não conferia se o arquivo existia
+
+**Data**: 2026-09-06 · **Severidade**: alta (coleta parcial declarada `ok`, com `rows` prometendo o que não está no arquivo) · **Onde**: `coletor-externo/src/core/corrida.ts` — o bloco de retomada
+
+- **Esperado**: enquanto uma coleta apende linhas, quem ler `out/` sabe que ela está em curso; e retomar continua um arquivo que existe.
+- **Ocorrido**: dois defeitos. **(1)** `escreverStatus('running')` estava dentro do `if (!retomando)`: numa retomada, o status vigente seguia dizendo `ok` com o `rows` da corrida anterior durante as horas em que linhas eram apendadas embaixo. **(2)** `podeRetomar` conferia coerência do checkpoint consigo mesmo e **zero sobre o disco**: com o checkpoint vivo e o CSV apagado à mão — que era o que o próprio console ensinava até esta fatia ("apague o arquivo antes de disparar o canário") —, a coleta saía parcial e declarada `ok`, com o `rows` do checkpoint prometendo o que não estava lá.
+- **Afetou carga publicada?**: não.
+- **Situação**: **resolvido em 2026-09-06.** `running` é declarado nos dois casos, porque uma retomada também está em curso; e retomar passa a exigir que o CSV do modo exista no disco, rebaixando para corrida nova com log alto quando não existe. Mesmo guard nos dois caminhos, linear e shards, cada um com teste.

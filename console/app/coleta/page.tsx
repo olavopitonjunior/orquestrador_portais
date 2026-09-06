@@ -69,7 +69,7 @@ function Amarracao({ a }: { a: Amarracao | null }) {
       <section className="secao">
         <h2>Amarração anúncio ↔ imóvel</h2>
         <p className="vazio">
-          Sem <code>canalpro.csv</code> em <code>out/</code>: nenhuma coleta escreveu CSV ainda
+          Sem <code>canalpro.canario.csv</code> em <code>out/</code>: nenhum canário escreveu CSV ainda
           nesta máquina. O canário é a primeira coisa a fazer — e a sonda decide tudo: se o{" "}
           <code>codigoImovel</code> não for o id numérico do Newcore, nenhuma linha amarra e o
           fator de portal não entra.
@@ -130,10 +130,9 @@ function Amarracao({ a }: { a: Amarracao | null }) {
         console não lê o Newcore.
       </p>
       <p className="campo-ajuda">
-        <strong>Medido sobre o arquivo acumulado.</strong> Canários e coletas completas escrevem
-        no mesmo <code>out/canalpro.csv</code>, sem limpeza: as linhas se somam, e um formato
-        antigo pode mascarar um novo. Para uma sonda limpa, apague o arquivo antes de disparar o
-        canário (cuidado: isso apaga também uma coleta completa anterior).
+        <strong>Medido sobre o último canário, e só sobre ele.</strong> O canário escreve em{" "}
+        <code>out/canalpro.canario.csv</code>, recomeçado a cada corrida; a coleta completa tem
+        arquivo próprio. Nada se acumula entre execuções e não é preciso apagar nada à mão.
       </p>
     </section>
   );
@@ -187,7 +186,7 @@ export default async function Page() {
     <>
       <h1>Coleta externa (Canal Pro)</h1>
       <p className="subtitulo">
-        A raspagem roda FORA da rodada e escreve <code>out/canalpro.csv</code>; a rodada lê o
+        A raspagem roda FORA da rodada e escreve <code>out/canalpro.csv</code> (o canário, em <code>out/canalpro.canario.csv</code>); a rodada lê o
         arquivo. O login é seu — o console confere a pré-condição e dispara.
       </p>
 

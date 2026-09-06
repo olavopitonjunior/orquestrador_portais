@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 
 // "corrompido" ≠ "ausente": o raspador rodou e escreveu lixo (ex.: crash no meio da
 // escrita) é sinal de atenção; "ausente" é ele nunca ter rodado.
-export type EstadoColeta = "ok" | "blocked" | "error" | "corrompido" | "ausente";
+export type EstadoColeta = "ok" | "em_curso" | "blocked" | "error" | "corrompido" | "ausente";
 
 export type SaudeColeta = {
   estado: EstadoColeta;
@@ -83,6 +83,10 @@ export async function saudeColeta(): Promise<SaudeColeta> {
   if (needsWarm || result === "blocked") estado = "blocked";
   else if (leitura.tipo === "corrompido") estado = "corrompido";
   else if (result === "ok") estado = "ok";
+  // `running` é uma coleta completa EM CURSO: o raspador o declara antes de truncar
+  // o CSV, porque um full leva horas e sem isso quem lesse `out/` no meio veria o
+  // arquivo parcial ao lado do status da corrida anterior, carimbado de `ok`.
+  else if (result === "running") estado = "em_curso";
   else if (result === "error") estado = "error";
   else estado = "ausente";
 
@@ -135,9 +139,15 @@ function celulasDaLinha(linha: string): string[] {
  *  o formato `{Id}{letra opcional}` é a condição que `dados/coletor_externo._imovel_id_de`
  *  exige (visto na primeira raspagem real, 03/09/2026: `431347A`, 300 de 300 — a letra é a rotação de
  *  marketing, `realties.NewIdMarketingRotation`); casar de fato com um imóvel ativo só a
- *  rodada confere. `null` se não há CSV. */
+ *  rodada confere. `null` se não há CSV do canário.
+ *
+ *  Lê o arquivo DO CANÁRIO, sem cair para o da coleta completa. Esta sonda existe
+ *  para responder "o que o último canário trouxe", e é ela que libera o full na
+ *  tela; ler o arquivo do full seria medir o estoque e chamá-lo de sonda — a
+ *  mesma contaminação que a separação dos arquivos veio desfazer. Sem canário, o
+ *  `null` faz a tela pedir um, que custa segundos. */
 export async function amarracaoDoCsv(portal = "canalpro"): Promise<Amarracao | null> {
-  const caminho = resolve(outDir(), `${portal}.csv`);
+  const caminho = resolve(outDir(), `${portal}.canario.csv`);
   if (!(await existe(caminho))) return null;
   const texto = await readFile(caminho, "utf-8");
   const linhas = texto.split(/\r?\n/).filter((l) => l.length > 0);
