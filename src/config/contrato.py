@@ -194,11 +194,14 @@ GRUPOS: tuple[Grupo, ...] = (
             "Estas não excluem ninguém: ordenam quem passou (D-028). A nota vai de 0 a 100 e "
             "é a soma ponderada de três sinais do anúncio no Canal Pro — nota do anúncio, "
             "cliques (somados entre tipos) e visualizações — cada um reescalado entre os "
-            "elegíveis. O peso adotado das visualizações é zero, por uma medição de 03/09/2026 "
-            "sobre 300 anúncios que deu zero em todos — premissa que a coleta completa de "
-            "06/09/2026 derrubou: 13.175 dos 55.162 têm visualizações. O zero segue vigente até "
-            "decisão sua ([P-25]). A raspagem só entra se cobrir a fração mínima dos candidatos "
-            "e for "
+            "elegíveis (os recuperados por cedência são reescalados à parte). A alocação "
+            "adotada é 70/30/0, e a primeira coleta completa sugere que dois deles estão "
+            "trocados: entre os 6.970 escolhidos da rodada 30417, os cliques "
+            "pesam 30 e conseguem ORDENAR 3,5 % dos pares de imóveis, enquanto as visualizações "
+            "pesam zero e ordenam 38,6 %. A nota, com 70, ordena 57,8 % — essa está confirmada. "
+            "Os três valores seguem vigentes até você decidir a alocação ([P-25]); como somam "
+            "100, decidir um é decidir de onde saem os pontos. A raspagem só entra se cobrir a "
+            "fração mínima dos candidatos e for "
             "recente; senão a ordem cai para o desempate de banco e a rodada declara isso."
         ),
         pendentes_sem_campo=(2,),
@@ -395,11 +398,18 @@ CAMPOS: tuple[Campo, ...] = (
         tipo="inteiro",
         ajuda=(
             "Quanto os cliques no anúncio (contato, telefone, WhatsApp, proposta, agendamento, "
-            "somados) pesam na ordem. É intenção de compra, não curiosidade."
+            "somados) pesam na ordem. A justificativa deste peso tinha duas metades. A que "
+            "CAIU: 'fraco mas real' ficou muito mais fraca — só 1,69 % dos 55.162 anúncios da "
+            "coleta de 06/09/2026 têm algum clique, e dois dos cinco tipos (proposta e "
+            "agendamento) são zero em 55.162 de 55.162. A que FICOU: clique é intenção de "
+            "compra, não curiosidade. Os três pesos seguem vigentes até você decidir a "
+            "alocação ([P-25])."
         ),
         unidade="pontos de 100",
         se_aumentar=(
-            "Anúncio com clique sobe mesmo com nota baixa; sinal fraco hoje, quase todos zero."
+            "Anúncio com clique sobe mesmo com nota baixa — mas o sinal ordena só 3,5 % dos "
+            "pares entre os 6.970 escolhidos da rodada 30417: o ZERO empata 6.846 deles, que "
+            "ficam na mesma posição sem que este peso os separe."
         ),
         minimo=0,
         maximo=100,
@@ -412,13 +422,15 @@ CAMPOS: tuple[Campo, ...] = (
             "Quanto as visualizações pesam. O peso adotado é ZERO (D-034), e a premissa que o "
             "sustentava CAIU: aquele zero foi medido em 300 anúncios; a primeira coleta completa, "
             "de 55.162, achou 13.175 com visualizações — 23,9 %. O campo não vem vazio; a amostra "
-            "é que era pequena. O valor segue vigente até você decidir ([P-25])."
+            "é que era pequena. Os três pesos seguem vigentes até você decidir a alocação "
+            "([P-25])."
         ),
         unidade="pontos de 100",
         se_aumentar=(
-            "Passa a pesar um sinal presente em cerca de um quarto do estoque (23,9 % dos 55.162 "
-            "anúncios da coleta de 06/09/2026). Como os três pesos somam 100, subir este baixa os "
-            "outros dois — e o dos cliques é o único outro sinal com intenção de compra."
+            "Passa a pesar o sinal que mais ordena depois da nota: 38,6 % dos pares entre os "
+            "6.970 escolhidos da rodada 30417, contra 3,5 % dos cliques. Como os três pesos "
+            "somam 100, subir este baixa os outros dois — e o que resta a favor dos cliques é "
+            "o argumento qualitativo: intenção de compra, não curiosidade."
         ),
         minimo=0,
         maximo=100,

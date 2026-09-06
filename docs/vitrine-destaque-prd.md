@@ -133,7 +133,7 @@ A raspagem passa a rodar apenas no dia da atualização do estoque, uma vez por 
 - `realties.MarketingType_Id` é nulo em 96% dos ativos.
 - `realtyaddresses.ValueZone_Id` é nulo em 98% dos imóveis ativos relevantes. A ligação com distrito vem de `FT_RealtyRelation`.
 - `FT_LeadsOffers.DaysConversion` apresenta valores negativos.
-- Cerca de 44% do estoque elegível não possui avaliação por categoria em `realty_score_category_score`.
+- Cerca de 44% do estoque elegível não possui avaliação por categoria em `realty_score_category_score` — **medido em 56,3 % entre os elegíveis da rodada 30417** (06/09/2026). **Cuidado com a base, porque ela decide o veredito.** A tabela de riscos (§ Riscos) dá como Alta a probabilidade de a penalidade "recair sobre metade dos **candidatos**" — e entre os 48.812 candidatos a taxa medida é **35,3 %**, cerca de um terço. Na base em que foi escrita, a previsão **não se confirmou**; passa de metade só no recorte mais estreito dos elegíveis. Ressalva de método: a medição **não separa** deriva do estoque de composição do conjunto elegível — os 35,3 % estão *abaixo* dos 44 % de 28/08, então quem produz os 56 % é a filtragem do funil, **não necessariamente** o acúmulo de estoque novo, e a definição de "elegível" mudou no período (a D-027 acrescentou a nona regra).
 - `realties` não expõe quantidade de vagas diretamente.
 - Campos de placa e de impulsionamento estão integralmente vazios.
 - `adswhitelist` está abandonada desde 2022. `adsblacklist` está viva com 12.155 imóveis, mas foi decidido ignorá-la.
@@ -261,8 +261,8 @@ Um imóvel entra por semelhança com um perfil vencedor mesmo sem desempenho pr�
 
 | Sinal do anúncio | Peso adotado | Razão medida |
 |---|---|---|
-| Nota do anúncio no portal | 70 | único sinal com variância medida: 14 valores distintos em 300 anúncios (03/09/2026) |
-| Cliques, somados entre tipos | 30 | sinal fraco mas real, e é intenção de compra, não curiosidade |
+| Nota do anúncio no portal | 70 | único sinal com variância medida: 14 valores distintos em 300 anúncios (03/09/2026) e **69 em 55.162 na coleta completa (06/09)**, com preenchimento de 100 %. A conclusão saiu reforçada |
+| Cliques, somados entre tipos | 30 | sinal fraco mas real, e é intenção de compra, não curiosidade — **bem mais fraco do que a frase sugeria**: algum clique aparece em 1,69 % dos 55.162 anúncios, e proposta e agendamento são zero em todos. Na rodada 30417 separou 124 dos 6.970 escolhidos, contra 1.550 das visualizações, que pesam zero ([P-25]) |
 | Visualizações | 0 | medido zero em 300 de 300 anúncios em 03/09/2026 — **premissa caída em 06/09**: a primeira coleta completa achou 13.175 dos 55.162 com visualizações, 23,9 %. O zero segue adotado (D-034) até decisão do dono ([P-25]); o que caiu foi a razão, não o valor |
 
 Cada sinal é reescalado para uma escala comparável antes de somar. A **forma** dessa normalização é o parâmetro nº 2, que segue **nulo**: a forma em uso (min-max) é **provisória**, sai rotulada como tal na planilha e não foi adotada (D-016). O reescalonamento acontece entre os elegíveis no ranking primário e entre os reprovados no relaxamento — as duas ordenações são internas a cada grupo e nunca se comparam.
@@ -281,7 +281,7 @@ A capacidade de distrito não participa do ranking, porque o distrito já atua c
 |---|---|---|
 | Janela anterior sem resultado | O imóvel ocupou posição e não atingiu o resultado esperado para o nível | 20 pontos |
 | Sem avaliação por categoria | O imóvel não tem nenhuma categoria da nota interna avaliada | 5 pontos, baixo de propósito: o pipeline de avaliação parou em 16/10/2025 e 99,76% do estoque novo não tem nota — descontar alto puniria o estoque novo por defeito da base |
-| Sem lead em 180 dias | O imóvel não recebeu nenhum lead no período | 10 pontos (D-030). Alcança a maior parte do estoque — 84% dos elegíveis na leitura de 28/08/2026 —, de modo que na prática funciona como bônus para a minoria com histórico recente |
+| Sem lead em 180 dias | O imóvel não recebeu nenhum lead no período | 10 pontos (D-030). Alcança a maior parte do estoque — 84% na leitura de 28/08/2026, e **78,3 % medidos entre os elegíveis da rodada 30417** (77,0 % entre os escolhidos, 76,3 % entre todos os candidatos) —, de modo que na prática funciona como bônus para a minoria com histórico recente |
 
 Apenas a **última** janela é julgada, não qualquer uma do histórico (D-023). Imóveis sem histórico de destaque não são penalizados por ausência de histórico.
 

@@ -26,6 +26,22 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
   Três testes novos amarram o que a issue cobrava: a identidade `nota final = nota bruta − descontos` lendo só o Registro; a nota bruta refeita a partir dos pesos efetivos gravados na mesma rodada; e a mesma entrada gravando os perfis na mesma ordem, porque `perfil_da_rodada.id` é IDENTITY e uma iteração fora de ordem faria o vínculo variar entre execuções iguais (invariante 5). **Nenhuma regra de decisão muda e nenhum parâmetro pendente ganha valor**: o que muda é o que fica guardado depois de decidir.
 
+- **A auditoria dos adotados da D-034 contra a coleta completa: a alocação dos pesos do portal parece invertida ([P-25]).** A fatia anterior deixou a pergunta — quais outros valores adotados têm procedência na amostra de 300? Medidos os três sinais do portal em 55.162 anúncios e na rodada 30417:
+
+  | Sinal | Peso | Sinal presente (55.162 anúncios) | Não-zero entre os 6.970 escolhidos | Valores distintos do sinal | Pares que ordena (6.970 escolhidos) |
+  |---|---:|---:|---:|---:|---:|
+  | Nota do anúncio | **70** | 100 % | 6.751 (96,9 %) | 26 | **57,8 %** |
+  | Cliques | **30** | 1,69 % | **124 (1,8 %)** | 7 | **3,5 %** |
+  | Visualizações | **0** | 23,9 % | **1.550 (22,2 %)** | 62 | **38,6 %** |
+
+  A coluna de **pares que ordena** é a que mede o que interessa a um ranking — a fração dos pares de imóveis que o sinal consegue ordenar em vez de empatar; presença é só proxy. Duas ressalvas de método, detalhadas no segundo adendo da [P-25]: "sinal presente" é campo preenchido para a nota e valor não-zero para os outros dois (pelo critério não-zero a nota daria 97,9 %), e "valores distintos" conta o sinal, não o fator normalizado, cuja escala roda em dois grupos. **A nota sai reforçada**: os "14 valores distintos em 300 anúncios" viraram 69 em 55.162, com preenchimento de 100 %. **Os cliques são o problema**: a justificativa era "sinal fraco mas real, e é intenção de compra"; a primeira metade ficou muito mais fraca do que a frase sugeria — algum clique aparece em 1,69 % dos anúncios, e **proposta e agendamento são zero em 55.162 de 55.162**. Trinta pontos de 100 foram para um sinal que separou 124 imóveis, enquanto o que separou 1.550 pesou zero.
+
+  **A segunda metade da justificativa continua de pé**, e é o que impede isto de ser correção óbvia: um clique é intenção de compra, uma visualização é curiosidade, e por unidade o clique vale mais. A pergunta que fica não é aritmética — é **quanto peso um sinal raro e forte merece contra um comum e fraco**, e isso é critério do dono. Por isso não abre pendência nova: os três pesos somam 100, decidir um é decidir de onde saem os pontos, e a **[P-25]** passa a ser sobre a alocação inteira.
+
+  Dois números de desconto também foram remedidos, sem mudar valor: *"84 % dos elegíveis sem lead"* virou **78,3 %** medidos entre os elegíveis; e *"cerca de 44 % sem avaliação"* virou **56,3 %** — **não é premissa caída**, e confirma a linha de risco do PRD que dava como Alta a chance de a penalidade "recair sobre metade dos candidatos". Mas a medição **não prova a causa**: entre os 48.812 candidatos a taxa é 35,3 %, *abaixo* dos 44 % de 28/08, então quem produz os 56 % é a filtragem do funil, e a definição de "elegível" mudou no período.
+
+  **Nenhum valor adotado muda.** `peso_nota = 70`, `peso_cliques = 30`, `peso_visualizacoes = 0` e os três descontos seguem como a D-034 os fixou.
+
 - **A premissa do peso zero das visualizações cai, e o texto que fala com o dono inverte ([P-25]).** A D-034 adotou `portal.peso_visualizacoes = 0` citando *"medido zero em 300 de 300"* — a primeira raspagem real, de 03/09. A primeira coleta **completa**, de 06/09, achou **13.175 dos 55.162 anúncios com visualizações (23,9 %)** e 69 valores distintos de nota contra 14. O zero era da amostra, não do campo.
 
   **O valor NÃO muda.** `peso_visualizacoes = 0` segue vigente, a rodada continua usando zero e a planilha continua rotulando "adotado (D-034)": trocar o número do dono por um meu, sem decisão dele, seria o oposto da regra da casa. O que cai é a justificativa, e ela cai nos **doze lugares** onde estava copiada — PRD, Spec, mapa de dados, `adotados.py`, `dominio/ranking.py`, os três textos do contrato do console (mais o JSON regerado) e três docstrings de teste.
