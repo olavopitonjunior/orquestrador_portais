@@ -38,6 +38,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from config.ambiente import carregar_env
 from config.parametros import ParametroAusente, ParametroInvalido, ParametrosDaRodada, carregar
 from config.recorte import DEFINICAO_ATIVO
 from dados.candidatos_perfil import coletar_dimensoes_candidatos
@@ -226,6 +227,12 @@ def construir_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Ambiente do `.env` do diretório CORRENTE, como os demais pontos de entrada — ver
+    # o docstring de config.ambiente. Sem isto a prévia lê `os.environ` vazio e morre
+    # no `_config()` do Newcore com um RuntimeError que o log reduz a "falha ao ler o
+    # Newcore: RuntimeError" — indistinguível de fonte fora do ar. Faltou desde que a
+    # prévia nasceu; nenhum teste pegou porque nenhum deles precisa de credencial.
+    carregar_env()
     args = construir_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     # A MESMA data de referência da sexta (`date.today()`, local): com UTC, entre 21h e
