@@ -206,7 +206,7 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Esperado**: com a raspagem entrando, o F3 diferencia os imóveis pelo desempenho do anúncio no portal.
 - **Ocorrido**: na primeira rodada real (trabalho 2790 → rodada 15474, 300 anúncios), `visualizacoes` veio `0` em **300 de 300**; os cliques também (contato ≠ 0 em 2, telefone em 1, WhatsApp em 0). A `nota` (LQS) tem **14 valores distintos** (9580 em 188, 8442.5 em 61, 9080 em 22…). Com a forma declarada `visualizacoes`, o min-max dá 0,0 para todos e `nota_desempenho` ficou 0 em todas as linhas gravadas — o F3 "entrou" e não pesou nada.
 - **Afetou carga publicada?**: não — rodada amostral, inaprovável por construção.
-- **Situação**: **aberto, e é do dono.** A forma do F3 é parâmetro declarado (`externo.desempenho.forma`: `visualizacoes` | `nota` | `cliques_do_tipo`), PROVISÓRIO. Recomendação medida: declarar `forma = "nota"` (com `quando_ausente`) — é o único sinal com variância na amostra. Fica também a pergunta ao raspador: a API `listings` expõe visualizações em outro campo, ou só no detalhe do anúncio? (`QtdViewsZap` existe em `realties` no Newcore, mas é do banco, não do portal.)
+- **Situação**: **A PREMISSA CAIU em 2026-09-06, e a decisão volta ao dono.** A medição de 03/09 foi sobre 300 anúncios; a primeira coleta COMPLETA, de **55.162 anúncios**, mostra **13.175 com visualizações diferentes de zero — 23,9 %**, e 69 valores distintos de nota. O zero não era do campo: era do tamanho da amostra. A D-028/D-034 adotou `portal.peso_visualizacoes = 0` justamente porque "medido zero em 300 de 300", e essa frase deixou de ser verdadeira. **Consequência hoje:** um sinal presente em quase um quarto do estoque não pesa nada na nota que ordena a vitrine. Rever o peso é decisão do dono (é parâmetro adotado, D-034); o que este registro faz é derrubar a premissa que o sustentava. A pergunta ao raspador está respondida por medição: a API `listings` **expõe** visualizações — o campo não estava vazio, a amostra é que era pequena.
 
 ## A idade da coleta saía −1 — `finishedAt` é UTC e a data era tirada no fuso da máquina
 
@@ -279,6 +279,16 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Afetou carga publicada?**: não.
 - **Situação**: **resolvido em 2026-09-06.** `running` é declarado nos dois casos, porque uma retomada também está em curso; e retomar passa a exigir que o CSV do modo exista no disco, rebaixando para corrida nova com log alto quando não existe. Mesmo guard nos dois caminhos, linear e shards, cada um com teste.
 
+## Um soluço de dez segundos do portal derruba treze minutos de coleta
+
+**Data**: 2026-09-06 · **Severidade**: média (a sexta tem tentativa única por rodada; perder a coleta é perder o fator de portal da semana) · **Onde**: `coletor-externo/src/core/block-detector.ts::isTransient` e a ausência de repetição em `corrida.ts`
+
+- **Esperado**: uma instabilidade momentânea do portal atrasa a coleta; não a mata.
+- **Ocorrido**: a primeira tentativa da coleta completa morreu em 10 s com `Canal Pro GraphQL errors: Can not reach the API` — o gateway do portal respondendo **200** e dizendo, no corpo, que não alcançava o backend dele. O canário rodou um minuto depois e passou, e as duas consultas são **idênticas** (`probeList` faz a mesma chamada que o canário faz primeiro), o que descarta diferença de código. A segunda tentativa da coleta completa levou 13 minutos e trouxe 55.162 anúncios.
+- **Por que não foi retentado**: `isTransient` classifica 429, 503 e falha de rede (`status -1`). Um **200 com erro de GraphQL** não passa por ele: `classificarResposta` levanta, e `executarComTratamento` traduz em `error` sem nova tentativa. O raspador não tem política de repetição.
+- **Afetou carga publicada?**: não — a segunda tentativa foi manual e concluiu; a rodada 30417 saiu com dado íntegro.
+- **Situação**: **aberto, e depende do parâmetro nº 4** (tentativas e intervalo de repetição do Orquestrador), que segue **nulo**. É exatamente o caso que o parâmetro existe para cobrir. Duas partes, e só a primeira é minha: classificar o erro de GraphQL "não alcança a API" como transitório é correção de código; **quantas vezes tentar e com que intervalo é do dono**. Fica registrado que o custo de não ter isso é uma coleta de treze minutos perdida por um soluço de dez segundos, numa rodada que só tem uma tentativa.
+
 ## A prontidão dizia "status ilegível" para uma coleta em andamento
 
 **Data**: 2026-09-06 · **Severidade**: baixa (diagnóstico errado; nada corrompe) · **Onde**: `console/lib/prontidao.ts`
@@ -288,3 +298,13 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Como apareceu**: é a terceira ocorrência do mesmo padrão nesta série de fatias — **uma correção move a fronteira de um contrato e um consumidor não acompanha**. Aqui o contrato era o conjunto de estados da coleta.
 - **Afetou carga publicada?**: não.
 - **Situação**: **resolvido em 2026-09-06**, com teste provado por mutação. Reforça a regra de rito registrada na D-037: quando a fatia mexe em contrato compartilhado, enumerar os consumidores é o primeiro artefato, não o último.
+
+## A página da rodada serve 23 MB numa rodada real
+
+**Data**: 2026-09-06 · **Severidade**: média (a tela existe para ler o resultado, e numa rodada real ela fica pesada demais) · **Onde**: `console/lib/planilha.ts::lerPlanilha` e `console/app/rodada/[id]/page.tsx`
+
+- **Esperado**: a página da rodada abre rápido e mostra as primeiras linhas de cada aba, com o CSV inteiro em disco.
+- **Ocorrido**: `lerPlanilha` lê e parseia **todas** as abas de `ABAS`, inclusive `apuracao.csv` — 14 MB e 48.812 linhas na rodada 30417 —, e a resposta da página saiu com **23 MB**. A página até tem o cuidado explícito de não EXIBIR a apuração (`ORDEM_DAS_ABAS` a omite, com comentário dizendo por quê), mas ela é lida e serializada mesmo assim; e `excluidos_por_regra` (2 MB, 41.958 linhas) é parseada inteira para mostrar as primeiras.
+- **Por que só apareceu agora**: nas rodadas amostrais a apuração tinha 1.000 linhas. O defeito é de escala, e a primeira rodada completa é a primeira oportunidade de vê-lo.
+- **Afetou carga publicada?**: não — a página responde 200 e o conteúdo está correto; o problema é volume.
+- **Situação**: **aberto.** Correção provável: `lerPlanilha` receber quais abas ler, e a página pedir só as que exibe; e as abas grandes serem lidas por prefixo em vez de parseadas inteiras. Fatia própria — mexe no contrato de `lerPlanilha`, que tem outros consumidores (o download por aba e o zip).
