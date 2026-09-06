@@ -63,6 +63,7 @@ export default async function Page() {
       <Disparo
         declaracaoVista={declaracao?.id ?? null}
         coletaOk={saude?.estado === "ok"}
+        coletaEmCurso={saude?.estado === "em_curso"}
         chromeNoAr={chrome?.noAr === true}
       />
     </>

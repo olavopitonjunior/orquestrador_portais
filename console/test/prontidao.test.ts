@@ -64,3 +64,15 @@ test("a coleta ok mostra data, idade e linhas com o formatador injetado", () => 
   const c = por(condicoes(saude(), chrome(), true, 0, 15, data), "Coleta do portal");
   assert.equal(c.texto, "Coletada @2026-09-03T21:12:00Z · 0 dia(s) · 300 anúncios.");
 });
+
+test("coleta EM CURSO é aviso com a ação certa, não 'status ilegível'", () => {
+  // Regressão introduzida ao acrescentar o estado `em_curso`: ele entrou no tipo e
+  // nas ações, e este módulo não acompanhou — caía no `else` final, em vermelho,
+  // dizendo que o status estava ilegível. É o diagnóstico errado para a única
+  // situação em que a resposta é simplesmente esperar a coleta fechar.
+  const cs = condicoes(saude({ estado: "em_curso" }), chrome(), true, 0, 13, data);
+  const c = por(cs, "Coleta do portal");
+  assert.equal(c.nivel, "warn");
+  assert.match(c.texto, /em curso/);
+  assert.doesNotMatch(c.texto, /ilegível/);
+});

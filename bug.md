@@ -278,3 +278,13 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 - **Ocorrido**: dois defeitos. **(1)** `escreverStatus('running')` estava dentro do `if (!retomando)`: numa retomada, o status vigente seguia dizendo `ok` com o `rows` da corrida anterior durante as horas em que linhas eram apendadas embaixo. **(2)** `podeRetomar` conferia coerência do checkpoint consigo mesmo e **zero sobre o disco**: com o checkpoint vivo e o CSV apagado à mão — que era o que o próprio console ensinava até esta fatia ("apague o arquivo antes de disparar o canário") —, a coleta saía parcial e declarada `ok`, com o `rows` do checkpoint prometendo o que não estava lá.
 - **Afetou carga publicada?**: não.
 - **Situação**: **resolvido em 2026-09-06.** `running` é declarado nos dois casos, porque uma retomada também está em curso; e retomar passa a exigir que o CSV do modo exista no disco, rebaixando para corrida nova com log alto quando não existe. Mesmo guard nos dois caminhos, linear e shards, cada um com teste.
+
+## A prontidão dizia "status ilegível" para uma coleta em andamento
+
+**Data**: 2026-09-06 · **Severidade**: baixa (diagnóstico errado; nada corrompe) · **Onde**: `console/lib/prontidao.ts`
+
+- **Esperado**: uma coleta completa em curso aparece como aviso, com a ação "espere ela fechar".
+- **Ocorrido**: o estado `em_curso` foi acrescentado ao tipo `EstadoColeta` e tratado em `lib/acoes.ts`, mas `prontidao.ts` não acompanhou: caía no `else` final e reportava **"A última coleta ficou pela metade: o status está ilegível"**, em vermelho — o diagnóstico errado para a única situação em que a resposta é simplesmente esperar.
+- **Como apareceu**: é a terceira ocorrência do mesmo padrão nesta série de fatias — **uma correção move a fronteira de um contrato e um consumidor não acompanha**. Aqui o contrato era o conjunto de estados da coleta.
+- **Afetou carga publicada?**: não.
+- **Situação**: **resolvido em 2026-09-06**, com teste provado por mutação. Reforça a regra de rito registrada na D-037: quando a fatia mexe em contrato compartilhado, enumerar os consumidores é o primeiro artefato, não o último.

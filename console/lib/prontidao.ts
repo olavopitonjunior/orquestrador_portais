@@ -42,27 +42,40 @@ export function condicoes(
             saude.idadeDias !== null ? ` · ${saude.idadeDias} dia(s)` : ""
           }${saude.linhas !== null ? ` · ${saude.linhas.toLocaleString("pt-BR")} anúncios` : ""}.`,
         }
-      : saude.estado === "ausente"
+      : saude.estado === "em_curso"
         ? {
+            // Sem este ramo, uma coleta em andamento caía no `else` final e a
+            // prontidão dizia "o status está ilegível", em vermelho — diagnóstico
+            // errado para a única situação em que a resposta é simplesmente esperar.
             titulo: "Coleta do portal",
             nivel: "warn",
             texto:
-              "Nenhuma coleta em disco. Sem ela a nota do anúncio não ordena a lista e a rodada sai degradada.",
+              "Uma coleta completa está em curso: o CSV está sendo reescrito. Espere ela fechar — " +
+              "uma rodada disparada agora leria dado pela metade.",
             href: "/coleta",
-            rotulo: "Coletar",
+            rotulo: "Acompanhar",
           }
-        : {
-            titulo: "Coleta do portal",
-            nivel: "bad",
-            texto:
-              saude.estado === "blocked"
-                ? "A sessão do raspador caiu (Cloudflare). Refaça o login antes de coletar."
-                : saude.estado === "error"
-                  ? "A última coleta terminou em erro. Veja o log do raspador."
-                  : "A última coleta ficou pela metade: o status está ilegível.",
-            href: "/coleta",
-            rotulo: "Abrir a coleta",
-          };
+        : saude.estado === "ausente"
+          ? {
+              titulo: "Coleta do portal",
+              nivel: "warn",
+              texto:
+                "Nenhuma coleta em disco. Sem ela a nota do anúncio não ordena a lista e a rodada sai degradada.",
+              href: "/coleta",
+              rotulo: "Coletar",
+            }
+          : {
+              titulo: "Coleta do portal",
+              nivel: "bad",
+              texto:
+                saude.estado === "blocked"
+                  ? "A sessão do raspador caiu (Cloudflare). Refaça o login antes de coletar."
+                  : saude.estado === "error"
+                    ? "A última coleta terminou em erro. Veja o log do raspador."
+                    : "A última coleta ficou pela metade: o status está ilegível.",
+              href: "/coleta",
+              rotulo: "Abrir a coleta",
+            };
 
   // O que dá para saber sem raspar: porta responde, aba do painel aberta, sem flag de
   // re-login. Só o canário prova autenticação — o texto do "ok" diz isso.
