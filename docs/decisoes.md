@@ -957,3 +957,25 @@ O dono autorizou nestes termos: *"Em seguida autorizo a revisão do PRD. Todas a
 **Cinco correções vieram da auditoria de invariantes**, e entraram antes do merge porque todas eram omissão no documento que ganha na hierarquia: a cláusula "o super destaque nunca relaxa **inclusive para a regra do perfil**" passou a existir no PRD e não só na Spec; o Console ganhou a frase dizendo que escreve em esquema próprio da **mesma base própria do sistema**, e as Restrições técnicas trocaram "base própria do Registro" por "base própria do sistema", porque o console é declarado separado do Registro e a redação antiga não sancionava a escrita dele; a dependência nova de acesso ao MySQL passou a dizer **somente leitura**; e o item de roteiro "escrita direta após aprovação" foi **aposentado** — ele previa aplicar a carga automaticamente, e o invariante 1 não admite fase futura. Também da revisão de regra: os 8.230 elegíveis de 04/09 são **anteriores** ao filtro de perfil, e o texto que dizia o contrário escondia o achado mais duro da medição — com o filtro aplicado sobrariam cerca de 6.900 imóveis para 6.970 posições, o que não gera vaga vazia porque o perfil é o primeiro degrau da cedência, mas significa que essa regra seria relaxada quase toda semana.
 
 **Uma marcação de critério de aceite caiu**: "a ordem de cedência é fotos, cadastro, atualização, gestor e distrito" estava marcada como cumprida e a ordem mudou. A marcação cai porque o critério mudou, não porque o comportamento regrediu — e o texto diz isso, para o próximo leitor não ler como regressão.
+
+---
+
+## D-036 — A folga do destaque acabou: o desenho fica, e o relaxamento vira o mecanismo ordinário
+
+**Data**: 2026-09-06 · **Resolve**: a pendência que a incorporação da deriva criou — se as premissas de desenho por nível, agora medidas falsas, exigem mudar o critério.
+
+**O fato que forçou a pergunta.** O PRD não publicava "10,2 candidatos por vaga" e "folga de 48%" como curiosidade: usava esses números para **justificar** o desenho de cada nível. No super destaque, "há disputa real" sustentava perseguir valor esperado; no destaque, "há folga" sustentava encher tudo, relaxando quando faltasse. Medido em 06/09/2026 pelo pipeline, com as nove regras: **2.389 candidatos ao super destaque para 475 vagas (5,0 por vaga)** e **6.379 candidatos ao destaque para 6.495 vagas — déficit de 116**.
+
+No super destaque a premissa dobrou mas não quebrou: cinco por vaga ainda é disputa, e escolher os melhores continua fazendo sentido. **No destaque ela quebrou.** O documento diz que sobram imóveis; faltam. E isso muda o papel do relaxamento: desenhado como plano B para uma semana ruim, passa a ser o mecanismo ordinário de encher a cota — cedendo, pela ordem da D-027, o próprio filtro de perfil antes de qualquer outra regra.
+
+**A pergunta posta ao dono, nestes termos:** quando não há imóveis aprovados suficientes para as 6.970 posições já pagas, encher assim mesmo cedendo o perfil, ou deixar vazio o que não passar no critério? Os dois lados se defendem com os mesmos dados — posição paga vazia é desperdício certo; imóvel fora do perfil é aposta pior. Não é medição, é escolha de produto.
+
+**A decisão: encher, cedendo.** O desenho atual fica. O contrato está pago e posição vazia é perda certa, enquanto o imóvel recuperado por cedência é apenas uma aposta com menos evidência — e a planilha declara cada cedência, imóvel por imóvel, com a regra que cedeu.
+
+**O que o dono decidiu, literalmente, e nada além disso:** "vamos com a 1, atualiza os números dos documentos" — a opção 1 sendo encher cedendo, a 2 deixar vazio. A fundamentação do parágrafo acima é o enquadramento com que a pergunta lhe foi apresentada, não a justificativa que ele deu; ele escolheu entre as duas opções sem explicitar razão.
+
+**Recomendação da fatia, NÃO parte da decisão:** acompanhar o **número de posições preenchidas por cedência** nas primeiras semanas de operação real, e reabrir a pergunta se a maior parte da cota passar a encher cedendo o perfil. É o que tornaria a escolha revisável com evidência em vez de projeção — mas é sugestão de quem implementou, não obrigação que o dono assumiu. **Vira compromisso quando ele disser que vira.**
+
+**O que muda no código: nada.** A ordem de cedência, a trava do login e o invariante 7 seguem como estão; o super destaque continua sem relaxar. O que muda são os documentos, que passam a publicar os números medidos: PRD (sumário, funil, situação por nível, observação da rotação, natureza econômica), `CLAUDE.md`, a Spec, o **`docs/mapa-de-dados.md`** — onde a repartição por nível (2.389 e 6.379) é publicada pela primeira vez, para o PRD citar a fonte em vez de carregar número sozinho — e a skill `verificar-contra-spec`.
+
+**O que a decisão NÃO faz.** Não mexe nas cotas — são contratuais (invariante 6). Não preenche parâmetro nulo nenhum. E não explica *por que* a atividade de corretor caiu: é pergunta de negócio, a resposta não muda regra, e o sistema não tem como respondê-la.
