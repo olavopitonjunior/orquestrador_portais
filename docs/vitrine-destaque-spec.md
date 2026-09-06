@@ -342,7 +342,7 @@ O número de tentativas e o intervalo entre elas estão em aberto.
 | Degradada | Alguma fonte falhou e a decisão prosseguiu com dado parcial | Entrega com a limitação declarada de forma visível na planilha |
 | Abortada | A coleta interna não ficou pronta | Não há entrega; sem estoque não há decisão possível |
 
-**Duas limitações declaradas.** (1) O veto do crivo de auditoria — violação de cota, de piso ou de relaxamento em super destaque — também termina a rodada como ABORTADA, por falta de estado próprio nesta tabela; a distinção fica no motivo e no código de saída. Se isso merece um estado terminal próprio é pendência do dono ([P-01]). (2) A rodada ABORTADA **não deixa linha no Registro, nem o cabeçalho**, o que diverge da §2.1 ("uma linha por execução"): o que existe dela é o trabalho e o log no esquema `operacao`.
+**Duas limitações declaradas.** (1) O veto do crivo de auditoria — violação de cota, de piso ou de relaxamento em super destaque — também termina a rodada como ABORTADA, por falta de estado próprio nesta tabela; a distinção fica no motivo e no código de saída. Se isso merece um estado terminal próprio é pendência do dono ([P-01]). (2) A rodada de **decisão** abortada **não deixa linha no Registro, nem o cabeçalho**, o que diverge da §2.1 ("uma linha por execução"): o que existe dela é o trabalho e o log no esquema `operacao`. A ressalva vale para a sexta: na segunda, a ausência de carga aprovada é registrada, e o runner a declara explicitamente.
 
 ### 7.3 Falhas por etapa
 
