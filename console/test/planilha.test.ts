@@ -7,6 +7,7 @@ import {
   SENTINELA_VAZIA,
   arquivoDaAba,
   datasComPlanilha,
+  TODAS_AS_LINHAS,
   lerPlanilha,
   lerRegistros,
   parsearCsv,
@@ -128,7 +129,7 @@ test("lê as abas de uma data e lista as ausentes (a apuração inclusive)", asy
       "relaxamento.csv": "ordem,regra_cedida\r\n",
     },
   });
-  const p = await lerPlanilha("2026-09-05");
+  const p = await lerPlanilha("2026-09-05", TODAS_AS_LINHAS);
   assert.ok(p);
   assert.equal(p.abas.super_destaque?.linhas.length, 1);
   assert.equal(p.abas.destaque?.vazia, true);
@@ -144,8 +145,8 @@ test("lê as abas de uma data e lista as ausentes (a apuração inclusive)", asy
 test("datas mais recentes primeiro; nome fora do padrão é ignorado e nunca vira caminho", async () => {
   saida({ "2026-09-01": {}, "2026-09-05": {}, "lixo": {} });
   assert.deepEqual(await datasComPlanilha(), ["2026-09-05", "2026-09-01"]);
-  assert.equal(await lerPlanilha("../../etc"), null);
-  assert.equal(await lerPlanilha("2026-09-09"), null);
+  assert.equal(await lerPlanilha("../../etc", TODAS_AS_LINHAS), null);
+  assert.equal(await lerPlanilha("2026-09-09", TODAS_AS_LINHAS), null);
 });
 
 // --- arquivoDaAba: os bytes crus, com as mesmas guardas de lerPlanilha ---------------

@@ -43,6 +43,24 @@ export type Tabela = {
   semConteudo: boolean; // arquivo de 0 bytes: não é "sem linhas", é escrita que não aconteceu
 };
 
+/** Quantas linhas de DADOS materializar por aba. Aba não citada: todas.
+ *
+ *  A ARMADILHA que este tipo cria, e que quem declarar um limite precisa checar antes:
+ *  limite só é seguro em aba de que a página **exibe** linhas. Se a página **agrega**
+ *  sobre elas — conta, soma, filtra —, o limite corrompe o agregado EM SILÊNCIO, e o
+ *  pior caso é o que já aconteceu: os relaxados ocupam as ÚLTIMAS posições do destaque
+ *  (a partir da 6.379 de 6.495 em 2026-09-06), então ficam fora de qualquer prefixo e a
+ *  contagem daria zero. Antes de limitar uma aba, enumere quem lê `Tabela.linhas` dela.
+ *
+ *  `lerPlanilha` EXIGE o argumento, e não o deixa opcional de propósito: o defeito que a
+ *  assinatura existe para impedir foi um chamador não declarar nada e levar 48.812 linhas
+ *  de apuração para uma tela que não as exibe. Quem quer tudo diz isso pelo nome, com
+ *  `TODAS_AS_LINHAS`. */
+export type LimiteDeLinhas = Partial<Record<Aba, number>>;
+
+/** O limite que não limita — para quem realmente precisa do arquivo inteiro. */
+export const TODAS_AS_LINHAS: LimiteDeLinhas = {};
+
 export type Planilha = {
   diretorio: string;
   abas: Partial<Record<Aba, Tabela>>;
@@ -189,8 +207,12 @@ export async function arquivoDaAba(data: string, aba: string): Promise<Buffer | 
 }
 
 /** A planilha de UMA data. `null` se o diretório não existe. O nome da data é
- *  validado antes de virar caminho: nada além de `AAAA-MM-DD` chega ao disco. */
-export async function lerPlanilha(data: string): Promise<Planilha | null> {
+ *  validado antes de virar caminho: nada além de `AAAA-MM-DD` chega ao disco.
+ *
+ *  TODAS as abas são sempre abertas — é assim que `ausentes` sabe o que falta —, mas
+ *  `limites` decide quantas linhas de cada uma viram objeto. Leia a armadilha declarada
+ *  em `LimiteDeLinhas` antes de limitar uma aba nova. */
+export async function lerPlanilha(data: string, limites: LimiteDeLinhas): Promise<Planilha | null> {
   if (!DATA_VALIDA.test(data)) return null;
   const diretorio = resolve(raizDaSaida(), data);
   try {
@@ -202,7 +224,8 @@ export async function lerPlanilha(data: string): Promise<Planilha | null> {
   const ausentes: Aba[] = [];
   for (const aba of ABAS) {
     try {
-      abas[aba] = tabelaDe(await readFile(resolve(diretorio, `${aba}.csv`), "utf-8"));
+      const texto = await readFile(resolve(diretorio, `${aba}.csv`), "utf-8");
+      abas[aba] = tabelaDe(texto, limites[aba] ?? Number.POSITIVE_INFINITY);
     } catch {
       ausentes.push(aba);
     }
