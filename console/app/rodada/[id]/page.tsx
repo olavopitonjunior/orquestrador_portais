@@ -8,6 +8,7 @@ import {
   trabalhoDaRodada,
 } from "@/lib/operacao";
 import { cedenciaDaAba, montarBlocos } from "@/lib/blocos-da-rodada";
+import { LIMITES, LINHAS_NA_TELA, ORDEM_DAS_ABAS } from "@/lib/abas-da-rodada";
 import { ABAS, lerPlanilha, type Aba, type Tabela } from "@/lib/planilha";
 import { cotasDoRegistro } from "@/lib/cotas";
 import { lerRodada, limitacoesDe, parametrosDaRodada } from "@/lib/registro";
@@ -69,22 +70,6 @@ const SOBRE_A_COLUNA: Record<string, string> = {
   degrau_cedido: "a regra cedida para este imóvel entrar",
 };
 
-// A ordem de LEITURA, explícita: limitações antes de qualquer número; depois o nível com
-// disputa; depois o de folga; excluídos e relaxamento por último.
-// A apuração NÃO entra aqui: são dezenas de milhares de linhas numa rodada inteira, e a
-// tela não é o lugar de lê-las — ela ganha um cartão próprio no topo, com a contagem e o
-// botão, e o arquivo se lê no Sheets.
-const ORDEM_DAS_ABAS: readonly Aba[] = [
-  "parametros_e_limitacoes",
-  "super_destaque",
-  "destaque",
-  "excluidos_por_regra",
-  "relaxamento",
-  "perfis",
-];
-
-const LINHAS_NA_TELA = 300;
-
 function Tabela({ aba, t }: { aba: Aba; t: Tabela }) {
   if (t.vazia) return <p className="vazio">A etapa rodou e não produziu linha nesta rodada.</p>;
   if (t.semConteudo)
@@ -120,9 +105,9 @@ function Tabela({ aba, t }: { aba: Aba; t: Tabela }) {
         </table>
       </div>
       <p className="nota" style={{ margin: 0, padding: "10px 20px", borderTop: "1px solid var(--border)" }}>
-        {t.linhas.length > LINHAS_NA_TELA
-          ? `${LINHAS_NA_TELA} de ${t.linhas.length} linhas na tela; o CSV inteiro está em disco`
-          : `${t.linhas.length} ${t.linhas.length === 1 ? "linha" : "linhas"}`}
+        {t.total > mostradas.length
+          ? `${mostradas.length} de ${t.total.toLocaleString("pt-BR")} linhas na tela; o CSV inteiro está em disco`
+          : `${t.total} ${t.total === 1 ? "linha" : "linhas"}`}
         . Passe o mouse no cabeçalho para ver o que cada coluna significa.
       </p>
     </>
@@ -164,7 +149,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     : [new Map<string, Record<string, unknown>>(), []];
   const dataReferencia =
     typeof parametros?.data_referencia === "string" ? parametros.data_referencia : null;
-  const planilha = dataReferencia ? await lerPlanilha(dataReferencia) : null;
+  const planilha = dataReferencia ? await lerPlanilha(dataReferencia, LIMITES) : null;
   const recorte = parametros?.recorte_pela_raspagem as { imoveis?: number } | null | undefined;
   const amostral = recorte != null;
   const limitacoes = limitacoesDe(rodada.motivoDegradacao);
@@ -456,7 +441,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <span className="pill pill-muted">
                     {planilha.abas.apuracao.vazia || planilha.abas.apuracao.semConteudo
                       ? "0"
-                      : planilha.abas.apuracao.linhas.length.toLocaleString("pt-BR")}{" "}
+                      : planilha.abas.apuracao.total.toLocaleString("pt-BR")}{" "}
                     imóveis
                   </span>
                 </h2>
@@ -477,7 +462,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <div className="caixa-cabecalho">
                   <h2>
                     {aba.replace(/_/g, " ")}{" "}
-                    <span className="pill pill-muted">{t.vazia || t.semConteudo ? "0" : t.linhas.length.toLocaleString("pt-BR")}</span>
+                    <span className="pill pill-muted">{t.vazia || t.semConteudo ? "0" : t.total.toLocaleString("pt-BR")}</span>
                   </h2>
                   <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
                     <span className="nota" style={{ maxWidth: 560 }}>{SOBRE_A_ABA[aba]}</span>

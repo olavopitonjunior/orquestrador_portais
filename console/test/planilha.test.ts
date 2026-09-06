@@ -7,7 +7,9 @@ import {
   SENTINELA_VAZIA,
   arquivoDaAba,
   datasComPlanilha,
+  TODAS_AS_LINHAS,
   lerPlanilha,
+  lerRegistros,
   parsearCsv,
   tabelaDe,
 } from "../lib/planilha";
@@ -28,11 +30,11 @@ test("última linha sem terminador ainda conta", () => {
 
 test("a sentinela sem cabeçalho vira tabela VAZIA, não erro nem linha", () => {
   const t = tabelaDe(SENTINELA_VAZIA + "\n");
-  assert.deepEqual(t, { colunas: [], linhas: [], vazia: true, semConteudo: false });
+  assert.deepEqual(t, { colunas: [], linhas: [], total: 0, vazia: true, semConteudo: false });
 });
 
 test("arquivo de 0 bytes é SEM CONTEÚDO, não 'sem linhas'", () => {
-  assert.deepEqual(tabelaDe(""), { colunas: [], linhas: [], vazia: false, semConteudo: true });
+  assert.deepEqual(tabelaDe(""), { colunas: [], linhas: [], total: 0, vazia: false, semConteudo: true });
 });
 
 test("aspa no meio de célula não quotada é texto, como no csv do Python", () => {
@@ -49,6 +51,57 @@ test("limitacoesDe divide por LINHA; '; ' dentro da limitação não parte nada"
   // rodada antiga, juntada por "; " — bloco único, não contagem errada
   assert.equal(limitacoesDe("a; b; c").length, 1);
   assert.deepEqual(limitacoesDe(null), []);
+});
+
+// --- o limite: contar sem materializar ----------------------------------------------
+// O que a correção promete é que `total` continue exato com as linhas fora da memória.
+// (A primeira versão deste bloco justificava-se por "a página saía com 23 MB" — número
+// de servidor de DESENVOLVIMENTO, retratado em `bug.md`. O custo real é de servidor:
+// 2.221.660 células e +251 MB de heap por requisição para exibir 13.896.)
+
+test("o limite corta as linhas materializadas e NÃO a contagem", () => {
+  const csv = "a,b\r\n" + Array.from({ length: 1000 }, (_, i) => `${i},x${i}`).join("\r\n") + "\r\n";
+  const t = tabelaDe(csv, 3);
+  assert.deepEqual(t.colunas, ["a", "b"]);
+  assert.deepEqual(t.linhas, [["0", "x0"], ["1", "x1"], ["2", "x2"]]);
+  assert.equal(t.total, 1000, "o total é o do arquivo, não o das linhas na memória");
+});
+
+test("limite ZERO: só o cabeçalho e a contagem — o caso da apuração na tela", () => {
+  const t = tabelaDe("a,b\r\n1,2\r\n3,4\r\n", 0);
+  assert.deepEqual(t.colunas, ["a", "b"]);
+  assert.deepEqual(t.linhas, []);
+  assert.equal(t.total, 2);
+});
+
+test("a sentinela e o arquivo vazio continuam se distinguindo COM limite zero", () => {
+  // É onde o corte poderia mentir: sem linhas materializadas, "a etapa rodou e não
+  // produziu linha" e "a escrita não aconteceu" viram a mesma coisa se `total` errar.
+  assert.equal(tabelaDe(SENTINELA_VAZIA + "\n", 0).vazia, true);
+  assert.equal(tabelaDe(SENTINELA_VAZIA + "\n", 0).semConteudo, false);
+  assert.equal(tabelaDe("", 0).semConteudo, true);
+  assert.equal(tabelaDe("", 0).vazia, false);
+});
+
+test("passado o limite, quebra dentro de aspas não vira linha", () => {
+  // Contar `\n` daria 4 aqui. São 3 registros: a quebra do meio está DENTRO de aspas.
+  const csv = 'a,b\r\n1,"x\r\ny"\r\n2,z\r\n';
+  assert.equal(lerRegistros(csv, Number.POSITIVE_INFINITY).total, 3);
+  assert.equal(tabelaDe(csv, 0).total, 2);
+  assert.equal(tabelaDe(csv, 1).total, 2);
+});
+
+test("passado o limite, aspa no meio de célula não quotada continua sendo texto", () => {
+  // Se a varredura perdesse a noção de "início de célula" fora do limite, esta aspa
+  // abriria célula quotada e engoliria as linhas seguintes — o total viria 1.
+  const csv = 'h\r\nx"y\r\nz\r\nw\r\n';
+  assert.equal(tabelaDe(csv, 0).total, 3);
+  assert.equal(tabelaDe(csv, Number.POSITIVE_INFINITY).total, 3);
+});
+
+test("última linha sem terminador conta mesmo estando fora do limite", () => {
+  assert.equal(lerRegistros("a,b\r\n1,2\r\n3,4", 1).total, 3);
+  assert.equal(lerRegistros("a,b\r\n1,2\r\n3,4", 1).registros.length, 1);
 });
 
 test("cabeçalho vira colunas e o resto vira linhas", () => {
@@ -76,7 +129,7 @@ test("lê as abas de uma data e lista as ausentes (a apuração inclusive)", asy
       "relaxamento.csv": "ordem,regra_cedida\r\n",
     },
   });
-  const p = await lerPlanilha("2026-09-05");
+  const p = await lerPlanilha("2026-09-05", TODAS_AS_LINHAS);
   assert.ok(p);
   assert.equal(p.abas.super_destaque?.linhas.length, 1);
   assert.equal(p.abas.destaque?.vazia, true);
@@ -92,8 +145,8 @@ test("lê as abas de uma data e lista as ausentes (a apuração inclusive)", asy
 test("datas mais recentes primeiro; nome fora do padrão é ignorado e nunca vira caminho", async () => {
   saida({ "2026-09-01": {}, "2026-09-05": {}, "lixo": {} });
   assert.deepEqual(await datasComPlanilha(), ["2026-09-05", "2026-09-01"]);
-  assert.equal(await lerPlanilha("../../etc"), null);
-  assert.equal(await lerPlanilha("2026-09-09"), null);
+  assert.equal(await lerPlanilha("../../etc", TODAS_AS_LINHAS), null);
+  assert.equal(await lerPlanilha("2026-09-09", TODAS_AS_LINHAS), null);
 });
 
 // --- arquivoDaAba: os bytes crus, com as mesmas guardas de lerPlanilha ---------------
