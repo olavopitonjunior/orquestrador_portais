@@ -194,8 +194,9 @@ GRUPOS: tuple[Grupo, ...] = (
             "Estas não excluem ninguém: ordenam quem passou (D-028). A nota vai de 0 a 100 e "
             "é a soma ponderada de três sinais do anúncio no Canal Pro — nota do anúncio, "
             "cliques (somados entre tipos) e visualizações — cada um reescalado entre os "
-            "elegíveis. A alocação adotada é 70/30/0, e a primeira coleta completa sugere que "
-            "dois deles estão trocados: entre os 6.970 escolhidos da rodada 30417, os cliques "
+            "elegíveis (os recuperados por cedência são reescalados à parte). A alocação "
+            "adotada é 70/30/0, e a primeira coleta completa sugere que dois deles estão "
+            "trocados: entre os 6.970 escolhidos da rodada 30417, os cliques "
             "pesam 30 e conseguem ORDENAR 3,5 % dos pares de imóveis, enquanto as visualizações "
             "pesam zero e ordenam 38,6 %. A nota, com 70, ordena 57,8 % — essa está confirmada. "
             "Os três valores seguem vigentes até você decidir a alocação ([P-25]); como somam "
@@ -407,8 +408,8 @@ CAMPOS: tuple[Campo, ...] = (
         unidade="pontos de 100",
         se_aumentar=(
             "Anúncio com clique sobe mesmo com nota baixa — mas o sinal ordena só 3,5 % dos "
-            "pares entre os 6.970 escolhidos da rodada 30417: o valor de topo empata 6.846 "
-            "deles."
+            "pares entre os 6.970 escolhidos da rodada 30417: o ZERO empata 6.846 deles, que "
+            "ficam na mesma posição sem que este peso os separe."
         ),
         minimo=0,
         maximo=100,

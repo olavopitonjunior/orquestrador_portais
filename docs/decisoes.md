@@ -878,7 +878,7 @@ Entram no contrato, todos em unidade que uma pessoa julga: `conversao.janela_dia
 | `corretor.minimo_no_distrito` | 2 corretores | D-015: de 3 para 2 elevou a cobertura de vendas de 62 % para 75 % |
 | `portal.peso_nota` | 70 pontos | único sinal com variância medida: 14 valores em 300 anúncios — **remedido em 06/09: 69 em 55.162, conclusão reforçada; ver o segundo adendo da [P-25]** |
 | `portal.peso_cliques` | 30 pontos | sinal fraco mas real, e é intenção de compra, não curiosidade — **"fraco" ficou muito mais fraco na coleta completa; ver o segundo adendo da [P-25]** |
-| `portal.peso_visualizacoes` | 0 pontos | medido zero em 300 de 300 — **premissa caída em 06/09/2026, ver [P-25]**; o valor segue adotado |
+| `portal.peso_visualizacoes` | 0 pontos | medido zero em 300 de 300 — **premissa caída em 06/09/2026, ver [P-25]**; o zero pesa num sinal que ordena 38,6 % dos pares, **ver o segundo adendo da [P-25]**; o valor segue adotado |
 | `portal.cobertura_minima` | 50 % | abaixo da metade, a ordem seria decidida por menos da metade do estoque (nº 7) |
 | `portal.idade_maxima_dias` | 2 dias | a rodada raspa no mesmo dia; 2 tolera um retry sem aceitar dado da semana passada (nº 5) |
 | `portal.sem_anuncio` | fim da fila | é o que já acontecia, agora dito (D-028) |
@@ -1036,13 +1036,15 @@ A **D-028** fixou a nota do portal sobre uma medição de 03/09/2026 — a prime
 
 A pergunta que o primeiro adendo deixou — *quais outros adotados da D-034 têm procedência com "300"?* — foi respondida medindo os três sinais do portal na coleta completa e na rodada 30417. **O achado é maior que o do primeiro adendo, e é da mesma decisão.**
 
-| Sinal | Peso adotado | Presente em (55.162 anúncios) | Não-zero entre os 6.970 escolhidos | Valores distintos | **Pares que distingue** |
+| Sinal | Peso adotado | Sinal presente (55.162 anúncios) | Não-zero entre os 6.970 escolhidos | Valores distintos do sinal | **Pares que ordena** |
 |---|---:|---:|---:|---:|---:|
 | Nota do anúncio | **70** | 100 % | 6.751 (96,9 %) | 26 | **57,8 %** |
-| **Cliques** | **30** | **1,69 %** (933) | **124 (1,8 %)** | 9 | **3,5 %** |
-| **Visualizações** | **0** | 23,9 % (13.175) | 1.550 (22,2 %) | 74 | **38,6 %** |
+| **Cliques** | **30** | **1,69 %** (933) | **124 (1,8 %)** | 7 | **3,5 %** |
+| **Visualizações** | **0** | 23,9 % (13.175) | 1.550 (22,2 %) | 62 | **38,6 %** |
 
-A última coluna é a que mede o que interessa a um ranking: a fração dos pares de imóveis que aquele sinal consegue **ordenar** em vez de empatar. Presença é proxy; esta é a grandeza. Ela dá o mesmo veredito, com margem maior — o valor de topo dos cliques empata 6.846 dos 6.970.
+A última coluna é a que mede o que interessa a um ranking: a fração dos pares de imóveis que aquele sinal consegue **ordenar** em vez de empatar. Presença é proxy; esta é a grandeza. Ela dá o mesmo veredito, com margem maior — nos cliques, **o zero** empata 6.846 dos 6.970.
+
+Duas ressalvas de método sobre as colunas do meio, para que ninguém as leia como mais do que são. **"Sinal presente" usa dois critérios**, porque zero significa coisas diferentes: para a nota é o campo preenchido (uma nota zero é uma nota), e para cliques e visualizações é valor não-zero (zero clique é ausência de evento). Pelo critério não-zero a nota daria 97,9 % — 1.180 dos 55.162 anúncios têm nota zero. **"Valores distintos" conta o sinal**, não o fator normalizado: a normalização min-max roda em dois grupos separados (elegíveis e reprovados), então o mesmo valor bruto vira dois valores normalizados nos 116 recuperados por cedência, e contar a coluna normalizada infla cliques para 9 e visualizações para 74. A fração de pares não é afetada (38,58 % normalizado contra 38,56 % bruto), e restringir aos 6.854 elegíveis — escala única — dá 58,3 / 3,3 / 38,7 %: o veredito é o mesmo em todos os cortes.
 
 **A nota sai reforçada.** A D-034 a justificou como "único sinal com variância medida (14 valores distintos em 300 anúncios)"; a coleta completa achou **69** valores e preenchimento de 100 %. O número envelheceu, a conclusão ficou mais forte. Nada a decidir aqui.
 
@@ -1054,6 +1056,6 @@ A última coluna é a que mede o que interessa a um ranking: a fração dos pare
 
 **Dois números de desconto também foram remedidos**, e nenhum muda valor:
 - *"aplica-se a 84 % dos elegíveis"* (sem lead em 180 dias) — medido na rodada 30417: **78,3 % entre os elegíveis**, que é a base comparável (77,0 % entre os escolhidos, que incluem os 116 recuperados por cedência; 76,3 % entre todos os candidatos). O 84 % vinha da leitura de 28/08 e nunca fora rastreável a um artefato; agora é.
-- *"cerca de 44 % do estoque elegível não tem avaliação por categoria"* — medido: **56,3 % entre os elegíveis**. **Não é premissa caída**, e é o mais próximo que esta auditoria chega de uma confirmação: a tabela de riscos do PRD dava como *Alta* a probabilidade de a penalidade "recair sobre metade dos candidatos", e recaiu. **Mas a medição não prova a causa.** Entre os 48.812 candidatos a taxa é **35,3 %**, *abaixo* dos 44 % de 28/08 — então quem produz os 56 % é a filtragem do funil, não necessariamente o acúmulo de estoque novo, e a definição de "elegível" mudou no período (a D-027 acrescentou a nona regra). Separar deriva de composição exigiria a medição de 28/08 sobre a base ampla, que não temos. O desconto de 5 pontos, baixo de propósito para não punir estoque novo por defeito da base, segue justificado.
+- *"cerca de 44 % do estoque elegível não tem avaliação por categoria"* — medido: **56,3 % entre os elegíveis**. **Não é premissa caída** — mas também **não é a confirmação que eu quis ler nela**, e a diferença está na base. A tabela de riscos do PRD dava como *Alta* a probabilidade de a penalidade "recair sobre metade dos **candidatos**"; entre os 48.812 candidatos a taxa medida é **35,3 %**, cerca de um terço. Passa de metade só entre os elegíveis, que é recorte mais estreito do que a palavra usada na previsão. **E a medição não prova a causa.** Os mesmos 35,3 %, *abaixo* dos 44 % de 28/08 — então quem produz os 56 % é a filtragem do funil, não necessariamente o acúmulo de estoque novo, e a definição de "elegível" mudou no período (a D-027 acrescentou a nona regra). Separar deriva de composição exigiria a medição de 28/08 sobre a base ampla, que não temos. O desconto de 5 pontos, baixo de propósito para não punir estoque novo por defeito da base, segue justificado.
 
 **O que esta auditoria NÃO fez:** mexer em valor nenhum. `peso_nota = 70`, `peso_cliques = 30`, `peso_visualizacoes = 0` e os três descontos seguem exatamente como a D-034 os adotou.

@@ -28,13 +28,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 - **A auditoria dos adotados da D-034 contra a coleta completa: a alocação dos pesos do portal parece invertida ([P-25]).** A fatia anterior deixou a pergunta — quais outros valores adotados têm procedência na amostra de 300? Medidos os três sinais do portal em 55.162 anúncios e na rodada 30417:
 
-  | Sinal | Peso | Presente em | Não-zero entre os 6.970 escolhidos | Valores distintos | Pares que distingue |
+  | Sinal | Peso | Sinal presente (55.162 anúncios) | Não-zero entre os 6.970 escolhidos | Valores distintos do sinal | Pares que ordena (6.970 escolhidos) |
   |---|---:|---:|---:|---:|---:|
   | Nota do anúncio | **70** | 100 % | 6.751 (96,9 %) | 26 | **57,8 %** |
-  | Cliques | **30** | 1,69 % | **124 (1,8 %)** | 9 | **3,5 %** |
-  | Visualizações | **0** | 23,9 % | **1.550 (22,2 %)** | 74 | **38,6 %** |
+  | Cliques | **30** | 1,69 % | **124 (1,8 %)** | 7 | **3,5 %** |
+  | Visualizações | **0** | 23,9 % | **1.550 (22,2 %)** | 62 | **38,6 %** |
 
-  A coluna de **pares que distingue** é a que mede o que interessa a um ranking — a fração dos pares de imóveis que o sinal consegue ordenar em vez de empatar; presença é só proxy. **A nota sai reforçada**: os "14 valores distintos em 300 anúncios" viraram 69 em 55.162, com preenchimento de 100 %. **Os cliques são o problema**: a justificativa era "sinal fraco mas real, e é intenção de compra"; a primeira metade ficou muito mais fraca do que a frase sugeria — algum clique aparece em 1,69 % dos anúncios, e **proposta e agendamento são zero em 55.162 de 55.162**. Trinta pontos de 100 foram para um sinal que separou 124 imóveis, enquanto o que separou 1.550 pesou zero.
+  A coluna de **pares que ordena** é a que mede o que interessa a um ranking — a fração dos pares de imóveis que o sinal consegue ordenar em vez de empatar; presença é só proxy. Duas ressalvas de método, detalhadas no segundo adendo da [P-25]: "sinal presente" é campo preenchido para a nota e valor não-zero para os outros dois (pelo critério não-zero a nota daria 97,9 %), e "valores distintos" conta o sinal, não o fator normalizado, cuja escala roda em dois grupos. **A nota sai reforçada**: os "14 valores distintos em 300 anúncios" viraram 69 em 55.162, com preenchimento de 100 %. **Os cliques são o problema**: a justificativa era "sinal fraco mas real, e é intenção de compra"; a primeira metade ficou muito mais fraca do que a frase sugeria — algum clique aparece em 1,69 % dos anúncios, e **proposta e agendamento são zero em 55.162 de 55.162**. Trinta pontos de 100 foram para um sinal que separou 124 imóveis, enquanto o que separou 1.550 pesou zero.
 
   **A segunda metade da justificativa continua de pé**, e é o que impede isto de ser correção óbvia: um clique é intenção de compra, uma visualização é curiosidade, e por unidade o clique vale mais. A pergunta que fica não é aritmética — é **quanto peso um sinal raro e forte merece contra um comum e fraco**, e isso é critério do dono. Por isso não abre pendência nova: os três pesos somam 100, decidir um é decidir de onde saem os pontos, e a **[P-25]** passa a ser sobre a alocação inteira.
 
