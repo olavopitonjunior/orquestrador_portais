@@ -35,7 +35,7 @@ export const LIMITES: LimiteDeLinhas = {
   ...Object.fromEntries(ORDEM_DAS_ABAS.map((a) => [a, LINHAS_NA_TELA])),
   apuracao: 0,
   // `page.tsx` conta `origem === "relaxamento"` sobre estas linhas. O relaxamento
-  // preenche as ÚLTIMAS posições — a partir da 6.379 de 6.495 em 2026-09-06 —, então
+  // preenche as ÚLTIMAS posições — da 6.380 à 6.495 em 2026-09-06 —, então
   // qualquer prefixo daria ZERO e a tela mentiria sobre o mecanismo que a D-036 tornou o
   // modo ordinário de encher a cota.
   destaque: undefined,
