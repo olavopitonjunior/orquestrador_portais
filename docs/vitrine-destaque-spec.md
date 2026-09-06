@@ -379,7 +379,7 @@ Investigações abertas, que podem alterar regras já definidas:
 - Por que cerca de 44% do estoque elegível não possui avaliação por categoria registrada — e o fato de o pipeline de avaliação ter parado em 16/10/2025.
 - Se a tabela de relatórios da raspagem, que tem 43 registros, todos com erro e todos de dezembro de 2025, ainda é usada por alguma coisa.
 - Se quem aplica a carga localiza o imóvel pelo código do portal que a apuração entrega (`realties.NewIdMarketingRotation`, igual ao `codigoImovel` em 300 de 300) ou depende de outra referência ([P-13]).
-- A deriva dos números de referência (elegíveis de 10.290 para cerca de 8.000 entre 28/08 e 04/09/2026), ainda não incorporada ao mapa de dados.
+- A deriva dos números de referência (elegíveis de 10.290 para cerca de 8.000 entre 28/08 e 04/09/2026), **incorporada ao mapa de dados em 06/09/2026** — mas ainda não refletida nos números que esta Spec e o PRD publicam, porque revisá-los é decisão do dono (ver `docs/perguntas-abertas.md`).
 
 ---
 

@@ -24,21 +24,25 @@ PRD > Spec > Ferramentas > código. Divergência entre código e documento é **
 
 ## Números que devem bater
 
-Medidos em 28/08/2026 (`docs/mapa-de-dados.md`). Deriva da base é possível — divergência pequena e uniforme sugere deriva; divergência concentrada numa etapa sugere bug naquela regra.
+Medidos pelo PIPELINE em 06/09/2026 (`docs/mapa-de-dados.md`, seção "O funil pelo pipeline"). Deriva da base é possível — divergência pequena e uniforme sugere deriva; divergência concentrada numa etapa sugere bug naquela regra.
 
-**Cuidado com esta última leitura:** "sugere" não é "prova". A etapa pode concentrar a diferença porque o INSUMO dela mudou, e não porque a regra quebrou — foi o que a conferência de 02/09/2026 encontrou (ver o aviso no topo dos números de referência do mapa). Confira a passagem por regra que a ferramenta imprime antes de concluir que há defeito.
+**Cuidado com esta última leitura:** "sugere" não é "prova". A etapa pode concentrar a diferença porque o INSUMO dela mudou, e não porque a regra quebrou — foi exatamente o caso das duas regras de corretor entre 28/08 e 06/09/2026: nada mudou nos predicados, e a atividade é que caiu — distritos com dois ou mais corretores produtivos foram de 61 para 46, e 21,4 % dos imóveis ativos estão hoje em distrito sem nenhum. Confira a passagem por regra que a ferramenta imprime antes de concluir que há defeito.
 
-| Conferência | Valor |
-|---|---|
-| Funil: ativos | 48.964 |
-| Funil: nas cinco categorias | 41.478 |
-| Funil: preço ≥ R$ 300.000 | 35.560 |
-| Elegíveis ao final | 10.290 |
-| Candidatos ao super destaque | 4.852 |
-| Vendas assinadas em 180 dias (entrada do perfil) | 176 |
-| Cotas — **exatas sempre, são contratuais** | 475 e 6.495 (total 6.970) |
+| Conferência | Valor | Tolerância |
+|---|---|---|
+| Funil: recorte ativo lido | 48.812 | ±1 % (o estoque se move) |
+| Funil: nas cinco categorias | 41.312 | ±1 % |
+| Funil: preço ≥ R$ 300.000 | 35.451 | ±1 % |
+| Elegíveis, **oito degraus** (sem o perfil) | 8.197 | ±5 % |
+| Elegíveis, **nove degraus** (com o perfil, D-027) | 6.854 | ±5 % |
+| Candidatos ao super destaque (oito degraus) | 3.732 | ±5 % |
+| Vendas assinadas em 180 dias (entrada do perfil) | 186 | ±10 % |
+| Cotas — **exatas sempre, são contratuais** | 475 e 6.495 (total 6.970) | zero |
+
+As três primeiras linhas são conferência dura: dependem só do estoque, mediram 0,3 a 0,4 % de diferença em nove dias, e divergência ali é defeito. As de baixo dependem de atividade de corretor nos últimos 30 dias e **mexem quando o mart de BI é reconstruído** — 155 imóveis, 2,2 %, entre 05/09 23h52 e 06/09 08h35. Número fora da tolerância pede remedição antes de acusar o código; a prévia do console dá o número do dia.
 
 ## Números que NÃO servem de conferência exata
 
 - **Ganhos de relaxamento** (+133 fotos, +569 cadastro, +1.680 atualização, +1.747 gestor, +5.686 distrito): medidos com mínimo de **três** corretores por distrito; o parâmetro adotado é **dois**. Ordem de grandeza apenas — o PRD é explícito nisso, a Spec §6.6 omite a ressalva (o PRD prevalece).
 - **Estatísticas históricas** (88% de janelas sem lead, 0,21 lead/janela, 33 dias de duração média): descrevem o problema, não são alvo de teste.
+- **Os números de 28/08/2026** (10.290 elegíveis, 4.852 candidatos ao super, folga de 48 %, 10,2 por vaga): **a base mudou desde então** — distritos com dois ou mais corretores produtivos caíram de 61 para 46, e o universo elegível a um patamar 20 % menor. Continuam reprodutíveis como instante daquele dia, mas não conferem a implementação de hoje. A única mudança de predicado no período está medida e é pequena (`fe8a7c0`: −12 elegíveis). O PRD e a Spec ainda os publicam, com a ressalva de deriva datada (D-035).

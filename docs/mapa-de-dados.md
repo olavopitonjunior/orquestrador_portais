@@ -73,9 +73,9 @@ Armadilhas conhecidas. Campos aparentemente úteis que não podem ser usados sem
 
 ## Números de referência medidos
 
-> **Aviso, 2026-09-02 — existe medição divergente ainda NÃO incorporada.** Uma conferência contra a base encontrou diferença material nos números desta seção, com causa aparente na produtividade de corretor. Nenhum valor foi alterado aqui: incorporar exige repetir a contagem noutro dia e conciliar com o PRD e o `CLAUDE.md`, que publicam os mesmos números — é fatia própria. Enquanto isso, **uma diferença grande ao rodar a verificação contra a spec pode ser deriva da base, não defeito da implementação**. Os valores medidos estão em [`perguntas-abertas.md`](perguntas-abertas.md), na seção do aviso de deriva.
+> **Deriva INCORPORADA em 2026-09-06.** A contagem foi repetida noutro dia, como a fatia exigia, e o resultado está na seção **"O funil pelo pipeline"**, logo abaixo. Resumo: os números de 28/08 desta seção **deixaram de valer como conferência** porque a base mudou — a atividade de corretor caiu e levou o universo elegível a um patamar 20% menor. Use a tabela do pipeline.
 
-Medidos em 28/08/2026. Servem de conferência para implementações (skill `verificar-contra-spec`).
+Medidos em 28/08/2026, por consulta exploratória — `src/dados/coletor_interno.py` só nasceu em 31/08 (`ee5fa6c`). Continuam válidos como registro daquele dia; o que não são é referência de hoje.
 
 | Referência | Valor |
 |---|---|
@@ -94,6 +94,97 @@ Funil de elegibilidade medido:
 | Após os cinco cortes restantes | 10.290 |
 
 Concorrência por nível: 10,2 candidatos por vaga no super destaque; 1,5 no destaque (folga total de 48%).
+
+### O funil pelo pipeline — medições de 02 a 06/09/2026
+
+Produzidas pelo código que roda a rodada (`coletor_interno.coletar` + `elegibilidade.regras_reprovadas`), que é o que a skill `verificar-contra-spec` precisa conferir. **É esta tabela que serve de conferência**, não a de 28/08.
+
+Duas contagens, porque a D-027 acrescentou a nona regra e só a de oito degraus se compara com o histórico:
+
+| Data | Oito degraus (pré-D-027) | Nove degraus (com o perfil) | Candidatos ao super (8 degraus) |
+|---|---:|---:|---:|
+| 28/08 (fora do pipeline) | 10.290 | — | 4.852 |
+| 02/09 | 7.801 | — | 3.562 |
+| 04/09 | 8.230 | — | 3.715 |
+| **06/09 08:35** | **8.197** | **6.854** | **3.732** |
+
+O patamar do pipeline é **7.801 a 8.230** ao longo de cinco dias — amplitude de 5,3% em torno da média de 8.080 (a base do percentual é a média, não o mínimo). Os 10.290 de 28/08 ficam **25% acima** do topo dessa faixa. *(Ressalva de comparabilidade, na mesma régua que aplicamos ao 10.290: o 7.801 foi medido cerca de duas horas antes de `fe8a7c0` entrar; comparável, seriam ≈ 7.789 elegíveis e ≈ 3.560 candidatos ao super.)*
+
+**A queda é da BASE, não da régua** — e isto é medição, não inferência. Três razões:
+
+1. **As três primeiras etapas do funil batem a 0,3%** entre 28/08 e 06/09. Se o instrumento tivesse mudado, o topo do funil seria o primeiro lugar a divergir; ele é o mais estável.
+2. **A única mudança de predicado entre as duas datas está quantificada, e é pequena.** O commit `fe8a7c0` (02/09, "a regra de status passa a ver o transacional") mediu o próprio efeito: **−12 elegíveis** e −2 candidatos ao super. Doze de um vão de 2.093 é 0,6%.
+3. **A atividade de corretor caiu, medida na mesma coluna e com o mesmo predicado.** `corretores_ativos_no_distrito` não é calculado pelo projeto: vem inteiro de `newcore_bi.FT_Districts.BrokersProductivity`, que o `coletor_interno` apenas lê.
+
+| Distritos com… | 28/08 | 02/09 | **06/09** | Δ |
+|---|---:|---:|---:|---:|
+| ≥ 1 corretor produtivo | 126 | — | **102** | −19% |
+| ≥ 2 (o mínimo adotado) | 61 | 45 | **46** | −25% |
+| ≥ 3 | 39 | — | **18** | −54% |
+
+Um quarto dos distritos que sustentavam o universo elegível deixou de sustentar. **É esta a causa do degrau**, e ela é comercial, não técnica.
+
+E é esta mesma série que sustenta a palavra **degrau** em vez de *rampa*: 61 → 45 → 46. A queda inteira aconteceu **antes de 02/09** e depois achatou. A série de elegíveis não conseguiria mostrar isso — seus três pontos são todos posteriores à queda.
+
+Fica a ressalva de localização: sem um detalhamento por regra em 28/08, não dá para isolar a **capacidade do distrito** sozinha — o vão está nas **duas** regras de corretor (`gestor_produtivo` e `capacidade_distrito`), que leem o mesmo mart de BI.
+
+**O que os números de 28/08 são, então:** válidos como registro daquele dia, não como referência de hoje. Some-se que precedem o `coletor_interno` (nascido em 31/08, `ee5fa6c`), o que os torna registro do diagnóstico que fundou o produto — mas a razão de não os usar é a base ter mudado, não a régua.
+
+| Etapa acumulada | 28/08 | 06/09 | Δ |
+|---|---:|---:|---:|
+| Recorte ativo lido | 48.964 | 48.812 | −0,3% |
+| Nas cinco categorias | 41.478 | 41.312 | −0,4% |
+| Preço ≥ R$ 300.000 | 35.560 | 35.451 | −0,3% |
+| Elegíveis (oito degraus) | 10.290 | 8.197 | **−20,3%** |
+
+#### Cortes por regra, 06/09/2026 (oito degraus, mínimo de dois corretores)
+
+Sobre os **48.812** do recorte ativo lido:
+
+| Regra | Corta | Sobram |
+|---|---:|---:|
+| publicação ativa | 6 | 48.806 |
+| nas cinco categorias | 7.494 | 41.312 |
+| preço ≥ R$ 300.000 | 5.861 | 35.451 |
+| dez fotos | 1.062 | 34.389 |
+| cadastro completo | 7.512 | 26.877 |
+| atualizado em 90 dias | 7.606 | 19.271 |
+| gestor produtivo | 5.068 | 14.203 |
+| capacidade do distrito | 6.006 | **8.197** |
+
+Entrada do perfil na mesma leitura: **186 vendas assinadas em 180 dias**, nenhuma descartada por falta de âncora (06/09/2026 08:35, `dados.vendas.coletar_vendas(180)`). A contagem canônica da D-013 é **177**, medida em 31/08 — a grandeza deriva com a base como qualquer outra, e é por isso que a skill a confere com tolerância de ±10%.
+
+Com a nona regra na posição da Spec (entre atualização e gestor), o perfil corta **3.984** e o resultado final é **6.854**. **Não subtraia 3.984 de 8.197**: os cortes a jusante se recompõem sobre um conjunto menor — gestor passa a cortar 4.069 e distrito 4.364, contra 5.068 e 6.006 sem o perfil.
+
+#### Por que o universo é frágil: a distribuição está em cima do limiar
+
+Corretores ativos no distrito, sobre os **48.812** imóveis do recorte ativo lido em 06/09:
+
+| Corretores ativos no distrito | Imóveis |
+|---|---:|
+| zero | 10.451 (21,4%) |
+| exatamente um | 14.545 |
+| exatamente dois | 11.564 |
+| três ou mais | 12.252 (25,1%) |
+
+Um em cada cinco imóveis ativos está em distrito **sem nenhum corretor** que tenha captado ou vendido em 30 dias, e o maior bloco isolado dos que passam está exatamente **no** limiar adotado. Consequência medida no mesmo instante: exigir três em vez de dois derruba os elegíveis de 8.197 para **3.976** — razão de 2,06. Em 28/08 a mesma troca dava 10.290 → 8.321, razão de **1,24**. *(O PRD `:217` enuncia na ordem inversa, "ampliou de 8.321 para 10.290"; aqui as duas datas seguem a mesma direção, dois → três, para poderem ser lidas lado a lado.)* O aperto da razão acompanha o aperto dos distritos (39 → 18 com ≥ 3, contra 61 → 46 com ≥ 2), que é a mesma medição por outro ângulo.
+
+#### O que isto significa para a semana
+
+Com as nove regras, o universo elegível está **na borda do contrato**:
+
+| Instante | Elegíveis (nove degraus) | Contra as 6.970 posições |
+|---|---:|---|
+| 05/09 23:52 | 7.009 | +39 |
+| 06/09 08:35 | 6.854 | **−116** |
+
+Houve, portanto, **pelo menos um instante medido abaixo da cota**. Os 155 imóveis de diferença (2,2%) **não vêm da rolagem das janelas**: a única regra que consome a data de referência é a de atualização em 90 dias, e o corte dela mudou em **um** imóvel (7.605 → 7.606) — o acumulado nesse ponto até subiu 15, herdado de montante. Vêm do degrau do distrito, que cortou 4.190 e depois 4.364. A causa observável é a **reconstrução do mart de BI entre as duas leituras** — `FT_Districts` foi atualizada em 06/09 às 08:17, dezoito minutos antes da segunda medição. Quanto disso é rolagem de janela dentro do próprio mart e quanto é cadência de carga **não foi medido**, e dois pontos não separam as duas coisas.
+
+Duas cautelas de leitura, para não extrapolar do que foi medido: as duas leituras são de sábado à noite e domingo de manhã, e o **único ponto de sexta da série** (04/09) deu o **maior** valor de oito degraus, 8.230. E "abaixo da cota" é uma observação, não uma frequência.
+
+O que sim está estabelecido: **não há margem confortável**, e quando o estoque não enche, a cota do destaque fecha cedendo o perfil — que é o primeiro degrau do relaxamento (Spec §6.6). A prévia de 05/09 mostra 1.389 imóveis recuperáveis só nesse degrau, muito acima do déficit de 116.
+
+**O que NÃO foi feito aqui, de propósito:** não se investigou *por que* a atividade de corretor caiu — é pergunta de negócio, não de dado, e a resposta não muda nenhuma regra. E as cotas continuam intocadas: são contratuais (invariante 6).
 
 Deriva medida em 29/08/2026 (um dia depois da referência):
 
