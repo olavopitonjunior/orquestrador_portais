@@ -321,3 +321,44 @@ quem chama pode omitir o dado. É a mesma ausência de autenticação, por outra
 
   **A lição, e ela desce um nível abaixo do rito da D-037.** Aquele rito manda enumerar os consumidores quando a fatia mexe em contrato compartilhado. Eu enumerei — e acertei: `lerPlanilha` tem um consumidor. O que não enumerei foram os consumidores dos **dados que ela devolve**: `Tabela.linhas` tem cinco leitores na página, e **dois deles agregam**. Enumerar a função não basta; é preciso enumerar o dado. Foi exatamente essa a diferença entre o parser (provado por equivalência e mutação, impecável) e a página (quebrada em silêncio).
   **Custo que PERMANECE**: o arquivo de 14 MB ainda é lido inteiro para a string a cada requisição, porque contar registros exige varrer até o fim (uma célula entre aspas pode conter quebra de linha, então contar `\n` daria número errado). Ler por fluxo, sem materializar a string, é fatia própria — e só vale se a leitura virar gargalo, o que hoje não é o caso.
+
+---
+
+# Rito: medir antes de afirmar
+
+Esta seção não é registro de defeito de código. É registro de **defeito de método** — o meu, ao afirmar coisas que a medição depois desmentiu. Está aqui porque o `CLAUDE.md` designa este arquivo como o registro de defeitos, e defeito de método é defeito: ele não quebra a rodada, mas corrompe a evidência com que as decisões são tomadas, e evidência ruim custa mais caro que código ruim porque ninguém a vê falhar.
+
+Cada regra abaixo nasceu de um erro concreto. A procedência está junto de propósito: sem ela a regra vira máxima, e máxima ninguém segue.
+
+**1. Todo número vem com a POPULAÇÃO declarada.**
+Publiquei que os sinais do portal tinham "68, 17 e 189 valores distintos **entre os elegíveis**". Eram da apuração inteira — 48.812 linhas que misturam dois pools normalizados separadamente (D-016). Entre os 6.854 elegíveis os números são **26, 7 e 62**. O erro não foi de aritmética, foi de rótulo: o nome da população é parte do número, e sem ele o número é uma afirmação diferente da que se quis fazer. Agravante: era o dado que eu oferecia ao dono como insumo da [P-25].
+
+**2. Contagem de teste se lê no COMMIT, nunca de memória.**
+Escrevi "1.398 → 1.400, os 2 a mais são os arquivos novos na varredura de credenciais" — e afirmei que fora conferido, não suposto. `main` tinha **1.386**; 1.398 era uma contagem local minha de antes de indexar os arquivos novos, e nunca existiu em commit nenhum. O delta real era +25. Afirmar ter conferido é o que dispensa o revisor de remedir; usar essa fórmula sobre um número lembrado destrói o crédito que ela invoca.
+
+**3. Antes de escrever "defeito", prove que é ALCANÇÁVEL.**
+Apresentei a leitura errada de `portal_pesou` como defeito que a planilha real corria risco de exibir. Não era: `avaliar_coleta` recusa a coleta com `n_casados == 0` e os anúncios saem do mesmo dicionário que ela contou, então o caminho do grafo não alcança a combinação. Era **defesa do contrato** de uma função pública — legítima, e de valor menor. Vender defesa de contrato como correção de bug infla o trabalho, e o trabalho não precisava disso para se justificar.
+
+**4. Artefato do modo de desenvolvimento NÃO é defeito de produção.**
+Registrei aqui mesmo que a página da rodada servia 23 MB. Media em build de produção: **1,05 MB antes e depois**. Os 23 MB eram instrumentação de I/O do `next dev`, que serializa o resultado de `readFile` no payload. O defeito real existia — custo de servidor —, mas não era o que eu havia escrito, e a entrada teve de ser reescrita.
+
+**5. Prova de mutação exige controle de BYTECODE.**
+Use `PYTHONDONTWRITEBYTECODE=1`, ou limpe `__pycache__` entre mutar e restaurar. O CPython valida `.pyc` por mtime em **segundos inteiros mais tamanho**: uma mutação que só reordena linhas passa nos dois critérios, e o interpretador segue rodando o código mutado com o arquivo já restaurado no disco. O sintoma engana — a suíte fica vermelha depois de restaurar, com `git status` limpo. O passo "restaurado → verde" é o que valida a prova; se ele mente, a prova inteira mente.
+
+---
+
+**O que nenhuma destas regras diz é "não afirme".** Afirmar é o trabalho — o dono decide a partir do que eu afirmo, e hesitação genérica não o serve melhor que erro. O que elas dizem é que a afirmação e a medição andam juntas, e que quando divergem quem cede é a afirmação, em voz alta e no mesmo lugar onde ela foi feita.
+
+A procedência dos cinco, medida e não lembrada — porque um texto com esta tese não pode terminar com uma afirmação que uma linha de `git log` desmenta:
+
+| caso | onde nasceu | quem achou | chegou a `main`? |
+|---|---|---|---|
+| 1 · população | fatia 4 da #73 (PR #98) | a revisão | não |
+| 2 · contagem de teste | fatia 2 da #73 (PR #99) | a revisão | não |
+| 3 · defeito alcançável | fatia 3 da #73 (PR #97) | a revisão | não |
+| 4 · artefato de desenvolvimento | PR #90, corrigido no #93 | eu | **sim** |
+| 5 · bytecode | fatia 5 da #73 (PR #96) | eu | não |
+
+**Dois dos cinco eu achei sozinho; três foram achados pela revisão.** E o caso 4 **chegou a `main` e ficou lá** — foi commitado como entrada deste próprio arquivo em `015324f` e só reescrito no PR #93. É por isso que a regra 4 existe: porque o erro passou, não porque quase passou.
+
+A primeira versão deste parágrafo dizia "os cinco vêm das fatias da #73" (são quatro; o caso 4 é de outra), "em quatro deles o erro foi reportado por mim" (foram dois) e "nenhum chegou a `main`" (um chegou). Três afirmações não medidas no fecho do texto que manda medir — a primeira apontada pelo orquestrador no portão, as outras duas achadas ao conferir a dele.
