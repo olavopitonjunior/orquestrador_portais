@@ -1129,10 +1129,9 @@ def test_a_planilha_recebe_o_CONTEXTO_da_apuracao_vindo_do_estado(
     # A perna que uma sonda de mutação achou solta: trocar por `{}` ou por `dims` passava.
     assert dict(ctx.penalizaveis) == {7: "penalizavel-7"}
     assert dict(ctx.anuncios) == {7: "anuncio"}
-    assert ctx.externo_entrou is True
 
 
-def test_sem_externo_no_estado_o_contexto_diz_que_o_portal_NAO_pesou(
+def test_sem_externo_no_estado_o_contexto_sobe_sem_anuncio_nenhum(
     tmp_path, monkeypatch, parametros, conexao_falsa
 ):
     vistos = _capturar_planilha(monkeypatch)
@@ -1141,5 +1140,7 @@ def test_sem_externo_no_estado_o_contexto_diz_que_o_portal_NAO_pesou(
     )
     mod.executar(tmp_path, parametros, hoje=HOJE)
     ctx = vistos["contexto"]
-    assert ctx.externo_entrou is False and dict(ctx.anuncios) == {}
+    # Quem diz se o portal PESOU é `ResultadoDecisao.portal_entrou`, não o contexto:
+    # o contexto carrega o portal cru, e cru é o que ele tem quando não veio nada.
+    assert dict(ctx.anuncios) == {}
     assert list(ctx.candidatos) == []  # estado sem candidatos → apuração vazia, não erro

@@ -119,7 +119,7 @@ def test_super_destaque_serializa_a_nota_e_a_justificativa():
     # a nota do CSV é a mesma do ResultadoDecisao (serializa, não recomputa)
     assert ln["nota"] == r.alocacao.super_destaque[0].nota
     # os sinais do portal (D-028) e os do banco, lidos do detalhe
-    assert ln["nota_portal"] == det.nota_bruta
+    assert ln["nota_bruta"] == det.nota_bruta
     assert ln["nota_anuncio"] == det.fatores.nota_anuncio
     assert ln["cliques"] == det.fatores.cliques
     assert ln["visualizacoes"] == det.fatores.visualizacoes
@@ -263,7 +263,7 @@ def test_escrever_planilha_gera_os_sete_csvs(tmp_path):
     with (tmp_path / "piloto" / "super_destaque.csv").open(encoding="utf-8") as f:
         linhas = list(csv.DictReader(f))
     assert [ln["imovel_id"] for ln in linhas] == ["10"]
-    assert "nota_portal" in linhas[0] and "semelhanca_perfil" not in linhas[0]
+    assert "nota_bruta" in linhas[0] and "semelhanca_perfil" not in linhas[0]
     with (tmp_path / "piloto" / "parametros_e_limitacoes.csv").open(encoding="utf-8") as f:
         tipos = {ln["tipo"] for ln in csv.DictReader(f)}
     assert "ADOTADO" in tipos and "NULO" in tipos
@@ -383,7 +383,7 @@ def test_o_TEXTO_da_coluna_concorda_com_o_veredito_da_penalidade():
 # --- apuracao.csv: o resultado total, uma linha por candidato --------------------
 
 
-def _contexto(resultado_cands, *, anuncios=None, externo_entrou=False):
+def _contexto(resultado_cands, *, anuncios=None):
     # Candidatos EMBARALHADOS de propósito: a ordenação por imovel_id da apuração tem de
     # fazer trabalho, senão remover o `sorted` passa em silêncio.
     return ContextoApuracao(
@@ -399,7 +399,6 @@ def _contexto(resultado_cands, *, anuncios=None, externo_entrou=False):
         },
         penalizaveis={c.imovel_id: _pen(c.imovel_id) for c in resultado_cands},
         anuncios=anuncios or {},
-        externo_entrou=externo_entrou,
     )
 
 
@@ -474,7 +473,7 @@ def test_apuracao_traz_os_sinais_do_portal_e_do_banco_do_detalhe():
     linhas = {ln["imovel_id"]: ln for ln in linhas_apuracao(r, {}, None, _contexto(cands))}
     for iid in (10, 11, 12):
         det = r.detalhes[iid]
-        assert linhas[iid]["nota_portal"] == det.nota_bruta
+        assert linhas[iid]["nota_bruta"] == det.nota_bruta
         assert linhas[iid]["nota_anuncio"] == det.fatores.nota_anuncio
         assert linhas[iid]["cliques"] == det.fatores.cliques
         assert linhas[iid]["visualizacoes"] == det.fatores.visualizacoes
@@ -492,7 +491,7 @@ def test_apuracao_quem_nao_foi_pontuado_tem_nota_VAZIA_nunca_zero():
     assert sem["desfecho"] == "nao_avaliado" and sem["notas_entre"] == ""
     for col in (
         "nota_final",
-        "nota_portal",
+        "nota_bruta",
         "nota_anuncio",
         "cliques",
         "visualizacoes",
@@ -544,7 +543,7 @@ def test_apuracao_notas_batem_com_as_abas_por_nivel():
         assert apur[ln["imovel_id"]]["nota_final"] == ln["nota"]
         assert apur[ln["imovel_id"]]["posicao"] == ln["posicao"]
         assert apur[ln["imovel_id"]]["desconto_total"] == ln["desconto_total"]
-        assert apur[ln["imovel_id"]]["nota_portal"] == ln["nota_portal"]
+        assert apur[ln["imovel_id"]]["nota_bruta"] == ln["nota_bruta"]
 
 
 def test_apuracao_traz_o_portal_cru_e_diz_se_pesou():
@@ -559,13 +558,12 @@ def test_apuracao_traz_o_portal_cru_e_diz_se_pesou():
             url=None,
         )
     }
-    linhas = linhas_apuracao(
-        _resultado(), {}, None, _contexto(cands, anuncios=an, externo_entrou=False)
-    )
+    linhas = linhas_apuracao(_resultado(), {}, None, _contexto(cands, anuncios=an))
     por_id = {ln["imovel_id"]: ln for ln in linhas}
     assert por_id[10]["tem_anuncio"] == "sim" and por_id[10]["portal_nota_anuncio"] == 9580.0
     assert por_id[10]["portal_cliques"] == "cliqueContato=2"  # só os não-zero, nunca somados
-    assert por_id[10]["portal_pesou"] == "não"
+    # O portal não entrou: a nota de TODOS veio do desempate de banco declarado.
+    assert por_id[10]["origem_da_nota"] == "banco" and por_id[11]["origem_da_nota"] == "banco"
     assert por_id[11]["tem_anuncio"] == "não" and por_id[11]["portal_nota_anuncio"] == ""
 
 
@@ -577,12 +575,94 @@ def test_apuracao_com_portal_que_ENTROU_a_nota_portal_e_a_nota_do_anuncio():
     }
     r = _decidir(cands, anuncios=an, portal_entrou=True)
     linhas = {
-        ln["imovel_id"]: ln
-        for ln in linhas_apuracao(r, {}, None, _contexto(cands, anuncios=an, externo_entrou=True))
+        ln["imovel_id"]: ln for ln in linhas_apuracao(r, {}, None, _contexto(cands, anuncios=an))
     }
-    assert linhas[10]["portal_pesou"] == "sim"
+    assert linhas[10]["origem_da_nota"] == "portal"
     assert linhas[10]["nota_anuncio"] == 1.0 and linhas[11]["nota_anuncio"] == 0.0
-    assert linhas[10]["nota_portal"] == 70.0 and linhas[11]["nota_portal"] == 0.0
+    assert linhas[10]["nota_bruta"] == 70.0 and linhas[11]["nota_bruta"] == 0.0
+
+
+def test_origem_da_nota_distingue_SEM_ANUNCIO_de_portal():
+    """Três valores, não dois. Um imóvel sem anúncio numa rodada em que o portal
+    entrou NÃO tem nota do portal: ela é imputada pelo tratamento declarado
+    `portal.sem_anuncio` (`fim_da_fila`, D-034), que lhe dá o mínimo de quem tem
+    anúncio. Dizer "portal" para essa linha é o engano que a coluna existe para
+    desfazer — e na rodada de 06/09 seriam 56 dos 6.970 escolhidos.
+    """
+    cands = _cands_da_apuracao()
+    an = {10: DesempenhoAnuncio(10, "a", 9000.0, 0, {}, None)}  # o 11 fica sem anúncio
+    r = _decidir(cands, anuncios=an, portal_entrou=True)
+    linhas = {
+        ln["imovel_id"]: ln for ln in linhas_apuracao(r, {}, None, _contexto(cands, anuncios=an))
+    }
+    assert linhas[10]["origem_da_nota"] == "portal" and linhas[10]["tem_anuncio"] == "sim"
+    assert linhas[11]["origem_da_nota"] == "sem_anuncio" and linhas[11]["tem_anuncio"] == "não"
+
+
+def test_anuncio_SEM_NOTA_ainda_conta_como_portal_e_a_apuracao_mostra_o_buraco():
+    """A ressalva da coluna, travada em teste em vez de deixada implícita.
+
+    `DesempenhoAnuncio.nota` é opcional e `_sinal_do_portal` imputa por SINAL, então
+    um imóvel COM anúncio e SEM nota sai como `portal` com o `nota_anuncio` imputado.
+    A coluna é sobre a procedência da NOTA BRUTA; um valor por sinal seria outra
+    coluna. Quem precisa do grão tem `portal_nota_anuncio` ao lado, que aqui sai
+    vazia — é assim que a apuração mostra o buraco em vez de escondê-lo.
+
+    Na rodada de 06/09 não ocorreu (zero anúncios sem nota entre 47.893), mas o
+    código permite. Achado da revisão.
+    """
+    cands = _cands_da_apuracao()
+    an = {10: DesempenhoAnuncio(10, "a", None, 500, {"cliqueContato": 3}, None)}
+    r = _decidir(cands, anuncios=an, portal_entrou=True)
+    linhas = linhas_apuracao(r, {}, None, _contexto(cands, anuncios=an))
+    ln = {x["imovel_id"]: x for x in linhas}[10]
+    assert ln["tem_anuncio"] == "sim"
+    assert ln["origem_da_nota"] == "portal"
+    assert ln["portal_nota_anuncio"] == "", "a coluna crua é que denuncia o sinal ausente"
+
+
+def test_origem_da_nota_le_o_portal_EFETIVO_e_nao_o_sinal_do_grafo():
+    """A mentira que a coluna anterior podia contar, e que esta fatia desfaz.
+
+    `decidir` rebaixa `portal_entrou` para falso quando NENHUM anúncio amarra com os
+    candidatos — "sem anúncio nenhum não há ordem de portal, entrou ou não". A coluna
+    `portal_pesou` lia o `externo_presente` do grafo, que segue verdadeiro nesse caso:
+    ela dizia "sim" para uma rodada cuja nota veio inteira do banco. Aqui o contexto
+    afirma que o externo entrou e a coluna, corretamente, discorda dele.
+    """
+    cands = _cands_da_apuracao()
+    r = _decidir(cands, anuncios={}, portal_entrou=True)
+    assert r.portal_entrou is False, "a costura rebaixa quando nenhum anúncio amarra"
+    linhas = {
+        ln["imovel_id"]: ln for ln in linhas_apuracao(r, {}, None, _contexto(cands, anuncios={}))
+    }
+    assert all(ln["origem_da_nota"] == "banco" for ln in linhas.values())
+
+
+def test_a_origem_da_nota_sai_nos_DOIS_NIVEIS_tambem():
+    """Spec §3.2: "colunas iguais nos dois níveis". A procedência da nota é
+    justificativa, e justificativa não pode existir só na apuração."""
+    cands = _cands_da_apuracao()
+    an = {10: DesempenhoAnuncio(10, "a", 9000.0, 0, {}, None)}
+    r = _decidir(cands, anuncios=an, portal_entrou=True)
+    for nome, linhas in (
+        ("super_destaque", linhas_super_destaque(r, None, None)),
+        ("destaque", linhas_destaque(r, None, None)),
+    ):
+        assert linhas, nome
+        for ln in linhas:
+            assert "origem_da_nota" in ln, f"{nome} não declara a procedência da nota"
+            assert "nota_bruta" in ln, f"{nome} deveria expor a nota bruta pelo nome dela"
+            assert "nota_portal" not in ln, f"{nome} ainda chama a nota bruta de nota do portal"
+
+
+def test_a_coluna_portal_pesou_nao_existe_mais_em_lugar_nenhum():
+    """Renomeada, não duplicada: dois nomes para o mesmo bit é o padrão que a fatia 1
+    desta issue acabou de remover em `perfil_fragil`."""
+    cands = _cands_da_apuracao()
+    r = _resultado()
+    for ln in linhas_apuracao(r, {}, None, _contexto(cands)):
+        assert "portal_pesou" not in ln
 
 
 def test_apuracao_codigo_do_portal_vem_do_candidato():
@@ -622,7 +702,7 @@ def test_escrever_planilha_exige_o_contexto_e_os_perfis(tmp_path):
     texto = (tmp_path / "com" / "apuracao.csv").read_text(encoding="utf-8")
     cabecalho = texto.splitlines()[0].split(",")
     assert cabecalho[:3] == ["imovel_id", "codigo_portal", "desfecho"]
-    assert {"nota_portal", "nota_anuncio", "cliques", "visualizacoes", "casa_perfil"} <= set(
+    assert {"nota_bruta", "nota_anuncio", "cliques", "visualizacoes", "casa_perfil"} <= set(
         cabecalho
     )
     assert "gestor_logou_na_janela" in cabecalho
