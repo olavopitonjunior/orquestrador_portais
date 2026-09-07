@@ -119,6 +119,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o 
 
 ### Removed
 
+- **A coluna `perfil_fragil` sai da planilha (issue #73).** Era **sempre falsa por construção** desde a D-027: `perfil_que_puxou` só escolhe entre os perfis que CONTAM (`piloto.semelhanca.perfis_que_contam` filtra `not p.fragil`), então a coluna só podia sair vazia ou `False`. Medido na planilha real de 06/09 — 40.144 `False` e 8.668 vazias na apuração, 6.379 e 116 no destaque, 475 no super destaque, **nenhuma `True` em nenhuma linha** —, e ela era **função exata de `perfil_que_puxou`**: vazia quando nenhum perfil puxou (no destaque, exatamente os 116 relaxados, que cederam o filtro de perfil), `False` quando algum puxou. Nenhum bit de informação que a coluna ao lado já não desse.
+
+  O dano não era o byte: uma coluna sempre falsa **afirma ao leitor da sexta que o sistema rastreia fragilidade por imóvel**, e ele não rastreia — a fragilidade decide quem entra no conjunto de perfis, antes, uma vez, para todos. E remover **fecha uma divergência**: a Spec §3.2 sempre pediu TRÊS colunas no grupo Perfil (se casa o perfil, o perfil que puxou, as vendas que o sustentam); a quarta era do código, não do documento. Saem os dois produtores (`_colunas_justificativa` e `linhas_apuracao`) e a entrada do glossário do console; entra um teste que trava a ausência nas três abas, para ninguém a reintroduzir. Nenhuma regra de decisão muda e nenhum parâmetro pendente ganha valor.
+
 - **`pesos_por_prioridade` sai do domínio (issue #73).** Implementava o parâmetro nº 13 — o decaimento do peso por dimensão do perfil —, que a **D-031 dissolveu sem lhe dar valor: não foi resolvido, deixou de existir**. Manter máquina executável que produz um peso que não pesa nada é a confusão que a issue ataca; o histórico fica no git e na entrada que descreve a função. `PRIORIDADE_DIMENSOES` **fica**: a D-027 preservou a ordem das dimensões como critério de exibição, e ela é a única memória em código de uma decisão do dono nas palavras dele. O consumidor de exibição ainda não existe, e ligá-lo está registrado na issue.
 
 ### Fixed
