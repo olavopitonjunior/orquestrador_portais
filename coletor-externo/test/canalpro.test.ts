@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { canalPro, classificarResposta, paraAnuncio } from '../src/portals/canalpro';
-import { AuthExpiredError, BlockedError } from '../src/core/block-detector';
+import { AuthExpiredError, BlockedError, TransientError } from '../src/core/block-detector';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const fixture = JSON.parse(readFileSync(join(__dir, 'fixtures', 'canalpro-listings.json'), 'utf8'));
@@ -101,6 +101,80 @@ test('erro GraphQL e resposta anômala lançam, nunca devolvem vazio silencioso'
   assert.throws(() => classificarResposta(resp({ json: { errors: [{ message: 'x' }] } })), /GraphQL errors/);
   assert.throws(() => classificarResposta(resp({ status: 500, json: null })), /resposta inesperada/);
   assert.throws(() => classificarResposta(resp({ status: 200, json: { data: {} } })), /resposta inesperada/);
+});
+
+// --- Repetível × definitivo: o que vale nova tentativa e o que não vale ---
+//
+// O caso de origem: 06/09, HTTP 200 e o gateway dizendo no CORPO que não alcançava
+// o backend dele. Dez segundos de soluço mataram treze minutos de coleta, numa
+// rodada de tentativa única.
+
+test('erro de GraphQL "não alcança a API" (200) é TransientError, não erro genérico', () => {
+  const observado = resp({ json: { errors: [{ message: 'Can not reach the API' }] } });
+  assert.throws(() => classificarResposta(observado), TransientError);
+  // A mensagem observada em 06/09, literal, sem normalização nenhuma antes.
+  assert.throws(() => classificarResposta(observado), /não alcançou a API/);
+});
+
+test('erro de GraphQL de CONSULTA continua definitivo — repeti-lo gastaria a tentativa da sexta', () => {
+  for (const message of [
+    'Cannot query field "score" on type "Listing"',
+    'Variable $timeout of required type Int! was not provided',
+    'Syntax Error: Expected Name, found }',
+  ]) {
+    const r = resp({ json: { errors: [{ message }] } });
+    assert.throws(() => classificarResposta(r), /GraphQL errors/, `"${message}" deve ser definitivo`);
+    // A guarda que importa: erro de código NUNCA pode virar repetível. `timeout`
+    // como palavra solta casaria a segunda mensagem — por isso o padrão casa frase.
+    assert.doesNotThrow(() => {
+      try {
+        classificarResposta(r);
+      } catch (e) {
+        if (e instanceof TransientError) throw new Error(`"${message}" foi classificado como repetível`);
+      }
+    });
+  }
+});
+
+test('PRECEDÊNCIA: 503 com desafio do Cloudflare é bloqueio, não soluço', () => {
+  // Um 503 servindo desafio casa `isTransient` (pelo status) E `isBlockResponse`
+  // (pelo marcador). Se o transitório vencesse, a NEEDS_WARM.flag não seria criada
+  // e o operador nunca seria mandado re-logar — falha silenciosa.
+  const desafio = resp({ status: 503, contentType: 'text/html', bodySnippet: 'Just a moment...', json: null });
+  assert.throws(() => classificarResposta(desafio), BlockedError);
+  // Sem marcador, o MESMO status é soluço de infraestrutura e vale nova tentativa.
+  const soluco = resp({ status: 503, contentType: 'text/html', bodySnippet: 'upstream error', json: null });
+  assert.throws(() => classificarResposta(soluco), TransientError);
+});
+
+test('429 e falha de rede são repetíveis — `isTransient` deixa de ser código morto', () => {
+  assert.throws(() => classificarResposta(resp({ status: 429, json: null })), TransientError);
+  assert.throws(() => classificarResposta(resp({ status: -1, contentType: '', json: null })), TransientError);
+  // 500 NÃO está na lista: pode ser defeito de consulta do lado deles, e a casa não
+  // inventa marcador não observado. Continua definitivo.
+  assert.throws(() => classificarResposta(resp({ status: 500, json: null })), /resposta inesperada/);
+  // Corpo declarado JSON que não parseou: `r.json()` rejeitou no transporte, o que só
+  // acontece por corpo truncado ou malformado do lado deles.
+  assert.throws(
+    () => classificarResposta(resp({ status: 200, contentType: 'application/json', json: null })),
+    TransientError
+  );
+});
+
+test('"too many requests" NÃO é marcador: casaria limite de complexidade, que é erro de consulta', () => {
+  // Recusado na revisão desta fatia. O 429 de verdade chega por status HTTP e
+  // `isTransient` já o cobre; como marcador de CORPO, a frase descreve limite em
+  // geral e não inalcançabilidade — e repetir um erro de consulta gasta a tentativa
+  // única que a sexta tem.
+  const complexidade = resp({
+    json: { errors: [{ message: 'Query complexity limit exceeded: too many requests in batch, max 10 allowed' }] },
+  });
+  assert.throws(() => classificarResposta(complexidade), /GraphQL errors/);
+  try {
+    classificarResposta(complexidade);
+  } catch (e) {
+    assert.ok(!(e instanceof TransientError), 'limite de complexidade é defeito de consulta, não soluço');
+  }
 });
 
 test('paginação usa chave IMUTÁVEL (CREATED_AT) para retomada estável', () => {

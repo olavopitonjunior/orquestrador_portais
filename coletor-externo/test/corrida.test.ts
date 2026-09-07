@@ -15,7 +15,7 @@ import { existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { Page } from 'puppeteer-core';
-import { AuthExpiredError, BlockedError } from '../src/core/block-detector';
+import { AuthExpiredError, BlockedError, TransientError } from '../src/core/block-detector';
 import { NEEDS_WARM_FLAG } from '../src/core/config';
 import { executarComTratamento, executarCorrida, nomeDoCsv, podeRetomar } from '../src/core/corrida';
 import { CONTRATO_CHECKPOINT } from '../src/core/types';
@@ -311,6 +311,48 @@ test('status.json declara o modo no bloqueio e no erro genérico', async () => {
     const desfecho = await executarComTratamento(quebra, 'canary', deps(dir));
     assert.equal(desfecho.result, 'error');
     assert.equal((await status(dir)).mode, 'canary');
+  });
+});
+
+test('soluço do portal: `retryable` no status, SEM flag e SEM repetição automática', async () => {
+  // O que a fatia entrega e o que ela deliberadamente NÃO entrega. Entrega: o status
+  // distingue "o portal soluçou" de "a coleta falhou", que é o que o console lê para
+  // dizer ao operador "rode de novo" em vez de "veja os logs". NÃO entrega: laço de
+  // repetição — quantas vezes e com que intervalo é o parâmetro nº 4, que segue nulo.
+  await comDiretorio(async (dir) => {
+    const { portal, pedidas } = portalFalso({ total: 3, porPagina: 10 });
+    const soluco = {
+      ...portal,
+      collectShard: async () => { throw new TransientError('Canal Pro não alcançou a API'); },
+    } as Portal;
+    const desfecho = await executarComTratamento(soluco, 'canary', deps(dir));
+
+    // `result` e `exitCode` INTACTOS: o vocabulário é contrato de três componentes,
+    // e dois deles fazem passthrough cru do valor. O sinal é campo aditivo.
+    assert.equal(desfecho.result, 'error');
+    assert.equal(desfecho.exitCode, 1);
+    const st = await status(dir);
+    assert.equal(st.result, 'error');
+    assert.equal(st.retryable, true);
+    assert.equal(st.mode, 'canary');
+
+    // Um soluço NÃO é sessão caída: mandar re-logar quem não precisa é ruído, e o
+    // custo é o operador perder a confiança no único alarme que importa.
+    assert.ok(!existsSync(join(dir, NEEDS_WARM_FLAG)), 'soluço não é sessão caída');
+    // Uma tentativa, exatamente. Se um dia alguém acrescentar repetição aqui sem o
+    // parâmetro nº 4, este número muda e o teste conta a história.
+    assert.equal(pedidas.length, 0, 'a corrida não pode repetir sozinha: o nº 4 é nulo');
+  });
+});
+
+test('erro definitivo NÃO ganha `retryable` — o campo separa as duas falhas', async () => {
+  await comDiretorio(async (dir) => {
+    const { portal } = portalFalso({ total: 3, porPagina: 10 });
+    const quebra = { ...portal, collectShard: async () => { throw new Error('boom'); } } as Portal;
+    await executarComTratamento(quebra, 'canary', deps(dir));
+    const st = await status(dir);
+    assert.equal(st.result, 'error');
+    assert.equal(st.retryable, undefined, 'sem o campo: quem ignora o sinal continua correto');
   });
 });
 

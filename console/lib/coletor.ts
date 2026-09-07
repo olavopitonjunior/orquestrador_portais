@@ -16,6 +16,12 @@ export type SaudeColeta = {
   coletadoEm: string | null; // finishedAt do status.json (ISO); null se inválido
   idadeDias: number | null; // dias desde a coleta (a janela nº 5 vale 2 dias, D-034)
   linhas: number | null; // rows gravadas (status.json)
+  // O erro foi do tipo que uma nova tentativa resolve — o portal soluçou, o código
+  // está certo. Campo SEPARADO de `estado` de propósito: acrescentar um valor a
+  // `EstadoColeta` moveria a fronteira do contrato e obrigaria todo consumidor a
+  // acompanhar, que é o padrão registrado em `bug.md` como tendo mordido três vezes.
+  // Assim quem ignora `repetivel` continua vendo "error" e continua correto.
+  repetivel: boolean;
   // `outDir` NÃO faz parte do tipo público: é caminho absoluto do servidor e não
   // deve escapar daqui (achado do security-audit). Vai só no `title` do card, via
   // `outDirPublico()`, que devolve o caminho para diagnóstico local do operador.
@@ -78,6 +84,10 @@ export async function saudeColeta(): Promise<SaudeColeta> {
   const finishedAt = dataValida(dados?.finishedAt);
   const result = typeof dados?.result === "string" ? dados.result : null;
   const rows = typeof dados?.rows === "number" ? dados.rows : null;
+  // `retryable` é escrito pelo raspador (`corrida.ts`) só na falha repetível. Ausente
+  // em todo status anterior a 06/09 — por isso a leitura é estrita e o default é
+  // `false`: sem o campo, nada se afirma.
+  const repetivel = dados?.retryable === true;
 
   let estado: EstadoColeta;
   if (needsWarm || result === "blocked") estado = "blocked";
@@ -96,6 +106,9 @@ export async function saudeColeta(): Promise<SaudeColeta> {
     coletadoEm: finishedAt,
     idadeDias: finishedAt ? idadeEmDias(finishedAt) : null,
     linhas: rows,
+    // Só a falha repetível carrega o sinal: um `ok` ou um bloqueio nunca é "rode de
+    // novo" — o conserto do bloqueio é re-logar, e são ações diferentes.
+    repetivel: estado === "error" && repetivel,
   };
 }
 

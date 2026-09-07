@@ -70,9 +70,11 @@ export function condicoes(
               texto:
                 saude.estado === "blocked"
                   ? "A sessão do raspador caiu (Cloudflare). Refaça o login antes de coletar."
-                  : saude.estado === "error"
-                    ? "A última coleta terminou em erro. Veja o log do raspador."
-                    : "A última coleta ficou pela metade: o status está ilegível.",
+                  : saude.estado === "error" && saude.repetivel
+                    ? "O portal soluçou na última coleta — instabilidade momentânea, não bloqueio. Rode de novo: o sistema não repete sozinho."
+                    : saude.estado === "error"
+                      ? "A última coleta terminou em erro. Veja o log do raspador."
+                      : "A última coleta ficou pela metade: o status está ilegível.",
               href: "/coleta",
               rotulo: "Abrir a coleta",
             };

@@ -44,6 +44,24 @@ export function montarAcoes(
       href: "/coleta",
       rotulo: "Abrir a coleta",
     });
+  } else if (saude.estado === "error" && saude.repetivel) {
+    // Falha repetível é a ÚNICA cuja resposta é simplesmente rodar de novo, e mandar
+    // essa pessoa ler log é mandá-la ao lugar errado. Em 06/09 a coleta completa
+    // morreu em 10 s por um soluço do portal; a segunda tentativa, um minuto depois,
+    // levou 13 minutos e trouxe 55.162 anúncios. A sexta tem tentativa única.
+    acoes.push({
+      id: "coleta-repetivel",
+      severidade: "acao",
+      titulo: "A coleta esbarrou num soluço do portal — rode de novo",
+      descricao:
+        "O Canal Pro respondeu de um jeito que costuma passar na tentativa seguinte: " +
+        "não alcançou a própria API, recusou por excesso de requisições ou entregou " +
+        "resposta pela metade. Não é bloqueio de sessão nem defeito do raspador. O " +
+        "sistema não repete sozinho — quantas vezes tentar e com que intervalo é " +
+        "decisão sua (parâmetro nº 4, ainda sem valor).",
+      href: "/coleta",
+      rotulo: "Abrir a coleta",
+    });
   } else if (saude.estado === "error") {
     acoes.push({
       id: "coleta-erro",

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { portaCdp, saudeChrome, type SaudeChrome } from "@/lib/chrome";
 import { amarracaoDoCsv, saudeColeta, type Amarracao, type SaudeColeta } from "@/lib/coletor";
 import { listarTrabalhos, trabalhadorVivo, ultimoCanarioOk, type Trabalho } from "@/lib/operacao";
+import { motivoParaNaoRodarFull } from "@/lib/portao-da-coleta";
 import { dataHora } from "../estado";
 
 import { DisparoColeta } from "./disparo";
@@ -167,19 +168,9 @@ export default async function Page() {
     if (r.status === "rejected") console.error(`[console] falha ao ler ${nome}:`, r.reason);
   }
 
-  // O portão da coleta completa: Chrome no ar, a saúde atual "ok" (o status.json é
-  // reescrito por cada coleta, então "ok" é da ÚLTIMA — bloqueio posterior a um canário
-  // bom o derruba), um canário concluído com 0 pelo console, e um CSV com ao menos um
-  // código no formato {Id}{letra}. Sem isso, horas de raspagem e um login manual podem produzir um CSV
-  // que não amarra — o canário custa segundos e decide isso antes.
+  // O portão da coleta completa vive em `lib/portao-da-coleta.ts`, onde tem teste.
   const podeCanario = chrome?.noAr === true;
-  let motivoSemFull: string | null = null;
-  if (!podeCanario) motivoSemFull = "o Chrome de depuração não está no ar.";
-  else if (saude?.estado !== "ok") motivoSemFull = `a última coleta está '${saude?.estado ?? "?"}', não 'ok'.`;
-  else if (canarioOk === null) motivoSemFull = "nenhum canário disparado pelo console terminou com sucesso ainda.";
-  else if (amarracao === null) motivoSemFull = "não há CSV em out/ para medir a amarração.";
-  else if (amarracao.noFormato === 0)
-    motivoSemFull = "o CSV em out/ não tem nenhum codigoImovel no formato {Id}{letra}: raspar em volume não conserta isso.";
+  const motivoSemFull = motivoParaNaoRodarFull({ chromeNoAr: podeCanario, saude, canarioOk, amarracao });
   const podeFull = motivoSemFull === null;
 
   return (

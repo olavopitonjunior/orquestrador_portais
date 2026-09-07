@@ -8,7 +8,7 @@ import { condicoes, veredito } from "../lib/prontidao";
 const data = (iso: string) => `@${iso}`;
 
 function saude(p: Partial<SaudeColeta> = {}): SaudeColeta {
-  return { estado: "ok", needsWarm: false, coletadoEm: "2026-09-03T21:12:00Z", idadeDias: 0, linhas: 300, ...p };
+  return { estado: "ok", needsWarm: false, coletadoEm: "2026-09-03T21:12:00Z", idadeDias: 0, linhas: 300, repetivel: false, ...p };
 }
 function chrome(p: Partial<SaudeChrome> = {}): SaudeChrome {
   return { noAr: true, abaDoPainel: true, ...p };
@@ -38,6 +38,26 @@ test("coleta ausente → sairá degradada (a nota do anúncio não ordena)", () 
   const cs = condicoes(saude({ estado: "ausente", coletadoEm: null, linhas: null, idadeDias: null }), chrome(), true, 0, 15, data);
   assert.equal(por(cs, "Coleta do portal").nivel, "warn");
   assert.equal(veredito(cs).texto, "sairá degradada");
+});
+
+test("prontidão distingue soluço de falha — a terceira superfície do mesmo fato", () => {
+  // O padrão que `bug.md` registra três vezes: o contrato se move e um consumidor
+  // não acompanha. `prontidao.ts` foi justamente o que não acompanhou quando
+  // `em_curso` nasceu, e reportava "o status está ilegível" para uma coleta em
+  // andamento. Este teste existe para que não haja quarta vez.
+  const soluco = por(
+    condicoes(saude({ estado: "error", repetivel: true }), chrome(), true, 0, 15, data),
+    "Coleta do portal",
+  );
+  assert.equal(soluco.nivel, "bad");
+  assert.match(soluco.texto, /soluçou/);
+  assert.match(soluco.texto, /não repete sozinho/);
+
+  const definitivo = por(
+    condicoes(saude({ estado: "error", repetivel: false }), chrome(), true, 0, 15, data),
+    "Coleta do portal",
+  );
+  assert.match(definitivo.texto, /Veja o log/);
 });
 
 test("leitura que falhou NUNCA vira ok", () => {

@@ -18,7 +18,7 @@ import type { Page } from 'puppeteer-core';
 import { NEEDS_WARM_FLAG } from './config';
 import { CsvWriter, clearCheckpoint, loadCheckpoint, saveCheckpoint } from './csv-writer';
 import { buildShards } from './sharding';
-import { AuthExpiredError, BlockedError } from './block-detector';
+import { AuthExpiredError, BlockedError, TransientError } from './block-detector';
 import { Checkpoint, CONTRATO_CHECKPOINT, Shard } from './types';
 import { Portal } from '../portal';
 
@@ -436,8 +436,28 @@ export async function executarComTratamento(
       return { result: 'blocked', rows: 0, exitCode: 2 };
     }
     const msg = e instanceof Error ? e.message : String(e);
-    await escreverStatus(outDir, agora, modo, 'error', { portal: portal.id, message: msg });
-    log(`ERRO: ${msg}`);
+    // Falha que vale nova tentativa. `result` continua `error` e o código de saída
+    // continua 1 DE PROPÓSITO: o vocabulário `ok|blocked|error|running` é contrato
+    // de três componentes, e dois deles fazem passthrough cru do valor —
+    // `src/dados/coletor_externo.py` (`estado = status.get("result", "error")`) e
+    // `console/lib/coletor.ts`, cuja cadeia termina em `else estado = "ausente"`.
+    // Um valor NOVO viraria, no console, "o raspador nunca rodou" — a pior tradução
+    // possível para uma falha cuja resposta é rodar de novo. O sinal entra como
+    // campo ADITIVO: quem o ignora continua correto.
+    //
+    // E não há laço de repetição aqui. Quantas vezes e com que intervalo é o
+    // parâmetro nº 4, NULO; hoje quem repete é o operador, e o console o avisa.
+    const repetivel = e instanceof TransientError;
+    await escreverStatus(outDir, agora, modo, 'error', {
+      portal: portal.id,
+      message: msg,
+      ...(repetivel ? { retryable: true } : {}),
+    });
+    log(
+      repetivel
+        ? `ERRO REPETÍVEL: ${msg} — o portal soluçou, o código está certo; rode de novo.`
+        : `ERRO: ${msg}`
+    );
     return { result: 'error', rows: 0, exitCode: 1 };
   }
 }
