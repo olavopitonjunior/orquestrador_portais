@@ -12,7 +12,7 @@
 import { Page } from 'puppeteer-core';
 import { Anuncio, Portal, Sessao } from '../portal';
 import { fetchInPage } from '../cdp/transport';
-import { AuthExpiredError, BlockedError, isBlockResponse } from '../core/block-detector';
+import { AuthExpiredError, BlockedError, TransientError, isBlockResponse, isTransient } from '../core/block-detector';
 import { InPageResponse } from '../core/types';
 
 const ID = 'canalpro';
@@ -151,12 +151,42 @@ async function postListings(
   return classificarResposta(resp);
 }
 
+/** Mensagens de erro de GraphQL que descrevem o portal não ALCANÇANDO o backend
+ *  dele — falha de infraestrutura, não de consulta. Só estas repetem.
+ *
+ *  A lista é curta de propósito, e cresce por evidência. Classificar todo erro de
+ *  GraphQL como repetível seria pior que não classificar nenhum: um erro de consulta
+ *  ("Cannot query field X") é defeito de código, e repetir gasta a tentativa ÚNICA
+ *  que a sexta tem. Por isso o padrão casa frase, nunca palavra solta — `timeout`
+ *  cru casaria `Variable $timeout of required type...`, que é erro de esquema.
+ *
+ *  Procedência de cada marcador, porque a casa cobra isso de si mesma:
+ *  - `can not reach the api` — OBSERVADO em 06/09, na falha que originou este código;
+ *  - os demais são ANALOGIA, não medição: descrevem inalcançabilidade ou
+ *    indisponibilidade declarada, e entraram por serem inequívocos quanto a isso.
+ *    Um marcador novo só entra depois de observado.
+ *
+ *  `too many requests` foi CONSIDERADO e RECUSADO na revisão desta fatia: descreve
+ *  limite em geral, não inalcançabilidade, e casaria "Query complexity limit
+ *  exceeded: too many requests in batch" — defeito de consulta. O 429 de verdade
+ *  chega por status HTTP e `isTransient` já o cobre; não precisa de marcador de
+ *  corpo, e o marcador custaria a tentativa única da sexta. */
+const GRAPHQL_INALCANCAVEL =
+  /can ?not reach|unable to reach|upstream (?:error|failure|unavailable)|bad gateway|gateway time ?out|timed out|temporarily unavailable|service unavailable/i;
+
 /**
  * Classifica a resposta ANTES de ler dados — pura, testável sem browser.
  * Uma resposta bloqueada ou não-JSON NUNCA pode ser confundida com "lista
  * vazia" (isso viraria coleta parcial marcada como sucesso, indo ao Analista
  * de Perfil como completa). Bloqueio duro → BlockedError (dispara NEEDS_WARM);
- * 401 → AuthExpiredError; qualquer outra anomalia → Error explícito.
+ * 401 → AuthExpiredError; soluço do portal → TransientError; qualquer outra
+ * anomalia → Error explícito.
+ *
+ * A ORDEM é regra, não estilo. `isTransient` é consultado DEPOIS de 401 e DEPOIS
+ * de `isBlockResponse` porque um 503 servindo desafio do Cloudflare casa os dois:
+ * consultado antes, esse caso viraria "rode de novo", a NEEDS_WARM.flag não seria
+ * criada e o operador nunca seria mandado re-logar — falha silenciosa numa rodada
+ * de tentativa única. Bloqueio vence transitório sempre. Há teste dos dois lados.
  */
 export function classificarResposta(
   resp: InPageResponse<{ data?: ListingsResp; errors?: Array<{ message: string }> }>
@@ -168,7 +198,16 @@ export function classificarResposta(
     throw new BlockedError(`Canal Pro bloqueou (status ${resp.status}) — re-aqueça o perfil (login).`);
   }
   if (resp.json?.errors?.length) {
-    throw new Error(`Canal Pro GraphQL errors: ${resp.json.errors.map((e) => e.message).join('; ')}`);
+    const mensagens = resp.json.errors.map((e) => e.message).join('; ');
+    // 200 com erro de GraphQL não passa por `isTransient` (que exige `json === null`
+    // no ramo do 200): o gateway respondeu, e o que falhou está no CORPO.
+    if (GRAPHQL_INALCANCAVEL.test(mensagens)) {
+      throw new TransientError(`Canal Pro não alcançou a API: ${mensagens}`);
+    }
+    throw new Error(`Canal Pro GraphQL errors: ${mensagens}`);
+  }
+  if (isTransient(resp)) {
+    throw new TransientError(`Canal Pro instável (status ${resp.status}) — vale nova tentativa.`);
   }
   if (resp.status !== 200 || resp.json?.data?.listings == null) {
     throw new Error(`Canal Pro: resposta inesperada (status ${resp.status}, sem data.listings).`);

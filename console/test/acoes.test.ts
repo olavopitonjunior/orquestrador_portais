@@ -11,6 +11,7 @@ function saude(p: Partial<SaudeColeta> = {}): SaudeColeta {
     coletadoEm: "2026-09-01T06:00:00Z",
     idadeDias: 0,
     linhas: 100,
+    repetivel: false,
     ...p,
   };
 }
@@ -60,6 +61,27 @@ test("coleta em erro NÃO fica muda: vira ação", () => {
     acoes.some((a) => a.id === "login-portal"),
     false, // erro não é bloqueio de sessão: não manda relogar
   );
+});
+
+test("soluço do portal vira ação PRÓPRIA: rode de novo, não leia log", () => {
+  const acoes = montarAcoes(saude({ estado: "error", repetivel: true }), [], 0);
+  const soluco = acoes.find((a) => a.id === "coleta-repetivel");
+  assert.ok(soluco, "a falha repetível precisa ter ação própria");
+  assert.equal(soluco!.severidade, "acao");
+  // Exclusiva: mandar a mesma pessoa ler log E rodar de novo é dizer duas coisas
+  // sobre o mesmo fato, e a que ela seguiria é a errada.
+  assert.equal(acoes.some((a) => a.id === "coleta-erro"), false);
+  assert.equal(acoes.some((a) => a.id === "login-portal"), false, "soluço não é sessão caída");
+  // A honestidade que o texto tem de carregar: o sistema NÃO repete sozinho, e o
+  // parâmetro que definiria a repetição segue sem valor.
+  assert.match(soluco!.descricao, /não repete sozinho/);
+  assert.match(soluco!.descricao, /nº 4/);
+});
+
+test("erro definitivo continua mandando ao log — o desvio é só do repetível", () => {
+  const acoes = montarAcoes(saude({ estado: "error", repetivel: false }), [], 0);
+  assert.ok(acoes.find((a) => a.id === "coleta-erro"));
+  assert.equal(acoes.some((a) => a.id === "coleta-repetivel"), false);
 });
 
 test("coleta corrompida vira ação própria", () => {

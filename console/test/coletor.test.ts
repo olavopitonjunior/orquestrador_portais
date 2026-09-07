@@ -40,6 +40,45 @@ test("status blocked → blocked", async () => {
   assert.equal((await saudeColeta()).estado, "blocked");
 });
 
+test("status error com `retryable` → repetível: o soluço do portal se distingue da falha", async () => {
+  // O caso de 06/09: HTTP 200 e o gateway dizendo no corpo que não alcançava a
+  // própria API. Dez segundos de soluço mataram treze minutos de coleta.
+  comOut({
+    "status.json": JSON.stringify({
+      result: "error",
+      finishedAt: "2026-09-06T15:19:00Z",
+      message: "Canal Pro não alcançou a API: Can not reach the API",
+      retryable: true,
+    }),
+  });
+  const s = await saudeColeta();
+  // O ESTADO não muda — é contrato de três componentes, e mexer nele é o defeito
+  // que esta série já registrou três vezes. O sinal é aditivo.
+  assert.equal(s.estado, "error");
+  assert.equal(s.repetivel, true);
+});
+
+test("status error sem `retryable` → não repetível: sem o campo, nada se afirma", async () => {
+  comOut({
+    "status.json": JSON.stringify({ result: "error", finishedAt: "2026-09-06T15:19:00Z" }),
+  });
+  const s = await saudeColeta();
+  assert.equal(s.estado, "error");
+  assert.equal(s.repetivel, false, "todo status anterior a 06/09 não tem o campo");
+});
+
+test("`retryable` num status que não é erro é ignorado", async () => {
+  // Um `ok` ou um bloqueio nunca é "rode de novo": o conserto do bloqueio é
+  // re-logar, e oferecer as duas ações ao mesmo tempo é ruído no único alarme
+  // que o operador não pode aprender a ignorar.
+  comOut({
+    "status.json": JSON.stringify({ result: "blocked", finishedAt: "2026-09-06T15:19:00Z", retryable: true }),
+  });
+  const s = await saudeColeta();
+  assert.equal(s.estado, "blocked");
+  assert.equal(s.repetivel, false);
+});
+
 test("sem arquivos → ausente", async () => {
   comOut({});
   const s = await saudeColeta();

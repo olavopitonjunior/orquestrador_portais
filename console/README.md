@@ -49,3 +49,8 @@ Para a saúde da coleta externa, o console lê os artefatos do raspador. O diret
 arquivos, o painel mostra a coleta como "ausente" — não quebra.
 
 Scripts: `npm run dev`, `npm run build`, `npm run start`, `npm run typecheck`, `npm test`.
+
+**`npm run build` derruba um `npm run dev` que esteja no ar.** Os dois escrevem no
+mesmo `.next/`: o build o reconstrói sob os pés do servidor de desenvolvimento, que
+passa a responder 500 até ser reiniciado. Antes de buildar, confira se há dev na
+porta 3000 (`lsof -i :3000`) e conte com reiniciá-lo depois.
