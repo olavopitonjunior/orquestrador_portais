@@ -42,7 +42,7 @@ from dominio.penalidades import (
     eleger_ultima_janela,
     julgar_janelas,
 )
-from dominio.perfil import Dimensao, PerfilConversao
+from dominio.perfil import PRIORIDADE_DIMENSOES, Dimensao, PerfilConversao
 from piloto.decisao import DetalheImovel, ResultadoDecisao
 from piloto.semelhanca import DimensoesImovel, perfis_que_contam
 
@@ -54,13 +54,45 @@ _PENALIDADES_COLUNAS = (
 )
 
 
+def _pares_por_prioridade(perfil: PerfilConversao) -> list[tuple[Dimensao, object]]:
+    """As dimensões do perfil e seus valores, na ordem de IMPORTÂNCIA do dono.
+
+    A D-017 fixou a ordem nas palavras do dono — "características de preço,
+    localização, metragem, quantidade de dormitórios e quantidade de vagas de
+    garagem, nessa ordem" — e a D-027 tirou-lhe efeito no cálculo, dizendo que ela
+    "sobrevive só como critério de exibição". `PRIORIDADE_DIMENSOES` guardava essa decisão em código
+    sem ninguém a ler (issue #73) — é aqui que ela passa a ser lida, e SÓ aqui: na
+    apresentação. O domínio continua entregando os perfis na ordem canônica do enum,
+    que serve à saída determinística (invariante 5), e nada nele é reordenado.
+
+    Por que os pares andam juntos e nunca só as dimensões: a coluna `valores` da aba
+    `perfis` é este mesmo pareamento, e a `dimensoes` é a lista de nomes. Reordenar
+    uma sem a outra colocaria `dimensoes = "faixa_preco; regiao"` ao lado de
+    `valores = "regiao=...; faixa_preco=..."`, e quem casa nome com valor por posição
+    — que é como a coluna se lê — leria errado.
+    """
+    pares = list(zip(perfil.dimensoes, perfil.valores, strict=True))
+    # Dimensão fora da tupla de prioridade vai para o fim, em ordem canônica, em vez
+    # de estourar: a prioridade é decisão do dono e pode ficar para trás de uma
+    # dimensão nova, e uma planilha que não sai é pior que uma ordenada por engano.
+    fim = len(PRIORIDADE_DIMENSOES)
+
+    def chave(par: tuple[Dimensao, object]) -> tuple[int, str]:
+        dim = par[0]
+        posicao = PRIORIDADE_DIMENSOES.index(dim) if dim in PRIORIDADE_DIMENSOES else fim
+        return (posicao, dim.value)
+
+    return sorted(pares, key=chave)
+
+
 def _perfil_texto(perfil: PerfilConversao | None) -> str:
-    """O perfil que puxou como texto legível (identificador), ou vazio."""
+    """O perfil que puxou como texto legível (identificador), ou vazio.
+
+    Na ordem de importância das dimensões (D-017/D-027) — ver `_pares_por_prioridade`.
+    """
     if perfil is None:
         return ""
-    return "; ".join(
-        f"{dim.value}={valor}" for dim, valor in zip(perfil.dimensoes, perfil.valores, strict=True)
-    )
+    return "; ".join(f"{dim.value}={valor}" for dim, valor in _pares_por_prioridade(perfil))
 
 
 # Os CINCO estados em que a última janela de um imóvel pode estar. Hoje os cinco
@@ -358,7 +390,9 @@ def linhas_perfis(
     return [
         {
             "ordem": i,
-            "dimensoes": "; ".join(d.value for d in p.dimensoes),
+            # Mesma ordem de `valores` (que é `_perfil_texto`), e pelo mesmo motivo:
+            # as duas colunas se leem em par, posição a posição.
+            "dimensoes": "; ".join(d.value for d, _ in _pares_por_prioridade(p)),
             "valores": _perfil_texto(p),
             "vendas_sustentam": p.num_vendas,
             "classificacao": "frágil" if p.fragil else "robusto",
