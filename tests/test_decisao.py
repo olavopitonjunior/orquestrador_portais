@@ -303,7 +303,12 @@ def test_com_portal_a_nota_bruta_e_a_nota_portal():
     assert d1.nota_destaque == d1.nota_bruta - d1.desconto_total
     assert _ordem_super(r) == [1, 2]
     # o portal entrou: nenhuma degradação de "desempate de banco"
-    assert r.degradacoes == DEGRADACOES
+    assert degradacao_sem_portal("leads_180d") not in r.degradacoes
+    assert all(d in r.degradacoes for d in DEGRADACOES)
+    # E uma limitação NOVA, correta: nesta fixture os dois anúncios têm cliques
+    # vazios, então o sinal de peso 30 empata todo mundo e não ordenou ninguém.
+    # Antes a rodada saía sem dizer isso.
+    assert any("'cliques' (peso 30" in d for d in r.degradacoes)
 
 
 def test_cliques_sao_SOMADOS_entre_tipos_na_nota_do_portal():
@@ -316,6 +321,118 @@ def test_cliques_sao_SOMADOS_entre_tipos_na_nota_do_portal():
     assert r.detalhes[1].fatores.cliques == 1.0  # 5 > 4
     assert r.detalhes[2].fatores.cliques == 0.0
     assert r.detalhes[1].nota_bruta == 30.0  # notas iguais → 0; só os cliques pesam
+
+
+# --- sinal ponderado que não ordenou ninguém (issue #73) ------------------------------
+
+
+def test_sinal_com_peso_e_variancia_ZERO_vira_limitacao_declarada():
+    """Min-max com faixa zero devolve 0.0 para todos, em silêncio: o sinal tem peso,
+    mas não ordenou ninguém, e a rodada saía sem nada dizer. Agora diz.
+
+    Aqui os dois anúncios têm a MESMA nota — o sinal de peso 70 empata todo mundo —
+    enquanto os cliques diferem e continuam ordenando.
+    """
+    cands = [_candidato(1), _candidato(2)]
+    an = {
+        1: _anuncio(1, nota=8000.0, cliques={"cliqueContato": 5}),
+        2: _anuncio(2, nota=8000.0, cliques={"cliqueContato": 1}),
+    }
+    r = _rodar(cands, {1: _dims(), 2: _dims()}, anuncios=an, portal=True)
+    achado = [d for d in r.degradacoes if "nota_anuncio" in d]
+    assert len(achado) == 1, r.degradacoes
+    assert "peso 70" in achado[0] and "não ordenou" in achado[0]
+    # É LIMITAÇÃO, não mudança de estado: `estado_final` é função dos prontos das
+    # etapas, não desta lista — dois motivos estáticos estão em toda rodada.
+    assert "DEGRADADA" not in achado[0]
+    assert achado[0].endswith("limitação declarada.")
+    # E o sinal que ORDENOU não é acusado.
+    assert not any("cliques" in d for d in r.degradacoes)
+
+
+def test_a_rede_cobre_QUALQUER_sinal_que_ganhe_peso_sem_ninguem_tocar_no_codigo():
+    """A promessa que o gatilho faz, provada em par.
+
+    O gatilho lê os PESOS EFETIVOS da rodada e os emparelha com os sinais em
+    execução — não uma lista fixa de nomes. Se codificasse `("nota", "cliques")`, o
+    dia em que a [P-25] mover a alocação o dono subiria `peso_visualizacoes`
+    acreditando que a rede o cobre, e ela não cobriria. Uma rede que silenciosamente
+    não cobre é pior que rede nenhuma: a ausência de aviso passa a significar duas
+    coisas.
+
+    Mesma população nos dois casos; muda só o peso.
+    """
+    cands = [_candidato(1), _candidato(2)]
+    # Visualizações EMPATADAS; notas e cliques diferentes, para isolar o sinal.
+    an = {
+        1: _anuncio(1, nota=9000.0, views=50, cliques={"cliqueContato": 5}),
+        2: _anuncio(2, nota=6000.0, views=50, cliques={"cliqueContato": 1}),
+    }
+    dims = {1: _dims(), 2: _dims()}
+
+    com_peso = _rodar(
+        cands,
+        dims,
+        anuncios=an,
+        portal=True,
+        params=_params(pesos_portal=PesosPortal(nota_anuncio=50, cliques=30, visualizacoes=20)),
+    )
+    assert any("visualizacoes" in d for d in com_peso.degradacoes), (
+        "o sinal ganhou peso e empatou todo mundo: a rede tem de cobri-lo"
+    )
+
+    sem_peso = _rodar(cands, dims, anuncios=an, portal=True)  # visualizacoes=0 (D-034)
+    assert not any("visualizacoes" in d for d in sem_peso.degradacoes), (
+        "peso zero não ordena por definição: acusá-lo seria ruído semanal"
+    )
+
+
+def test_a_deteccao_olha_os_ELEGIVEIS_e_nao_o_funil_inteiro():
+    """A população importa, e não é detalhe: a D-016 normaliza elegíveis e reprovados
+    em pools SEPARADOS, e quem alimenta a nota do ranking é o dos elegíveis.
+
+    Aqui os elegíveis empatam nos cliques e um REPROVADO tem cliques diferentes. Se a
+    detecção olhasse `candidatos` (a lista pré-split), essa variação do reprovado
+    mascararia o empate dos elegíveis e a rede se calaria justamente onde deve falar.
+    Buraco achado pela revisão: trocar `elegiveis` por `candidatos` passava nos 40
+    testes anteriores.
+    """
+    cands = [_candidato(1), _candidato(2), _candidato(3, elegivel=False)]
+    an = {
+        1: _anuncio(1, nota=9000.0, cliques={"cliqueContato": 4}),
+        2: _anuncio(2, nota=6000.0, cliques={"cliqueContato": 4}),  # empata com o 1
+        3: _anuncio(3, nota=6000.0, cliques={"cliqueContato": 99}),  # reprovado, destoa
+    }
+    dims = {1: _dims(), 2: _dims(), 3: _dims()}
+    r = _rodar(cands, dims, anuncios=an, portal=True)
+    assert any("'cliques' (peso 30" in d for d in r.degradacoes), (
+        "os ELEGÍVEIS empatam nos cliques; o reprovado não pode mascarar isso"
+    )
+
+
+def test_a_limitacao_do_sinal_NAO_muda_um_unico_numero_da_decisao():
+    """Invariantes 4 e 5: a instrumentação declara, não decide. `_normalizar_minmax`
+    não foi tocada — faixa zero continua devolvendo 0.0 para todos, e é isso que
+    mantém a nota, a ordem e a alocação idênticas."""
+    cands = [_candidato(1), _candidato(2), _candidato(3)]
+    an = {i: _anuncio(i, nota=8000.0, cliques={"cliqueContato": i}) for i in (1, 2, 3)}
+    dims = {i: _dims() for i in (1, 2, 3)}
+    r = _rodar(cands, dims, anuncios=an, portal=True)
+    # o sinal achatado zera para todos, como sempre zerou
+    assert all(d.fatores.nota_anuncio == 0.0 for d in r.detalhes.values())
+    # e a nota continua saindo só dos cliques, com os pesos de sempre
+    assert r.detalhes[3].nota_bruta == 30.0 and r.detalhes[1].nota_bruta == 0.0
+    assert _ordem_super(r) == [3, 2, 1]
+
+
+def test_sem_portal_a_rodada_NAO_acusa_sinal_achatado():
+    """Quando o portal não entra, os pesos dele não ordenam nada — e a rodada já
+    declara isso uma vez, em `degradacao_sem_portal`. Acusar cada sinal seria dizer
+    três vezes o mesmo, e limitação repetida é limitação que ninguém lê."""
+    cands = [_candidato(1), _candidato(2)]
+    r = _rodar(cands, {1: _dims(), 2: _dims()}, leads={1: 100, 2: 0})
+    assert degradacao_sem_portal("leads_180d") in r.degradacoes
+    assert not any("não ordenou" in d for d in r.degradacoes)
 
 
 def test_sem_portal_a_nota_vem_do_desempate_de_banco_e_a_rodada_declara():
