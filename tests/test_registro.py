@@ -155,8 +155,8 @@ def _resultado_com_portal():
     A fixture de um candidato só, que os testes de round-trip usam, não serve aqui: com
     um elemento `min == max`, todo sinal vira 0,0 e as duas identidades viram `0 == 0`.
     """
-    from dados.coletor_externo import DesempenhoAnuncio
     from dominio.penalidades import ImovelPenalizavel
+    from dominio.portal import DesempenhoAnuncio
 
     # TRÊS candidatos, não dois: com dois, o min-max joga um em 1,0 e o outro em 0,0, e
     # o que tem desconto sairia com nota bruta zero — a asserção voltaria a ser trivial.

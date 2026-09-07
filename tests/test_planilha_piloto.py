@@ -16,10 +16,10 @@ import pytest
 
 from config.parametros import carregar
 from dados.bucketizacao import faixa_de_preco
-from dados.coletor_externo import DesempenhoAnuncio
 from dominio.elegibilidade import ImovelCandidato, Regra
 from dominio.penalidades import ImovelPenalizavel, Penalidade
 from dominio.perfil import Dimensao, PerfilConversao
+from dominio.portal import DesempenhoAnuncio
 from entrega.planilha_piloto import (
     NAO_CONSULTADO,
     NAO_JULGADA,

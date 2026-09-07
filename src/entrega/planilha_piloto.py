@@ -33,7 +33,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from config.parametros import ParametrosDaRodada
-from dados.coletor_externo import DesempenhoAnuncio
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import (
     ImovelPenalizavel,
@@ -43,6 +42,7 @@ from dominio.penalidades import (
     julgar_janelas,
 )
 from dominio.perfil import PRIORIDADE_DIMENSOES, Dimensao, PerfilConversao
+from dominio.portal import DesempenhoAnuncio
 from piloto.decisao import DetalheImovel, ResultadoDecisao
 from piloto.semelhanca import DimensoesImovel, perfis_que_contam
 

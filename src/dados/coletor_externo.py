@@ -47,6 +47,13 @@ from datetime import UTC, date, datetime, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+# O contrato do que a raspagem entrega vive no DOMÍNIO, não aqui: quem define o que
+# o dado significa é a camada de dentro, quem o produz é a de fora. Esta é a direção
+# certa da dependência — `dados` importando de `dominio` —, e é ela que mantém o
+# caminho da decisão livre da camada de I/O. Travada por
+# `tests/test_pureza_do_dominio.py`.
+from dominio.portal import DesempenhoAnuncio
+
 # Colunas do CSV, na ordem exata do raspador (canalpro.ts csvColumns).
 COLUNAS = (
     "idPortal",
@@ -81,19 +88,6 @@ NEEDS_WARM_FLAG = "NEEDS_WARM.flag"
 # mesma coleta com o mesmo `--hoje` daria idade diferente noutra máquina (invariante 5 —
 # o revisor provou com TZ=Pacific/Pago_Pago).
 FUSO_DA_OPERACAO: tzinfo = ZoneInfo("America/Sao_Paulo")
-
-
-@dataclass(frozen=True)
-class DesempenhoAnuncio:
-    """Sinais de portal de UM anúncio, amarrado ao imóvel interno. Crus (a nota é
-    o LQS sem reescala); a composição na nota é do consumidor (§6.3)."""
-
-    imovel_id: int
-    id_portal: str
-    nota: float | None  # LQS cru (~5.580–9.580); None se ausente
-    visualizacoes: int
-    cliques: Mapping[str, int]  # por tipo, nunca somados
-    url: str | None  # sempre None na listagem do Canal Pro
 
 
 @dataclass(frozen=True)
