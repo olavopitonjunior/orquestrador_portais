@@ -65,7 +65,6 @@ const SOBRE_A_COLUNA: Record<string, string> = {
   ultima_janela: "a última janela paga deste imóvel, e como foi julgada",
   perfil_que_puxou: "o perfil de conversão de mais vendas que o imóvel casa",
   perfil_num_vendas: "vendas que sustentam esse perfil",
-  perfil_fragil: "perfil com menos vendas que a evidência mínima",
   origem: "ranking, ou relaxamento (recuperado por cedência)",
   degrau_cedido: "a regra cedida para este imóvel entrar",
 };

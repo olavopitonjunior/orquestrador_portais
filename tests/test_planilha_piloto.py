@@ -416,8 +416,39 @@ def test_apuracao_tem_uma_linha_por_candidato_sem_sobreposicao():
     assert por_id[13]["desfecho"] == "reprovado" and por_id[13]["regras_reprovadas"] == "categoria"
     assert por_id[12]["qtd_fotos"] == 3 and por_id[10]["qtd_fotos"] == 20
     assert por_id[10]["faixa_metragem"] == "60 - 80m2" and por_id[10]["vagas"] == "1"
-    assert por_id[10]["perfil_fragil"] is False
     assert por_id[12]["posicao"] == len(r.alocacao.destaque) + 1
+
+
+def test_nenhuma_aba_traz_coluna_de_fragilidade_do_perfil():
+    """A coluna `perfil_fragil` saiu (issue #73), e esta guarda impede que volte.
+
+    Ela era SEMPRE falsa por construção desde a D-027: `perfil_que_puxou` só escolhe
+    entre os perfis que contam, e frágil não conta. Medido na planilha de 06/09 —
+    40.144 `False` e 8.668 vazias na apuração, 6.379 e 116 no destaque, nenhuma
+    `True` em lugar nenhum. E era função exata de `perfil_que_puxou`: vazia quando
+    nenhum perfil puxou, `False` quando algum puxou. Zero informação nova.
+
+    O dano não era o byte: uma coluna sempre falsa afirma ao leitor da sexta que o
+    sistema rastreia fragilidade por imóvel. Ele não rastreia — a fragilidade decide
+    quem entra no conjunto de perfis, e isso acontece antes, uma vez, para todos.
+    A Spec §3.2 sempre pediu TRÊS colunas neste grupo; a quarta era divergência.
+    """
+    r = _resultado()
+    cands = _cands_da_apuracao()
+    abas = {
+        "super_destaque": linhas_super_destaque(r, {}, None),
+        "destaque": linhas_destaque(r, {}, None),
+        "apuracao": linhas_apuracao(r, {}, None, _contexto(cands)),
+    }
+    for nome, linhas in abas.items():
+        linhas = list(linhas)
+        assert linhas, f"a aba {nome} precisa ter linha para o teste valer algo"
+        for ln in linhas:
+            assert "perfil_fragil" not in ln, f"{nome} trouxe a coluna de volta"
+        # O que substituiu a coluna já estava lá: quem quer saber se um perfil puxou
+        # lê `perfil_que_puxou`, que é vazio exatamente nos casos em que a coluna
+        # removida saía vazia.
+        assert "perfil_que_puxou" in linhas[0], f"{nome} perdeu o perfil que puxou"
 
 
 def test_apuracao_diz_entre_quem_cada_nota_foi_normalizada():

@@ -146,16 +146,17 @@ def _colunas_justificativa(
         None if historico is None else historico.get(det.imovel_id, ()),
         resultado_esperado,
     )
+    # Duas colunas de perfil, não três: NÃO existe coluna de fragilidade, e não é
+    # esquecimento. Desde a D-027 `perfil_que_puxou` só escolhe entre os perfis que
+    # CONTAM (`piloto.semelhanca.perfis_que_contam` filtra `not p.fragil`), então uma
+    # coluna `perfil_fragil` só podia sair vazia ou `False` — medido na planilha de
+    # 06/09: 40.144 `False` e 8.668 vazias na apuração, nenhuma `True`. Pior que
+    # inútil, ela sugeria que o sistema rastreia fragilidade por imóvel, o que não
+    # faz. A Spec §3.2 sempre pediu TRÊS colunas neste grupo (casa o perfil, o perfil
+    # que puxou, as vendas que o sustentam); a quarta era divergência do código.
     colunas["perfil_que_puxou"] = _perfil_texto(det.perfil_que_puxou)
     colunas["perfil_num_vendas"] = (
         det.perfil_que_puxou.num_vendas if det.perfil_que_puxou is not None else ""
-    )
-    # SEMPRE falsa desde a D-027, por construção: `perfil_que_puxou` só escolhe entre
-    # os perfis que CONTAM, e frágil não conta. A coluna é vestígio do mundo em que o
-    # perfil pesava e a fragilidade descontava. Sai numa fatia própria (issue #73):
-    # remover coluna é mudar o que a pessoa lê na sexta, não faxina de comentário.
-    colunas["perfil_fragil"] = (
-        det.perfil_que_puxou.fragil if det.perfil_que_puxou is not None else ""
     )
     return colunas
 
@@ -523,7 +524,6 @@ def linhas_apuracao(
             ),
             "perfil_que_puxou": _perfil_texto(perfil),
             "perfil_num_vendas": perfil.num_vendas if perfil is not None else "",
-            "perfil_fragil": perfil.fragil if perfil is not None else "",
             # o portal, cru
             "tem_anuncio": _sim_nao(an is not None),
             "portal_pesou": _sim_nao(contexto.externo_entrou),
