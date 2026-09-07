@@ -12,13 +12,13 @@ from langgraph.graph import END
 
 from dados.coletor_externo import (
     ColetaExterna,
-    DesempenhoAnuncio,
     ParametrosExterno,
 )
 from dominio.alocacao import Alocacao, PosicaoAlocada
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, Penalidade
 from dominio.perfil import Dimensao, ImovelVendido, perfis_de_conversao
+from dominio.portal import DesempenhoAnuncio
 from dominio.ranking import PesosPortal, nota_portal
 from grafo.estado import Estado, Fontes, estado_final
 from grafo.fluxo import _rota_pos_crivo, _rota_pos_finalizar, construir_grafo, no_crivo

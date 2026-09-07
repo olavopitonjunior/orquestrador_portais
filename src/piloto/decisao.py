@@ -35,7 +35,6 @@ from dataclasses import dataclass, replace
 from datetime import date
 from statistics import median
 
-from dados.coletor_externo import DesempenhoAnuncio
 from dominio.alocacao import COTA_DESTAQUE, Alocacao, CandidatoAlocacao, alocar
 from dominio.elegibilidade import ImovelCandidato, Regra, regras_reprovadas
 from dominio.penalidades import (
@@ -45,6 +44,7 @@ from dominio.penalidades import (
     descontos_por_penalidade,
 )
 from dominio.perfil import Dimensao, PerfilConversao
+from dominio.portal import DesempenhoAnuncio
 from dominio.ranking import FatoresNormalizados, PesosPortal, nota_final, nota_portal
 from dominio.relaxamento import CandidatoRelaxamento, ResultadoRelaxamento, relaxar
 from piloto.semelhanca import DimensoesImovel, casa_algum, perfil_que_puxou, perfis_que_contam

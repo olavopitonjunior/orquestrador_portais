@@ -13,10 +13,10 @@ from datetime import date
 
 import pytest
 
-from dados.coletor_externo import DesempenhoAnuncio
 from dominio.elegibilidade import ImovelCandidato, Regra
 from dominio.penalidades import ImovelPenalizavel, IntensidadesPenalidade, Penalidade
 from dominio.perfil import Dimensao, PerfilConversao
+from dominio.portal import DesempenhoAnuncio
 from dominio.ranking import PesosPortal, nota_portal
 from piloto.decisao import (
     DEGRADACOES,

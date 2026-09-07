@@ -20,11 +20,12 @@ from datetime import date
 from enum import StrEnum
 from typing import Annotated, TypedDict
 
-from dados.coletor_externo import ColetaExterna, DesempenhoAnuncio
+from dados.coletor_externo import ColetaExterna
 from dominio.auditoria import ResultadoAuditoria
 from dominio.elegibilidade import ImovelCandidato
 from dominio.penalidades import ImovelPenalizavel, JanelaCrua
 from dominio.perfil import ImovelVendido, PerfilConversao
+from dominio.portal import DesempenhoAnuncio
 from piloto.decisao import ResultadoDecisao
 from piloto.semelhanca import DimensoesImovel
 
