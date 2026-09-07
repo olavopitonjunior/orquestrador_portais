@@ -63,7 +63,7 @@ export function Disparo({
               ? "Um clique, dois trabalhos encadeados: o canário raspa; terminando com 0, o " +
                 "trabalhador enfileira a decisão apontando para o out/, recortada pela raspagem. " +
                 "É uma rodada AMOSTRAL: declarada, nunca COMPLETA, nunca aprovável — existe para " +
-                "ver a corrente inteira funcionar com a nota do portal entrando de verdade. " +
+                "ver a corrente inteira funcionar com a nota do anúncio entrando de verdade. " +
                 "GRAVA no Registro e escreve a planilha em saida/sexta, como o modo real."
               : "O modo seco percorre a rodada inteira contra o banco de verdade e descarta o " +
                 "resultado. É o jeito de ver os números antes de gravar uma decisão."}

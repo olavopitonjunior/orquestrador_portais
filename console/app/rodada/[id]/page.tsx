@@ -11,6 +11,7 @@ import { cedenciaDaAba, montarBlocos } from "@/lib/blocos-da-rodada";
 import { LIMITES, LINHAS_NA_TELA, ORDEM_DAS_ABAS } from "@/lib/abas-da-rodada";
 import { ABAS, lerPlanilha, type Aba, type Tabela } from "@/lib/planilha";
 import { cotasDoRegistro } from "@/lib/cotas";
+import { SOBRE_A_COLUNA } from "@/lib/glossario-da-planilha";
 import { lerRodada, limitacoesDe, parametrosDaRodada } from "@/lib/registro";
 import { dataHora, duracao, PilulaEstado } from "../../estado";
 import { IconeAlerta } from "../../icones";
@@ -47,29 +48,6 @@ const SOBRE_A_ABA: Record<Aba, string> = {
   parametros_e_limitacoes:
     "O que produziu esta lista: os parâmetros PROVISÓRIOS declarados, e cada limitação que " +
     "a rodada declarou sobre si mesma. Leia esta aba antes das outras.",
-};
-
-const SOBRE_A_COLUNA: Record<string, string> = {
-  nota_bruta: "a nota antes dos descontos: soma ponderada dos sinais do anúncio (ou o desempate de banco, se a raspagem não entrou)",
-  origem_da_nota:
-    "de onde veio a nota desta linha: portal (medida no anúncio), banco (a raspagem não entrou) ou sem_anuncio (o imóvel não tinha anúncio e recebeu o pior valor declarado)",
-  tem_anuncio: "se o imóvel tinha anúncio na coleta — eixo independente da origem da nota",
-  nota_anuncio: "nota do anúncio no portal, reescalada entre os elegíveis",
-  cliques: "cliques no anúncio, somados entre tipos, reescalados",
-  visualizacoes: "visualizações do anúncio, reescaladas (peso adotado zero)",
-  leads: "leads já atraídos em 180 dias (banco) — desempate",
-  produtividade_gestor: "produtividade do gestor em 30 dias (banco) — desempate",
-  casa_perfil: "se o imóvel se parece com o que vendeu (a nona regra)",
-  gestor_logou_na_janela: "se o gestor entrou no sistema na janela declarada (trava a cedência)",
-  pen_janela_sem_resultado: "penalidade · janela anterior sem resultado",
-  pen_sem_avaliacao_por_categoria: "penalidade · sem avaliação por categoria",
-  pen_sem_lead_180d: "penalidade · sem lead em 180 dias",
-  desconto_total: "soma das penalidades",
-  ultima_janela: "a última janela paga deste imóvel, e como foi julgada",
-  perfil_que_puxou: "o perfil de conversão de mais vendas que o imóvel casa",
-  perfil_num_vendas: "vendas que sustentam esse perfil",
-  origem: "ranking, ou relaxamento (recuperado por cedência)",
-  degrau_cedido: "a regra cedida para este imóvel entrar",
 };
 
 function Tabela({ aba, t }: { aba: Aba; t: Tabela }) {
@@ -406,7 +384,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <section className="secao ancora" id="planilha">
       <div className="secao-cabecalho">
         <h2>A planilha</h2>
-        <span className="nota">nota do portal · leads e produtividade como desempate · três descontos · a regra cedida</span>
+        <span className="nota">nota bruta e de onde ela veio · leads e produtividade como desempate · três descontos · a regra cedida</span>
       </div>
       {rodada.tipo === "acompanhamento" ? (
         <p className="nota" style={{ margin: 0 }}>
