@@ -728,6 +728,120 @@ def test_sem_exigencia_de_dimensao_todo_perfil_robusto_conta():
     assert all(ln["conta_para_o_filtro"] == "sim" for ln in linhas)
 
 
+def test_as_dimensoes_de_um_perfil_saem_na_ordem_de_IMPORTANCIA_do_dono():
+    """A D-017 fixou a ordem em palavras do dono — "características de preço,
+    localização, metragem, quantidade de dormitórios e quantidade de vagas de
+    garagem, nessa ordem" —, e a D-027 tirou-lhe efeito no cálculo dizendo que ela
+    "sobrevive só como critério de exibição". `PRIORIDADE_DIMENSOES` guardava a
+    decisão sem ninguém a ler (issue #73) — aqui ela é lida.
+
+    O domínio entrega em ordem CANÔNICA do enum (região primeiro), que serve à saída
+    determinística (invariante 5). A exibição inverte para a de importância, e as
+    duas ordens diferem só na troca das duas primeiras — então um perfil com região E
+    faixa de preço é exatamente o caso que muda.
+    """
+    par = PerfilConversao(
+        dimensoes=(Dimensao.REGIAO, Dimensao.FAIXA_PRECO),  # canônica: região antes
+        valores=("Centro", "700k–1M"),
+        num_vendas=7,
+    )
+    ln = linhas_perfis((par,), None)[0]
+    assert ln["dimensoes"] == "faixa_preco; regiao"
+    assert ln["valores"] == "faixa_preco=700k–1M; regiao=Centro"
+
+    # E este par separa PRIORIDADE de ordem alfabética, que para o par acima
+    # coincidem por acaso — `faixa_preco` &lt; `regiao` no alfabeto. Aqui não: a
+    # prioridade manda região antes de metragem, o alfabeto mandaria o contrário.
+    # Sem este caso, uma implementação que só ordenasse por nome passaria.
+    outro = PerfilConversao(
+        dimensoes=(Dimensao.REGIAO, Dimensao.FAIXA_METRAGEM),
+        valores=("Centro", "60 - 80m2"),
+        num_vendas=6,
+    )
+    ln2 = linhas_perfis((outro,), None)[0]
+    assert ln2["dimensoes"] == "regiao; faixa_metragem"
+    assert ln2["valores"] == "regiao=Centro; faixa_metragem=60 - 80m2"
+
+    # E a CAUDA da prioridade, que os dois casos acima não fixam: ambos contêm uma
+    # das duas primeiras dimensões, então uma prioridade com metragem/dormitórios/
+    # vagas embaralhadas entre si passaria neles. Na rodada de 06/09 isso valeria
+    # 72 das 693 linhas saindo erradas em silêncio (28 metragem+vagas, 26
+    # metragem+dormitórios, 18 dormitórios+vagas). Achado da revisão.
+    cauda = PerfilConversao(
+        dimensoes=(Dimensao.FAIXA_METRAGEM, Dimensao.VAGAS),
+        valores=("60 - 80m2", 2),
+        num_vendas=4,
+    )
+    ln3 = linhas_perfis((cauda,), None)[0]
+    assert ln3["dimensoes"] == "faixa_metragem; vagas"
+    dorm_vagas = PerfilConversao(
+        dimensoes=(Dimensao.DORMITORIOS, Dimensao.VAGAS), valores=(2, 1), num_vendas=4
+    )
+    assert linhas_perfis((dorm_vagas,), None)[0]["dimensoes"] == "dormitorios; vagas"
+
+
+def test_dimensoes_e_valores_ficam_PAREADOS_posicao_a_posicao():
+    """A guarda do defeito que quase entrou: reordenar `dimensoes` sem reordenar
+    `valores` põe "faixa_preco; regiao" ao lado de "regiao=...; faixa_preco=...".
+    Quem casa nome com valor por posição — que é como as duas colunas se leem —
+    leria errado, e nada estouraria."""
+    perfis = (
+        PerfilConversao(
+            dimensoes=(Dimensao.REGIAO, Dimensao.FAIXA_PRECO),
+            valores=("Centro", "700k–1M"),
+            num_vendas=7,
+        ),
+        PerfilConversao(
+            dimensoes=(Dimensao.REGIAO, Dimensao.VAGAS), valores=("Centro", 2), num_vendas=4
+        ),
+        PerfilConversao(dimensoes=(Dimensao.FAIXA_PRECO,), valores=("300k–500k",), num_vendas=5),
+    )
+    for ln in linhas_perfis(perfis, None):
+        nomes = str(ln["dimensoes"]).split("; ")
+        pares = str(ln["valores"]).split("; ")
+        assert [par.split("=", 1)[0] for par in pares] == nomes, ln
+
+
+def test_a_reordenacao_e_de_EXIBICAO_e_nao_toca_o_objeto_do_dominio():
+    """`_chave_ordenacao` do domínio ordena por `tuple(dim.value for dim in
+    dimensoes)`. Se a reordenação mutasse o perfil, a ordem das LINHAS mudaria como
+    efeito colateral — e a coluna `ordem` espelha a gravação em
+    `registro.perfil_da_rodada`, cujo id é IDENTITY. A reordenação vive só na
+    apresentação."""
+    par = PerfilConversao(
+        dimensoes=(Dimensao.REGIAO, Dimensao.FAIXA_PRECO),
+        valores=("Centro", "700k–1M"),
+        num_vendas=7,
+    )
+    linhas_perfis((par,), None)
+    assert par.dimensoes == (Dimensao.REGIAO, Dimensao.FAIXA_PRECO), "o domínio foi mutado"
+    assert par.valores == ("Centro", "700k–1M")
+
+
+def test_o_perfil_que_puxou_usa_a_MESMA_ordem_nas_abas_de_IMOVEL():
+    """`_perfil_texto` serve às três abas de imóvel além da aba de perfis, então a
+    ordem de importância vale em `super_destaque`, `destaque` e `apuracao` também.
+
+    Na rodada de 06/09 isso não muda NADA na prática: todo `perfil_que_puxou` das
+    47.000 linhas era de uma só dimensão (`faixa_preco=...`), porque o desempate é
+    `(-num_vendas, -len(dimensoes), ...)` e um perfil de duas dimensões é subconjunto
+    do de uma — só vence quando tem EXATAMENTE as mesmas vendas. Raro, não
+    impossível: por isso o caso é testado, e não presumido inalcançável.
+    """
+    par = PerfilConversao(
+        dimensoes=(Dimensao.REGIAO, Dimensao.FAIXA_PRECO),
+        valores=("Centro", "700k–1M"),
+        num_vendas=7,
+    )
+    r = _resultado()
+    r = replace(r, detalhes={i: replace(d, perfil_que_puxou=par) for i, d in r.detalhes.items()})
+    ln = linhas_super_destaque(r, None, None)[0]
+    assert ln["perfil_que_puxou"] == "faixa_preco=700k–1M; regiao=Centro"
+    # A MESMA string que a aba de perfis produz para o mesmo perfil: uma função só
+    # serve as duas superfícies, e é isso que impede as duas de divergirem.
+    assert ln["perfil_que_puxou"] == linhas_perfis((par,), None)[0]["valores"]
+
+
 def test_a_aba_de_perfis_preserva_a_ordem_canonica_do_dominio():
     """Invariante 5: a ordem é a que o domínio devolveu, não uma reordenação da tela."""
     invertidos = tuple(reversed(PERFIS))
