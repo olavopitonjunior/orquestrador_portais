@@ -209,6 +209,82 @@ def _sinal_do_portal(
     return {im.imovel_id: com_dado.get(im.imovel_id, substituto) for im in imoveis}
 
 
+# Os três sinais do portal, com o nome que eles têm em `PesosPortal` — é ESSE lado
+# que é lido por reflexão (`getattr(pesos, nome)`), e é ele que permite emparelhar
+# sinal e peso em execução em vez de manter uma lista de nomes escrita à mão. Os
+# mesmos nomes aparecem em `FatoresNormalizados`, mas ali são palavras-chave
+# literais na construção do dataclass, não reflexão: a promessa da cobertura
+# automática se apoia só no lado dos pesos.
+#
+# UMA lista, lida por quem normaliza e por quem detecta variância zero. Duas listas
+# divergiriam em silêncio, e a segunda a divergir seria a que ninguém executa toda
+# semana — a detecção.
+_SINAIS_DO_PORTAL: tuple[tuple[str, Callable[[DesempenhoAnuncio], float | None]], ...] = (
+    ("nota_anuncio", lambda a: a.nota),
+    # Cliques SOMADOS entre tipos (D-028: "mais cliques" — divergência registrada com
+    # o contrato anterior do coletor, que nunca os somava).
+    ("cliques", lambda a: float(sum(a.cliques.values()))),
+    ("visualizacoes", lambda a: float(a.visualizacoes)),
+)
+
+
+def sinais_ponderados_sem_variancia(
+    imoveis: Sequence[ImovelCandidato],
+    anuncios: Mapping[int, DesempenhoAnuncio],
+    sem_anuncio: str,
+    pesos: PesosPortal,
+) -> tuple[tuple[str, int], ...]:
+    """Os sinais do portal que TÊM peso e mesmo assim não ordenaram ninguém.
+
+    Um sinal com o mesmo valor bruto para toda a população sai da normalização
+    zerado para todos (`_normalizar_minmax`, faixa zero) — o que é correto e
+    silencioso. Correto porque não há o que ordenar; silencioso porque a rodada saía
+    sem dizer que um sinal com peso não pesou. É a limitação que esta função nomeia.
+
+    Lê o BRUTO, não o normalizado. Os dois são equivalentes — faixa zero no bruto
+    equivale a tudo `0.0` no normalizado, já que com faixa positiva o máximo vira
+    `1.0` —, mas o bruto é o que diz a verdade sobre a MEDIÇÃO, e "tudo zerado" no
+    normalizado é ambíguo com "todos no mínimo" para quem lê depois.
+
+    Lê os PESOS EFETIVOS da rodada, emparelhados com os sinais em execução. É isso
+    que faz a rede cobrir automaticamente um sinal que ganhe peso amanhã — hoje
+    `visualizacoes` está adotado em zero (D-034) e fica de fora, porque acusar um
+    sinal que ninguém pediu para ordenar seria ruído toda semana. Se a [P-25] mover
+    a alocação, a cobertura acompanha sem ninguém tocar aqui. Há teste do par.
+
+    Recebe os ELEGÍVEIS, não os candidatos: a D-016 normaliza elegíveis e reprovados
+    em pools separados, e é o dos elegíveis que alimenta a nota do ranking. Passar a
+    lista pré-split faria a variação de um reprovado mascarar o empate dos elegíveis
+    — a rede se calaria justamente onde deve falar. Há teste.
+
+    A equivalência entre bruto e normalizado, dita acima, apoia-se num fato que vem
+    de FORA daqui: `FatoresNormalizados` recusa valor não finito no `__post_init__`,
+    e `_fatores` roda antes desta função. Ou seja, quando chegamos aqui já não há NaN
+    nem infinito no caminho. Está dito porque hoje isso é ordem de chamada, não
+    contrato — se um dia esta função for chamada antes, a garantia some com ela.
+    """
+    achatados: list[tuple[str, int]] = []
+    for nome, extrair in _SINAIS_DO_PORTAL:
+        peso = int(getattr(pesos, nome))
+        if peso <= 0:
+            continue
+        bruto = _sinal_do_portal(imoveis, anuncios, extrair, sem_anuncio)
+        if bruto and len(set(bruto.values())) == 1:
+            achatados.append((nome, peso))
+    return tuple(achatados)
+
+
+def degradacao_sinal_sem_variancia(nome: str, peso: int) -> str:
+    """Termina em "limitação declarada", NÃO em "Rodada DEGRADADA": `estado_final` é
+    função dos prontos das etapas, não desta lista — dois motivos estáticos estão em
+    toda rodada e nem por isso ela degrada."""
+    return (
+        f"sinal '{nome}' (peso {peso} de 100) tem o mesmo valor para todos os "
+        "elegíveis: a normalização o zera para todos e ele não ordenou ninguém nesta "
+        "rodada, a ordem veio dos demais sinais — limitação declarada."
+    )
+
+
 def _fatores(
     imoveis: Sequence[ImovelCandidato],
     anuncios: Mapping[int, DesempenhoAnuncio],
@@ -218,15 +294,16 @@ def _fatores(
     """Os sinais normalizados (min-max) SOBRE ESTA população: os três do portal e os
     dois do banco. Passe os elegíveis para o ranking e os reprovados para o
     relaxamento (D-016). `casa_perfil` vem pronto no candidato (D-027)."""
-    nota = _normalizar_minmax(_sinal_do_portal(imoveis, anuncios, lambda a: a.nota, sem_anuncio))
-    # Cliques SOMADOS entre tipos (D-028: "mais cliques" — divergência registrada com o
-    # contrato anterior do coletor, que nunca os somava).
-    cliques = _normalizar_minmax(
-        _sinal_do_portal(imoveis, anuncios, lambda a: float(sum(a.cliques.values())), sem_anuncio)
-    )
-    visualizacoes = _normalizar_minmax(
-        _sinal_do_portal(imoveis, anuncios, lambda a: float(a.visualizacoes), sem_anuncio)
-    )
+    # Os três do portal saem da MESMA tabela que a detecção de variância zero lê —
+    # dois lugares definindo "como se extrai o sinal" divergiriam, e o que divergisse
+    # seria o que ninguém executa toda semana.
+    portal = {
+        nome: _normalizar_minmax(_sinal_do_portal(imoveis, anuncios, extrair, sem_anuncio))
+        for nome, extrair in _SINAIS_DO_PORTAL
+    }
+    nota = portal["nota_anuncio"]
+    cliques = portal["cliques"]
+    visualizacoes = portal["visualizacoes"]
     leads = _normalizar_minmax(
         {im.imovel_id: float(_penalizavel(im.imovel_id, penalizaveis).leads_180d) for im in imoveis}
     )
@@ -483,6 +560,19 @@ def decidir(
         degradacoes=(
             *extras,
             *(() if portal_entrou else (degradacao_sem_portal(parametros.ordem_sem_portal),)),
+            # Só com o portal dentro: sem ele os pesos não ordenam nada, e a rodada já
+            # declarou isso uma vez acima. Repetir por sinal seria dizer três vezes o
+            # mesmo, e limitação repetida é limitação que ninguém lê.
+            *(
+                tuple(
+                    degradacao_sinal_sem_variancia(nome, peso)
+                    for nome, peso in sinais_ponderados_sem_variancia(
+                        elegiveis, anuncios, parametros.sem_anuncio, parametros.pesos_portal
+                    )
+                )
+                if portal_entrou
+                else ()
+            ),
             *DEGRADACOES,
         ),
         portal_entrou=portal_entrou,
