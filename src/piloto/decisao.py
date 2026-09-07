@@ -114,6 +114,19 @@ class DetalheImovel:
     # default: é campo autoritativo, e um zero por omissão seria indistinguível de uma
     # nota bruta medida em zero.
     nota_bruta: float
+    # O imóvel tinha anúncio na coleta do portal. FATO MEDIDO, não rótulo: é o que
+    # separa uma nota calculada sobre o desempenho do próprio anúncio de uma nota
+    # IMPUTADA pelo tratamento declarado `portal.sem_anuncio` (`fim_da_fila` adotado,
+    # D-034) — que dá a esse imóvel o mínimo de quem tem anúncio. Sem ele a planilha
+    # não consegue dizer de onde veio a nota daquela linha, e dizer "portal" para uma
+    # nota imputada é o engano que esta coluna existe para desfazer. Sem default,
+    # pelo mesmo motivo de `nota_bruta`.
+    #
+    # Mede PRESENÇA do anúncio, não completude dele: `_sinal_do_portal` imputa por
+    # SINAL, então um anúncio com `nota=None` produz `tem_anuncio=True` com o sinal
+    # `nota_anuncio` imputado. Quem quiser esse grão lê as colunas cruas do portal na
+    # apuração; aqui a pergunta é se havia anúncio.
+    tem_anuncio: bool
 
 
 @dataclass(frozen=True)
@@ -134,6 +147,13 @@ class ResultadoDecisao:
     n_reprovados: int
     # Limitações da rodada, para a aba de limitações da planilha (B3c).
     degradacoes: tuple[str, ...]
+    # O portal entrou DE FATO nesta decisão — o valor EFETIVO, depois da regra
+    # "sem anúncio nenhum não há ordem de portal" logo no início de `decidir`.
+    # Não é o mesmo que `externo_presente` do grafo: a coleta pode ter entrado e
+    # nenhum anúncio amarrar com os candidatos, e aí a nota veio do banco embora a
+    # etapa tenha ficado pronta. Quem quiser dizer de onde veio a nota tem de ler
+    # ESTE campo; ler o do grafo é como a planilha podia mentir antes.
+    portal_entrou: bool
 
 
 def _normalizar_minmax(bruto: dict[int, float]) -> dict[int, float]:
@@ -408,6 +428,7 @@ def decidir(
             nota_destaque=nota,
             perfil_que_puxou=perfil_que_puxou(dims_por_imovel.get(c.imovel_id, {}), contam),
             nota_bruta=bruta,
+            tem_anuncio=c.imovel_id in anuncios,
         )
     alocacao = alocar(aloc_entrada)
 
@@ -444,6 +465,7 @@ def decidir(
                 nota_destaque=nota_dest,
                 perfil_que_puxou=perfil_que_puxou(dims_por_imovel.get(c.imovel_id, {}), contam),
                 nota_bruta=bruta,
+                tem_anuncio=c.imovel_id in anuncios,
             )
         relaxamento = relaxar(deficit, pool)
     else:
@@ -463,4 +485,5 @@ def decidir(
             *(() if portal_entrou else (degradacao_sem_portal(parametros.ordem_sem_portal),)),
             *DEGRADACOES,
         ),
+        portal_entrou=portal_entrou,
     )

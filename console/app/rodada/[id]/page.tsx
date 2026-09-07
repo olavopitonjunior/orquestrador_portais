@@ -50,7 +50,10 @@ const SOBRE_A_ABA: Record<Aba, string> = {
 };
 
 const SOBRE_A_COLUNA: Record<string, string> = {
-  nota_portal: "a nota bruta: soma ponderada dos sinais do anúncio (ou o desempate de banco, se a raspagem não entrou)",
+  nota_bruta: "a nota antes dos descontos: soma ponderada dos sinais do anúncio (ou o desempate de banco, se a raspagem não entrou)",
+  origem_da_nota:
+    "de onde veio a nota desta linha: portal (medida no anúncio), banco (a raspagem não entrou) ou sem_anuncio (o imóvel não tinha anúncio e recebeu o pior valor declarado)",
+  tem_anuncio: "se o imóvel tinha anúncio na coleta — eixo independente da origem da nota",
   nota_anuncio: "nota do anúncio no portal, reescalada entre os elegíveis",
   cliques: "cliques no anúncio, somados entre tipos, reescalados",
   visualizacoes: "visualizações do anúncio, reescaladas (peso adotado zero)",

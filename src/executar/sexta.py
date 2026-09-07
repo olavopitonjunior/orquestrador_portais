@@ -753,7 +753,6 @@ def executar(
                     dims=final.get("dims") or {},
                     penalizaveis=final.get("penalizaveis") or {},
                     anuncios=final.get("anuncios_por_imovel") or {},
-                    externo_entrou=bool(final.get("externo_presente")),
                 ),
             )
         except Exception as e:

@@ -54,6 +54,48 @@ _PENALIDADES_COLUNAS = (
 )
 
 
+# Os TRÊS estados da procedência da nota bruta. Não são dois: dizer "portal" para
+# um imóvel sem anúncio seria repetir, num subconjunto de linhas, exatamente o
+# engano que esta coluna existe para desfazer — a nota dele é IMPUTADA pelo
+# tratamento declarado `portal.sem_anuncio` (`fim_da_fila` adotado, D-034), que lhe
+# dá o mínimo de quem tem anúncio, e não medida no anúncio dele.
+#
+# Medido na rodada de 06/09: 56 dos 6.970 escolhidos não tinham anúncio — todos no
+# destaque, nenhum no super destaque. Com dois valores, essas 56 linhas mentiriam.
+ORIGEM_PORTAL = "portal"
+ORIGEM_BANCO = "banco"
+ORIGEM_SEM_ANUNCIO = "sem_anuncio"
+
+
+def _origem_da_nota(det: DetalheImovel, portal_entrou: bool) -> str:
+    """De onde veio a nota bruta DAQUELA linha.
+
+    `portal_entrou` tem de ser o EFETIVO (`ResultadoDecisao.portal_entrou`), não o
+    `externo_presente` do grafo, porque `decidir` rebaixa o sinal para falso quando
+    nenhum anúncio amarra.
+
+    Honestidade sobre o tamanho disso: pelo caminho do GRAFO os dois não divergem
+    hoje, e não é coincidência — `avaliar_coleta` recusa a coleta com `n_casados == 0`,
+    e os anúncios saem do mesmo dicionário que ela contou, então `externo_presente`
+    verdadeiro implica anúncios não vazios. Isto é defesa do contrato da função
+    pública `decidir`, que aceita a combinação e é chamada direto (pelos testes, e por
+    qualquer chamador futuro), não a correção de um defeito que a planilha real
+    exibiu. A coluna anterior lia a fonte errada; a fonte errada é que não estava
+    sendo alcançada.
+
+    O que esta coluna NÃO promete: que todo sinal da linha `portal` tenha sido
+    medido. `DesempenhoAnuncio.nota` é opcional, e `_sinal_do_portal` imputa o
+    substituto declarado por SINAL — então um imóvel com anúncio e sem nota sai como
+    `portal` com o sinal `nota_anuncio` imputado. A coluna é sobre a procedência da
+    NOTA BRUTA, e um valor por sinal seria uma coluna diferente. Na rodada de 06/09
+    isso não ocorreu (zero anúncios sem nota entre 47.893), e quem precisa do detalhe
+    tem as colunas cruas do portal ao lado na apuração. Achado da revisão.
+    """
+    if not portal_entrou:
+        return ORIGEM_BANCO
+    return ORIGEM_PORTAL if det.tem_anuncio else ORIGEM_SEM_ANUNCIO
+
+
 def _pares_por_prioridade(perfil: PerfilConversao) -> list[tuple[Dimensao, object]]:
     """As dimensões do perfil e seus valores, na ordem de IMPORTÂNCIA do dono.
 
@@ -155,13 +197,19 @@ def _colunas_justificativa(
     det: DetalheImovel,
     historico: Mapping[int, tuple[JanelaCrua, ...]] | None,
     resultado_esperado: Mapping[str, int] | None,
+    portal_entrou: bool,
 ) -> dict[str, object]:
     """As colunas de justificativa comuns aos dois níveis (Spec §2.1/§3.2): a nota
     do portal e os sinais que a compõem (D-028), os dois de banco que só desempatam,
     cada desconto, o total e o perfil que puxou com sua evidência. Tudo lido do
     DetalheImovel — nada recalculado."""
     colunas: dict[str, object] = {
-        "nota_portal": det.nota_bruta,
+        # `nota_bruta`, não `nota_portal`: é o nome que o dado JÁ tem no domínio
+        # (`DetalheImovel.nota_bruta`) e no Registro (coluna `nota_bruta`, migração
+        # 010). Chamá-la de "do portal" na planilha era o único lugar dos três a
+        # usar o nome errado — e o errado exatamente quando o portal não entrava.
+        "nota_bruta": det.nota_bruta,
+        "origem_da_nota": _origem_da_nota(det, portal_entrou),
         "nota_anuncio": det.fatores.nota_anuncio,
         "cliques": det.fatores.cliques,
         "visualizacoes": det.fatores.visualizacoes,
@@ -209,7 +257,7 @@ def linhas_super_destaque(
         det = resultado.detalhes[pos.imovel_id]
         linhas.append(
             {"posicao": pos.posicao, "imovel_id": pos.imovel_id, "nota": pos.nota}
-            | _colunas_justificativa(det, historico, resultado_esperado)
+            | _colunas_justificativa(det, historico, resultado_esperado, resultado.portal_entrou)
             | {"origem": "ranking", "degrau_cedido": ""}
         )
     return linhas
@@ -227,7 +275,7 @@ def linhas_destaque(
         det = resultado.detalhes[pos.imovel_id]
         linhas.append(
             {"posicao": pos.posicao, "imovel_id": pos.imovel_id, "nota": pos.nota}
-            | _colunas_justificativa(det, historico, resultado_esperado)
+            | _colunas_justificativa(det, historico, resultado_esperado, resultado.portal_entrou)
             | {"origem": "ranking", "degrau_cedido": ""}
         )
     # Recuperados continuam a numeração de posição após o ranking.
@@ -237,7 +285,7 @@ def linhas_destaque(
         det = resultado.detalhes[rec.imovel_id]
         linhas.append(
             {"posicao": proxima, "imovel_id": rec.imovel_id, "nota": rec.nota_destaque}
-            | _colunas_justificativa(det, historico, resultado_esperado)
+            | _colunas_justificativa(det, historico, resultado_esperado, resultado.portal_entrou)
             | {"origem": "relaxamento", "degrau_cedido": rec.degrau.value}
         )
     return linhas
@@ -413,9 +461,12 @@ class ContextoApuracao:
     dims: Mapping[int, DimensoesImovel]
     penalizaveis: Mapping[int, ImovelPenalizavel]
     anuncios: Mapping[int, DesempenhoAnuncio]
-    # Se o desempenho de portal ENTROU no cálculo (as quatro portas passaram). Os
-    # anúncios acima existem mesmo quando não entrou; esta marca é que diz se pesaram.
-    externo_entrou: bool
+    # Não há aqui uma marca de "o portal entrou". Havia — `externo_entrou`, lida do
+    # `externo_presente` do grafo —, e ela SAIU nesta fatia: quem responde de onde
+    # veio a nota é `ResultadoDecisao.portal_entrou`, o valor EFETIVO usado no
+    # cálculo, e duas fontes para o mesmo fato é como elas divergem. Os anúncios
+    # acima continuam subindo mesmo quando o portal não pesou, porque a apuração
+    # mostra o portal cru; quem quer saber se pesou lê o resultado.
 
 
 def _cliques_texto(cliques: Mapping[str, int]) -> str:
@@ -539,7 +590,8 @@ def linhas_apuracao(
                 if d
                 else (det.nota_destaque if situacao == "nao_coube" and det is not None else "")
             ),
-            "nota_portal": det.nota_bruta if det else "",
+            "nota_bruta": det.nota_bruta if det else "",
+            "origem_da_nota": _origem_da_nota(det, resultado.portal_entrou) if det else "",
             # Discriminador AUTORITATIVO: quem reprovou está em `reprovados_regras` (é
             # literalmente o split de elegibilidade) — não o proxy `nota_super is None`,
             # que `fluxo.py` já registra como dívida.
@@ -558,9 +610,14 @@ def linhas_apuracao(
             ),
             "perfil_que_puxou": _perfil_texto(perfil),
             "perfil_num_vendas": perfil.num_vendas if perfil is not None else "",
-            # o portal, cru
+            # O portal, CRU — e é por isso que `tem_anuncio` fica mesmo com a
+            # `origem_da_nota` ao lado: os dois eixos são independentes. A apuração
+            # mostra o anúncio que existe mesmo numa rodada em que o portal não
+            # pesou, e `origem_da_nota` diz o que a NOTA usou. O `portal_pesou` que
+            # havia aqui saiu: dizia sim/não lendo o `externo_presente` do grafo,
+            # que `decidir` rebaixa quando nenhum anúncio amarra — a coluna podia
+            # afirmar que o portal pesou numa rodada cuja nota veio do banco.
             "tem_anuncio": _sim_nao(an is not None),
-            "portal_pesou": _sim_nao(contexto.externo_entrou),
             "portal_nota_anuncio": an.nota if an is not None and an.nota is not None else "",
             "portal_visualizacoes": an.visualizacoes if an is not None else "",
             "portal_cliques": _cliques_texto(an.cliques) if an is not None else "",
